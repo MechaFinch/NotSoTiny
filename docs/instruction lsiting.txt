@@ -1,0 +1,286 @@
+
+	0x00	NOP
+	0x01	
+	0x02	MOVS rim		sign extended wide destination
+	0x03	MOVZ rim		zero extended wide destination
+	0x04	MOV I, i16
+	0x05	MOV J, i16
+	0x06	MOV SP, i32
+	0x07	MOV BP, i32
+	0x08	MOV A, i8		sign extended
+	0x09	MOV B, i8		sign extended
+	0x0A	MOV C, i8		sign extended
+	0x0B	MOV D, i8		sign extended
+	0x0C	MOV A, i16
+	0x0D	MOV B, i16
+	0x0E	MOV C, i16
+	0x0F	MOV D, i16
+
+	0x10	MOV rim
+	0x11	XCHG rim
+	0x12	XCHG AH, AL		alias XCHG AL, AH
+	0x13	XCHG BH, BL		alias XCHG BL, BH
+	0x14	XCHG CH, CL		alias XCHG CL, CH
+	0x15	XCHG DH, DL		alias XCHG DL, DH
+
+	0x16	MOV A, B
+	0x17	MOV A, C
+	0x18	MOV A, D
+	0x19	MOV B, A
+	0x1A	MOV B, C
+	0x1B	MOV B, D
+	0x1C	MOV C, A
+	0x1D	MOV C, B
+	0x1E	MOV C, D
+	0x1F	MOV D, A
+	0x20	MOV D, B
+	0x21	MOV D, C
+	
+	0x22	MOV AL, BL
+	0x23	MOV AL, CL
+	0x24	MOV AL, DL
+	0x25	MOV BL, AL
+	0x26	MOV BL, CL
+	0x27	MOV BL, DL
+	0x28	MOV CL, AL
+	0x29	MOV CL, BL
+	0x2A	MOV CL, DL
+	0x2B	MOV DL, AL
+	0x2C	MOV DL, BL
+	0x2D	MOV DL, CL
+	
+	0x2E	XCHG A, B		alias XCHG B, A
+	0x2F	XCHG A, C		alias XCHG C, A
+	0x30	XCHG A, D		alias XCHG D, A
+	0x31	XCHG B, C		alias XCHG C, B
+	0x32	XCHG B, D		alias XCHG D, B
+	0x33	XCHG C, D		alias XCHG D, C
+	
+	0x34	XCHG AL, BL		alias XCHG BL, AL
+	0x35	XCHG AL, CL		alias XCHG CL, AL
+	0x36	XCHG AL, DL		alias XCHG DL, AL
+	0x37	XCHG BL, CL		alias XCHG CL, BL
+	0x38	XCHG BL, DL		alias XCHG DL, BL
+	0x39	XCHG CL, DL		alias XCHG DL, CL
+	
+	0x3A	PUSH A
+	0x3B	PUSH B
+	0x3C	PUSH C
+	0x3D	PUSH D
+	0x3E	PUSH I
+	0x3F	PUSH J
+	0x40	PUSH BP
+	0x41	PUSH SP
+	0x42	PUSH F
+	0x43	PUSH rim
+	
+	0x44	POP A
+	0x45	POP B
+	0x46	POP C
+	0x47	POP D
+	0x48	POP I
+	0x49	POP J
+	0x4A	POP BP
+	0x4B	POP SP
+	0x4C	POP F
+	0x4D	POP rim
+	
+	0x4E	AND F, rim
+	0x4F	AND rim, F
+	0x50	OR F, rim
+	0x51	OR rim, F
+	0x52	XOR F, rim
+	0x53	XOR rim, F
+	0x54	NOT F
+	0x55	
+	0x56	MOV F, rim
+	0x57	MOV rim, F
+	
+	0x58	INC I
+	0x59	INC J
+	0x5A	ICC I
+	0x5B	ICC J
+	0x5C	DEC I
+	0x5D	DEC J
+	0x5E	DCC I
+	0x5F	DCC J
+	
+	0x60	ADD A, A
+	0x61	ADD A, B
+	0x62	ADD A, C
+	0x63	ADD A, D
+	0x64	ADD B, A
+	0x65	ADD B, B
+	0x66	ADD B, C
+	0x67	ADD B, D
+	0x68	ADD C, A
+	0x69	ADD C, B
+	0x6A	ADD C, C
+	0x6B	ADD C, D
+	0x6C	ADD D, A
+	0x6D	ADD D, B
+	0x6E	ADD D, C
+	0x6F	ADD D, D
+	
+	0x70	ADD A, i8
+	0x71	ADD B, i8
+	0x72	ADD C, i8
+	0x73	ADD D, i8
+	0x74	ADD A, i16
+	0x75	ADD B, i16
+	0x76	ADD C, i16
+	0x77	ADD D, i16
+	
+	0x78	ADC A, i8
+	0x79	ADC B, i8
+	0x7A	ADC C, i8
+	0x7B	ADC D, i8
+	0x7C	ADC A, i16
+	0x7D	ADC B, i16
+	0x7E	ADC C, i16
+	0x7F	ADC D, i16
+	
+	0x80	SUB A, A
+	0x81	SUB A, B
+	0x82	SUB A, C
+	0x83	SUB A, D
+	0x84	SUB B, A
+	0x85	SUB B, B
+	0x86	SUB B, C
+	0x87	SUB B, D
+	0x88	SUB C, A
+	0x89	SUB C, B
+	0x8A	SUB C, C
+	0x8B	SUB C, D
+	0x8C	SUB D, A
+	0x8D	SUB D, B
+	0x8E	SUB D, C
+	0x8F	SUB D, D
+	
+	0x90	SUB A, i8
+	0x91	SUB B, i8
+	0x92	SUB C, i8
+	0x93	SUB D, i8
+	0x94	SUB A, i16
+	0x95	SUB B, i16
+	0x96	SUB C, i16
+	0x97	SUB D, i16
+	
+	0x98	SBB A, i8
+	0x99	SBB B, i8
+	0x9A	SBB C, i8
+	0x9B	SBB D, i8
+	0x9C	SBB A, i16
+	0x9D	SBB B, i16
+	0x9E	SBB C, i16
+	0x9F	SBB D, i16
+	
+	0xA0	ADD rim
+	0xA1	ADC rim
+	0xA2	PADD rimp
+	0xA3	PADC rimp
+	
+	0xA4	SUB rim
+	0xA5	SBB rim
+	0xA6	PSUB rimp
+	0xA7	PSBB rimp
+	
+	0xA8	INC rim
+	0xA9	ICC rim
+	0xAA	PINC rimp
+	0xAB	PICC rimp
+	
+	0xAC	DEC rim
+	0xAD	DCC rim
+	0xAE	PDEC rimp
+	0xAF	PDCC rimp
+	
+	0xB0	MUL rim
+	0xB1	MULS rim
+	0xB2	MULH rim		wide destination, uses lower half
+	0xB3	MULSH rim		wide destination, uses lower half
+	0xB4	PMUL rimp
+	0xB5	PMULS rimp
+	0xB6	PMULH rimp		wide destination, uses lower half
+	0xB7	PMULSH rimp		wide destination, uses lower half
+	
+	0xB8	DIV rim
+	0xB9	DIVS rim
+	0xBA	DIVM rim		wide destination, uses full value
+	0xBB	DIVMS rim		wide destination, uses full value
+	0xBC	PDIV rimp
+	0xBD	PDIVS rimp
+	0xBE	PDIVM rimp		wide destination, uses full value
+	0xBF	PDIVMS rimp		wide destination, uses full value
+	
+	0xC0	AND rim
+	0xC1	OR rim
+	0xC2	XOR rim
+	0xC3	NOT rim			source ignored
+	0xC4	NEG rim			source ignored
+	
+	0xC5	SHL rim
+	0xC6	SHR rim
+	0xC7	SAR rim
+	0xC8	ROL rim
+	0xC9	ROR rim
+	0xCA	RCL rim
+	0xCB	RCR rim
+	
+	0xCC	JMP i8
+	0xCD	JMP i16
+	0xCE	JMP i32
+	0xCF	JMP rim
+	0xD0	JMPA i32
+	0xD1	JMPA rim32
+	
+	0xD2	CALL i16
+	0xD3	CALL rim
+	0xD4	CALLA i32
+	0xD5	CALLA rim32
+	
+	0xD6	RET
+	0xD7	IRET
+	0xD8	INT i16
+	0xD9	INT rim
+	
+	0xDA	LEA rim
+	0xDB	CMP rim
+	0xDC	CMP rim, i8
+	0xDD	CMP rim, 0
+	0xDE
+	0xDF
+	
+	0xE0	JC i8
+	0xE1	JC rim
+	0xE2	JNC i8
+	0xE3	JNC rim
+	0xE4	JS i8
+	0xE5	JS rim
+	0xE6	JNS i8
+	0xE7	JNS rim
+	0xE8	JO i8
+	0xE9	JO rim
+	0xEA	JNO i8
+	0xEB	JNO rim
+	0xEC	JZ i8			alias JE i8
+	0xED	JZ rim			alias JE rim
+	0xEE	JNZ i8			alias JNE i8
+	0xEF	JNZ rim			alias JNE rim
+	
+	0xF0	JA i8			alias JNBE i8
+	0xF1	JA rim			alias JNBE rim
+	0xF2	JAE i8			alias JNB i8
+	0xF3	JAE rim			alias JNB rim
+	0xF4	JB i8			alias JNAE i8
+	0xF5	JB rim			alias JNAE rim
+	0xF6	JBE i8			alias JNA i8
+	0xF7	JBE rim			alias JNA rim
+	0xF8	JG i8			alias JNLE i8
+	0xF9	JG rim			alias JNLE rim
+	0xFA	JGE i8			alias JNL i8
+	0xFB	JGE rim			alias JNL rim
+	0xFC	JL i8			alias JNGE i8
+	0xFD	JL rim			alias JNGE rim
+	0xFE	JLE i8			alias JNG i8
+	0xFF	JLE rim			alias JNG rim
