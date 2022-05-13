@@ -296,7 +296,12 @@ public class Disassembler {
      * @return
      */
     private int read32(byte[] memory, int address) {
-        return memory[address] | (memory[address + 1] << 8) | (memory[address + 2] << 16) | (memory[address + 3] << 24);
+        int val = memory[address] & 0xFF;
+        val = (val | (memory[address + 1] << 8)) & 0xFFFF;
+        val = (val | (memory[address + 2] << 16)) & 0xFF_FFFF;
+        val |= memory[address + 3] << 24;
+        
+        return val;
     }
     
     /**
@@ -306,7 +311,11 @@ public class Disassembler {
      * @return
      */
     private int read24(byte[] memory, int address) {
-        return memory[address] | (memory[address + 1] << 8) | (memory[address + 2] << 16);
+        int val = memory[address] & 0xFF;
+        val = (val | (memory[address + 1] << 8)) & 0xFFFF;
+        val |= memory[address + 3] << 16;
+        
+        return val & 0xFF_FFFF;
     }
     
     /**
@@ -315,8 +324,11 @@ public class Disassembler {
      * @param address
      * @return
      */
-    private short read16(byte[] memory, int address) {
-        return (short)(memory[address] | (memory[address + 1] << 8));
+    private int read16(byte[] memory, int address) {
+        int val = memory[address] & 0xFF;
+        val |= memory[address + 1] << 8;
+        
+        return val & 0xFFFF;
     }
     
     /**

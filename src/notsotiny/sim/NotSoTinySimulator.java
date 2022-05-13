@@ -1,5 +1,7 @@
 package notsotiny.sim;
 
+import notsotiny.sim.LocationDescriptor.LocationType;
+
 /**
  * Simulates the NotSoTiny architecture
  * 
@@ -664,7 +666,111 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runXCHG(Opcode op) {
-        // TODO
+        int tmp;
+        
+        // ez cases
+        switch(op) {
+            // internal byte swaps
+            case XCHG_AH_AL:
+                this.reg_a = (short)((this.reg_a << 8) | (this.reg_a >>> 8));
+                return;
+            
+            case XCHG_BH_BL:
+                this.reg_b = (short)((this.reg_b << 8) | (this.reg_b >>> 8));
+                return;
+            
+            case XCHG_CH_CL:
+                this.reg_c = (short)((this.reg_c << 8) | (this.reg_c >>> 8));
+                return;
+            
+            case XCHG_DH_DL:
+                this.reg_d = (short)((this.reg_d << 8) | (this.reg_d >>> 8));
+                return;
+            
+            // lower byte swaps
+            case XCHG_AL_BL:
+                tmp = this.reg_a;
+                this.reg_a = (short)((this.reg_a & 0xFF00) | (this.reg_b & 0x00FF));
+                this.reg_b = (short)((this.reg_b & 0xFF00) | (tmp & 0x00FF));
+                return;
+            
+            case XCHG_AL_CL:
+                tmp = this.reg_a;
+                this.reg_a = (short)((this.reg_a & 0xFF00) | (this.reg_c & 0x00FF));
+                this.reg_c = (short)((this.reg_c & 0xFF00) | (tmp & 0x00FF));
+                return;
+                
+            case XCHG_AL_DL:
+                tmp = this.reg_a;
+                this.reg_a = (short)((this.reg_a & 0xFF00) | (this.reg_d & 0x00FF));
+                this.reg_d = (short)((this.reg_d & 0xFF00) | (tmp & 0x00FF));
+                return;
+                
+            case XCHG_BL_CL:
+                tmp = this.reg_b;
+                this.reg_b = (short)((this.reg_b & 0xFF00) | (this.reg_c & 0x00FF));
+                this.reg_c = (short)((this.reg_c & 0xFF00) | (tmp & 0x00FF));
+                return;
+                
+            case XCHG_BL_DL:
+                tmp = this.reg_b;
+                this.reg_b = (short)((this.reg_b & 0xFF00) | (this.reg_d & 0x00FF));
+                this.reg_d = (short)((this.reg_d & 0xFF00) | (tmp & 0x00FF));
+                return;
+                
+            case XCHG_CL_DL:
+                tmp = this.reg_c;
+                this.reg_c = (short)((this.reg_c & 0xFF00) | (this.reg_d & 0x00FF));
+                this.reg_d = (short)((this.reg_d & 0xFF00) | (tmp & 0x00FF));
+                return;
+            
+            // full register swaps
+            case XCHG_A_B:
+                tmp = this.reg_a;
+                this.reg_a = this.reg_b;
+                this.reg_b = (short) tmp;
+                return;
+            
+            case XCHG_A_C:
+                tmp = this.reg_a;
+                this.reg_a = this.reg_c;
+                this.reg_c = (short) tmp;
+                return;
+            
+            case XCHG_A_D:
+                tmp = this.reg_a;
+                this.reg_a = this.reg_d;
+                this.reg_d = (short) tmp;
+                return;
+                
+            case XCHG_B_C:
+                tmp = this.reg_b;
+                this.reg_b = this.reg_c;
+                this.reg_c = (short) tmp;
+                return;
+                
+            case XCHG_B_D:
+                tmp = this.reg_b;
+                this.reg_b = this.reg_d;
+                this.reg_d = (short) tmp;
+                return;
+            
+            case XCHG_C_D:
+                tmp = this.reg_c;
+                this.reg_c = this.reg_d;
+                this.reg_d = (short) tmp;
+                return;
+            
+            default: // rim
+        }
+        
+        // i love abstraction
+        LocationDescriptor srcDesc = getNormalRIMSourceDescriptor(),
+                           dstDesc = getNormalRIMDestinationDescriptor();
+        
+        tmp = getLocationValue(srcDesc);
+        putLocation(srcDesc, getLocationValue(dstDesc));
+        putLocation(dstDesc, tmp);
     }
     
     /**
@@ -692,8 +798,10 @@ public class NotSoTinySimulator {
             case PUSH_I     -> this.reg_i;
             case PUSH_J     -> this.reg_j;
             case PUSH_F     -> this.reg_f;
-            default         -> getNormalRIMSource();
+            default         -> getNormalRIMSource(); // rim
         };
+        
+        System.out.println(String.format("source value: %08X", val));
         
         // write
         if(opSize == 1) {
@@ -711,6 +819,55 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runPOP(Opcode op) {
+        // deal with operand size
+        int opSize = switch(op) {
+            case POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_F -> 2;
+            case POP_BP, POP_SP -> 4;
+            default -> getNormalRIMSourceWidth();
+        };
+        
+        int val = switch(opSize) {
+            case 1  -> this.memory[this.reg_sp];
+            case 2  -> read16(this.reg_sp);
+            case 4  -> read32(this.reg_sp);
+            default -> -1; // not possible
+        };
+        
+        System.out.println(String.format("source value: %08X", val));
+        
+        this.reg_sp += opSize;
+        
+        // write
+        switch(op) {
+            case POP_A:     this.reg_a = (short) val; break;
+            case POP_B:     this.reg_b = (short) val; break;
+            case POP_C:     this.reg_c = (short) val; break;
+            case POP_D:     this.reg_d = (short) val; break;
+            case POP_I:     this.reg_i = (short) val; break;
+            case POP_J:     this.reg_j = (short) val; break;
+            case POP_F:     this.reg_f = (short) val; break;
+            case POP_BP:    this.reg_bp = val; break;
+            case POP_SP:    this.reg_sp = val; break; // must happen after sp is incremented
+            default:        putNormalRIMDestination(val); // rim
+        }
+    }
+    
+    /**
+     * Gets the descriptor of a RIM destination
+     * 
+     * @return
+     */
+    private LocationDescriptor getNormalRIMDestinationDescriptor() {
+        // TODO
+        return null;
+    }
+    
+    /**
+     * Puts a value at a location
+     * 
+     * @param val
+     */
+    private void putLocation(LocationDescriptor desc, int val) {
         // TODO
     }
     
@@ -720,13 +877,14 @@ public class NotSoTinySimulator {
      * @param val
      */
     private void putNormalRIMDestination(int val) {
+        // TODO: CONVERT TO USE LocationDescriptors
         byte rim = this.memory[this.reg_ip];
         boolean size = (rim & 0x80) == 0;
         
         System.out.println(String.format("rim, size: %02X, %s", rim, size));
         
         if((rim & 0x40) == 0 || (rim & 0x04) == 0) {
-            System.out.println(String.format("register destination %s", (rim & 0x38) >> 3));
+            System.out.println(String.format("register destination %s", (rim & 0x38) >>> 3));
             
             // register destination
             if(size) { // 16 bit
@@ -791,7 +949,7 @@ public class NotSoTinySimulator {
         
         if((rim & 0x80) == 0) { // 16, unless BP/SP
             // if the source is a register, the target is that register. otherwise, it's the destination register
-            int target = ((rim & 0x40) == 0) ? (rim & 0x07) : ((rim & 0x38) >> 3);
+            int target = ((rim & 0x40) == 0) ? (rim & 0x07) : ((rim & 0x38) >>> 3);
             
             // if the target is BP/SP, return 4. otherwise 2
             if(target > 5) return 4;
@@ -802,11 +960,11 @@ public class NotSoTinySimulator {
     }
     
     /**
-     * Gets the source of a RIM
+     * Gets the descriptor of a RIM source
      * 
      * @return
      */
-    private int getNormalRIMSource() {
+    private LocationDescriptor getNormalRIMSourceDescriptor() {
         byte rim = this.memory[this.reg_ip];
         boolean size = (rim & 0x80) == 0;
         
@@ -814,8 +972,6 @@ public class NotSoTinySimulator {
         
         // rim or mem
         if((rim & 0x40) == 0 || (rim & 0x04) != 0) {
-            int sizeMask = size ? 0xFFFF : 0xFF00;
-            
             // if memory is a destination, source comes from d reg
             int src = 0;
             if((rim & 0x40) == 0) { // reg source
@@ -826,17 +982,32 @@ public class NotSoTinySimulator {
             
             System.out.println(String.format("register source %s", src));
             
+            // wide register source for BP/SP destination
+            if(size && (rim & 0x38) > 0x28) {
+                return switch(src) {
+                    case 0  -> LocationDescriptor.REGISTER_DA;
+                    case 1  -> LocationDescriptor.REGISTER_AB;
+                    case 2  -> LocationDescriptor.REGISTER_BC;
+                    case 3  -> LocationDescriptor.REGISTER_CD;
+                    case 4  -> LocationDescriptor.REGISTER_JI;
+                    case 5  -> LocationDescriptor.REGISTER_IJ;
+                    case 6  -> LocationDescriptor.REGISTER_BP;
+                    case 7  -> LocationDescriptor.REGISTER_SP;
+                    default -> null;
+                };
+            }
+            
             // register source
             return switch(src) {
-                case 0  -> this.reg_a & sizeMask;                               // A/AL
-                case 1  -> this.reg_b & sizeMask;                               // B/BL
-                case 2  -> this.reg_c & sizeMask;                               // C/CL
-                case 3  -> this.reg_d & sizeMask;                               // D/DL
-                case 4  -> size ? this.reg_i : (this.reg_a >> 8);               // I/AH
-                case 5  -> size ? this.reg_j : (this.reg_b >> 8);               // J/BH
-                case 6  -> size ? this.reg_bp : (this.reg_c >> 8);              // BP/CH
-                case 7  -> size ? this.reg_sp : (this.reg_d >> 8);              // SP/CH
-                default -> -1; // not possible
+                case 0  -> size ? LocationDescriptor.REGISTER_A : LocationDescriptor.REGISTER_AL;
+                case 1  -> size ? LocationDescriptor.REGISTER_B : LocationDescriptor.REGISTER_BL;
+                case 2  -> size ? LocationDescriptor.REGISTER_C : LocationDescriptor.REGISTER_CL;
+                case 3  -> size ? LocationDescriptor.REGISTER_D : LocationDescriptor.REGISTER_DL;
+                case 4  -> size ? LocationDescriptor.REGISTER_I : LocationDescriptor.REGISTER_AH;
+                case 5  -> size ? LocationDescriptor.REGISTER_J : LocationDescriptor.REGISTER_BH;
+                case 6  -> size ? LocationDescriptor.REGISTER_BP : LocationDescriptor.REGISTER_CH;
+                case 7  -> size ? LocationDescriptor.REGISTER_SP : LocationDescriptor.REGISTER_DH;
+                default -> null;
             };
         } else if((rim & 0x07) == 0) {
             System.out.println("immediate value");
@@ -845,52 +1016,112 @@ public class NotSoTinySimulator {
             if(size) { // 16 bit
                 // BP/SP?
                 if((rim & 0x38) > 0x28) {
-                    return read32(this.reg_ip + 1);
+                    return new LocationDescriptor(LocationType.MEMORY, 4, this.reg_ip + 1);
                 } else {
-                    return read16(this.reg_ip + 1);
+                    return new LocationDescriptor(LocationType.MEMORY, 2, this.reg_ip + 1);
                 }
             } else { // 8 bit
-                return this.memory[this.reg_ip + 1];
+                return new LocationDescriptor(LocationType.MEMORY, 1, this.reg_ip + 1);
             }
         } else if((rim & 0x07) == 1) {
             System.out.println("immediate address source");
             
             // immediate address
-            int addr = read32(this.reg_ip + 1),
-                val = 0;
+            int addr = read32(this.reg_ip + 1);
             
             if(size) { // 16 bit
                 // BP/SP?
                 if((rim & 0x38) > 0x28) {
-                    val = read32(addr); 
+                    return new LocationDescriptor(LocationType.MEMORY, 4, addr); 
                 } else {
-                    val = read16(addr);
+                    return new LocationDescriptor(LocationType.MEMORY, 2, addr);
                 }
             } else { // 8 bit
-                val = this.memory[addr];
+                return new LocationDescriptor(LocationType.MEMORY, 1, addr);
             }
-            
-            return val;
         } else {
             System.out.println("bio address source");
             
             // BIO memory source
-            int addr = getBIOAddress(),
-                val = 0;
+            int addr = getBIOAddress();
             
             if(size) { // 16 bit
                 // BP/SP?
                 if((rim & 0x38) > 0x28) {
-                    val = read32(addr); 
+                    return new LocationDescriptor(LocationType.MEMORY, 4, addr);
                 } else {
-                    val = read16(addr);
+                    return new LocationDescriptor(LocationType.MEMORY, 2, addr);
                 }
             } else { // 8 bit
-                val = this.memory[addr];
+                return new LocationDescriptor(LocationType.MEMORY, 1, addr);
             }
-            
-            return val;
         }
+    }
+    
+    /**
+     * Get the value from a LocationDescriptor
+     * 
+     * @param loc
+     * @return
+     */
+    private int getLocationValue(LocationDescriptor desc) {
+        if(desc.type() == LocationType.MEMORY) {
+            return switch(desc.size()) {
+                case 1  -> this.memory[desc.address()];
+                case 2  -> read16(desc.address());
+                case 4  -> read32(desc.address());
+                default -> 0;
+            };
+        } else {
+            // initial value
+            int rawVal = switch(desc.type()) {
+                case REG_A  -> this.reg_a;
+                case REG_B  -> this.reg_b;
+                case REG_C  -> this.reg_c;
+                case REG_D  -> this.reg_d;
+                case REG_I  -> this.reg_i;
+                case REG_J  -> this.reg_j;
+                case REG_BP -> this.reg_bp;
+                case REG_SP -> this.reg_sp;
+                default     -> 0;
+            };
+            
+            // handle size by size
+            if(desc.size() == 4) { // 32 bit
+                if(desc.type() == LocationType.REG_BP || desc.type() == LocationType.REG_SP) { 
+                    return rawVal;
+                }
+                
+                int v = switch(desc.type()) {
+                    case REG_A  -> this.reg_d;
+                    case REG_B  -> this.reg_a;
+                    case REG_C  -> this.reg_b;
+                    case REG_D  -> this.reg_c;
+                    case REG_I  -> this.reg_j;
+                    case REG_J  -> this.reg_i;
+                    default     -> 0;
+                };
+                
+                return rawVal | (v << 16);
+            } else if(desc.size() == 1) { // 8 bit
+                if(desc.address() == 0) { // lower
+                    return rawVal & 0xFF;
+                } else { // upper
+                    return (rawVal >>> 8) & 0xFF;
+                }
+            } else { // 16 bit
+                return rawVal;
+            }
+        } 
+    }
+    
+    /**
+     * Gets the source of a RIM
+     * 
+     * @return
+     */
+    private int getNormalRIMSource() {
+        return getLocationValue(getNormalRIMSourceDescriptor());
     }
     
     /**
@@ -924,7 +1155,12 @@ public class NotSoTinySimulator {
      * @return
      */
     private int read32(int address) {
-        return this.memory[address] | (this.memory[address + 2] << 8) | (this.memory[address + 3] << 16) | (this.memory[address + 4] << 24);
+        int val = this.memory[address] & 0xFF;
+        val = (val | (this.memory[address + 1] << 8)) & 0xFFFF;
+        val = (val | (this.memory[address + 2] << 16)) & 0xFF_FFFF;
+        val |= this.memory[address + 3] << 24;
+        
+        return val;
     }
     
     /**
@@ -933,8 +1169,11 @@ public class NotSoTinySimulator {
      * @param address
      * @return
      */
-    private short read16(int address) {
-        return (short)(this.memory[address] | (this.memory[address + 1] << 8));
+    private int read16(int address) {
+        int val = this.memory[address] & 0xFF;
+        val |= this.memory[address + 1] << 8;
+        
+        return val & 0xFFFF;
     }
     
     /**
@@ -1111,7 +1350,7 @@ public class NotSoTinySimulator {
                     byte bio = this.memory[this.reg_ip + 1];
                     
                     if((bio & 0x07) == 0x07) {
-                        yield (bio >> 6) + 3;
+                        yield (bio >>> 6) + 3;
                     } else {
                         yield 6;
                     }
