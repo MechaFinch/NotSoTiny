@@ -3,6 +3,7 @@ package notsotiny.sim;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.Arrays;
 
 import notsotiny.asm.Disassembler;
 
@@ -44,7 +45,7 @@ public class Test {
         
         Disassembler dis = new Disassembler();
         
-        NotSoTinySimulator sim = new NotSoTinySimulator(mem, entry);
+        NotSoTinySimulator sim = new NotSoTinySimulator(new FlatMemoryController(mem), entry);
         BufferedReader stdin = new BufferedReader(new InputStreamReader(System.in));
         
         for(int i = 0; i < 20; i++) {

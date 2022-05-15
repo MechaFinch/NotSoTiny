@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import notsotiny.sim.Opcode;
+import notsotiny.sim.Operation;
 
 /**
  * Disassembles machine code
@@ -91,7 +92,16 @@ public class Disassembler {
         if(this.lastInstructionLength == 1) {
             return disassembleNoArgs(op);
         } else if(this.lastIsRIM) {
-            return disassembleRIM(memory, address, op);
+            boolean incSrc = true,
+                    incDst = true;
+            
+            if(op.getType() == Operation.PUSH) {
+                incDst = false;
+            } else if(op.getType() == Operation.POP) { 
+                incSrc = false;
+            }
+            
+            return disassembleRIM(memory, address, op, incSrc, incDst);
         } else if(this.lastIsI8 || this.lastIsI16 || this.lastIsI32) {
             String s = op.toString().replaceFirst("_", " ").replace("_", ", ");
             s = s.substring(0, s.indexOf(",") + 1);
@@ -128,7 +138,7 @@ public class Disassembler {
      * @param op
      * @return
      */
-    private String disassembleRIM(byte[] memory, int address, Opcode op) {
+    private String disassembleRIM(byte[] memory, int address, Opcode op, boolean includeSource, boolean includeDestination) {
         String mnemonic = getMnemonic(op),
                source = "",
                destination = "";
@@ -193,7 +203,20 @@ public class Disassembler {
             destination = disassembleBIO(memory, address, srcCode == 7);
         }
         
-        return mnemonic + " " + destination + ", " + source;
+        // final stitching
+        String dis = mnemonic;
+        
+        if(includeDestination) {
+            dis += " " + destination;
+            
+            if(includeSource) {
+                dis += ", " + source;
+            }
+        } else if(includeSource) {
+            dis += " " + source;
+        }
+        
+        return dis;
     }
     
     /**
