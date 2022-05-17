@@ -1,4 +1,4 @@
-package notsotiny.sim;
+package notsotiny.sim.ops;
 
 /**
  * Names for groups of opcodes. Mnemonics, basically

@@ -1,6 +1,9 @@
 package notsotiny.sim;
 
 import notsotiny.sim.LocationDescriptor.LocationType;
+import notsotiny.sim.memory.MemoryController;
+import notsotiny.sim.ops.Opcode;
+import notsotiny.sim.ops.Operation;
 
 /**
  * Simulates the NotSoTiny architecture
@@ -634,12 +637,21 @@ public class NotSoTinySimulator {
                 src = this.memory.read4Bytes(this.reg_ip);
                 break;
             
+            // wide rim
+            case MOVW_RIM:
+                src = getWideRIMSource();
+                break;
+            
             // rim
             case MOV_RIM:
+            case MOVS_RIM:
+            case MOVZ_RIM:
                 src = getNormalRIMSource();
+                break;
             
             default:
         }
+        
         System.out.println(String.format("source value: %08X", src));
         
         // put source in destination
@@ -683,6 +695,20 @@ public class NotSoTinySimulator {
             
             case MOV_SP_I32:
                 this.reg_sp = src;
+                return;
+            
+            case MOVW_RIM:
+                putWideRIMDestination(src);
+                return;
+            
+            case MOVS_RIM:
+                // sign extend
+                putWideRIMDestination((int)((short) src));
+                return;
+            
+            case MOVZ_RIM:
+                // zero extend
+                putWideRIMDestination(src & 0x0000_FFFF);
                 return;
             
             case MOV_RIM:
@@ -1094,7 +1120,10 @@ public class NotSoTinySimulator {
      * @param val
      */
     private void putWideRIMDestination(int val) {
-        // TODO
+        LocationDescriptor normalDesc = getNormalRIMDestinationDescriptor();
+        
+        // set size to 4
+        writeLocation(new LocationDescriptor(normalDesc.type(), 4, normalDesc.address()), val);
     }
     
     /**
@@ -1283,13 +1312,15 @@ public class NotSoTinySimulator {
     }
     
     /**
-     * Gets the souce of a wide RIM
+     * Gets the souce of a wide RIM. Forces sources to be 4 bytes.
      * 
      * @return
      */
     private int getWideRIMSource() {
-        // TODO
-        return -1;
+        LocationDescriptor normalDesc = getNormalRIMSourceDescriptor();
+        
+        // change the size to 4 bytes
+        return readLocation(new LocationDescriptor(normalDesc.type(), 4, normalDesc.address()));
     }
     
     /**
@@ -1433,6 +1464,7 @@ public class NotSoTinySimulator {
                 return;
             
             // special cases
+            case MOVW_RIM:      case MOVS_RIM:      case MOVZ_RIM:
             case PADD_RIMP:     case PADC_RIMP:     case PSUB_RIMP:     case PSBB_RIMP:
             case PINC_RIMP:     case PICC_RIMP:     case PDEC_RIMP:     case PDCC_RIMP:
             case MULH_RIM:      case MULSH_RIM:     case PMUL_RIMP:     case PMULS_RIMP:
@@ -1487,7 +1519,25 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void updateIPSpecialCases(Opcode op) {
-        throw new IllegalStateException("Update IP Special Cases not implemented");
+        switch(op) {
+            // wide source
+            case MOVW_RIM:
+                updateIPWideSourceRIM(op);
+                break;
+            
+            default:
+        }
+        
+        throw new IllegalStateException("Update IP Special Cases not fully implemented");
+    }
+    
+    /**
+     * Updates IP according to wide RIM
+     * 
+     * @param op
+     */
+    private void updateIPWideSourceRIM(Opcode op) {
+        throw new IllegalStateException("Wide Source RIM IP Update not implemented");
     }
     
     /*

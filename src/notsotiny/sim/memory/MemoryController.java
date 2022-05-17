@@ -1,4 +1,4 @@
-package notsotiny.sim;
+package notsotiny.sim.memory;
 
 /**
  * An interface for memory, to enable wide address spaces that don't take up tons of physical memory

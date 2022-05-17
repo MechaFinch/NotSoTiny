@@ -1,4 +1,4 @@
-package notsotiny.sim;
+package notsotiny.sim.ops;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -10,6 +10,10 @@ import java.util.Map;
  */
 public enum Opcode {    
     NOP         (0x00, Operation.NOP),
+    
+    MOVW_RIM    (0x01, Operation.MOV),
+    MOVS_RIM    (0x02, Operation.MOV),
+    MOVZ_RIM    (0x03, Operation.MOV),
     
     MOV_I_I16   (0x04, Operation.MOV),
     MOV_J_I16   (0x05, Operation.MOV),

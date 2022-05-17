@@ -1,4 +1,4 @@
-package notsotiny.sim;
+package notsotiny.sim.ops;
 
 /**
  * A family of operations

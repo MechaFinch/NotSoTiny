@@ -1,4 +1,4 @@
-package notsotiny.sim;
+package notsotiny.sim.memory;
 
 /**
  * A MemoryController using a flat array

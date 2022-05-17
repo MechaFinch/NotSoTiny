@@ -3,8 +3,9 @@ package notsotiny.asm;
 import java.util.HashMap;
 import java.util.Map;
 
-import notsotiny.sim.Opcode;
-import notsotiny.sim.Operation;
+import notsotiny.sim.ops.Family;
+import notsotiny.sim.ops.Opcode;
+import notsotiny.sim.ops.Operation;
 
 /**
  * Disassembles machine code
@@ -80,6 +81,8 @@ public class Disassembler {
     private String disassembleInternal(byte[] memory, int address) {
         Opcode op = Opcode.fromOp(memory[address]);
         
+        // TODO: WIDE RIM STUFF
+        
         // invalid instruction
         if(op == null) {
             return String.format("INVALID: %02X", memory[address]);
@@ -95,7 +98,7 @@ public class Disassembler {
             boolean incSrc = true,
                     incDst = true;
             
-            if(op.getType() == Operation.PUSH) {
+            if(op.getType() == Operation.PUSH || (op.getType().getFamily() == Family.JUMP && op.getType() != Operation.CMP)) {
                 incDst = false;
             } else if(op.getType() == Operation.POP) { 
                 incSrc = false;
