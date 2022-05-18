@@ -20,7 +20,8 @@ public class Disassembler {
                     lastIsRIM,      // we can piggyback off previous work with these
                     lastIsI8,
                     lastIsI16,
-                    lastIsI32;
+                    lastIsI32,
+                    lastHasDestination;
     
     private Map<Integer, String> labels;
     
@@ -81,8 +82,6 @@ public class Disassembler {
     private String disassembleInternal(byte[] memory, int address) {
         Opcode op = Opcode.fromOp(memory[address]);
         
-        // TODO: WIDE RIM STUFF
-        
         // invalid instruction
         if(op == null) {
             return String.format("INVALID: %02X", memory[address]);
@@ -98,16 +97,24 @@ public class Disassembler {
             boolean incSrc = true,
                     incDst = true;
             
+            // some only use source/destination
             if(op.getType() == Operation.PUSH || (op.getType().getFamily() == Family.JUMP && op.getType() != Operation.CMP)) {
                 incDst = false;
             } else if(op.getType() == Operation.POP) { 
                 incSrc = false;
             }
             
-            return disassembleRIM(memory, address, op, incSrc, incDst);
+            return disassembleRIM(memory, address, op, incSrc, incDst, false, false, false);
         } else if(this.lastIsI8 || this.lastIsI16 || this.lastIsI32) {
-            String s = op.toString().replaceFirst("_", " ").replace("_", ", ");
-            s = s.substring(0, s.indexOf(",") + 1);
+            String s = "";
+            
+            if(this.lastHasDestination) {
+                s = op.toString().replaceFirst("_", " ").replace("_", ", ");
+                s = s.substring(0, s.indexOf(",") + 1);
+            } else {
+                s = op.toString();
+                s = s.substring(0, s.indexOf("_"));
+            }
             
             if(this.lastIsI8) { 
                 return String.format("%s %02X", s, memory[address + 1]);
@@ -130,6 +137,17 @@ public class Disassembler {
      * @return
      */
     private String disassembleSpecial(byte[] memory, int address, Opcode op) {
+        switch(op) {
+            case MOVW_RIM:
+                return disassembleRIM(memory, address, op, true, true, true, false, true);
+            
+            case MOVZ_RIM:
+            case MOVS_RIM:
+                return disassembleRIM(memory, address, op, true, true, false, true, true);
+                
+            default:
+        }
+        
         return ""; // TODO
     }
     
@@ -141,7 +159,7 @@ public class Disassembler {
      * @param op
      * @return
      */
-    private String disassembleRIM(byte[] memory, int address, Opcode op, boolean includeSource, boolean includeDestination) {
+    private String disassembleRIM(byte[] memory, int address, Opcode op, boolean includeSource, boolean includeDestination, boolean wideSource, boolean thinSource, boolean wideDestination) {
         String mnemonic = getMnemonic(op),
                source = "",
                destination = "";
@@ -158,24 +176,21 @@ public class Disassembler {
             
             // register register
             source = switch(src) {
-                case 0  -> size ? "A" : "AL";
-                case 1  -> size ? "B" : "BL";
-                case 2  -> size ? "C" : "CL";
-                case 3  -> size ? "D" : "DL";
-                case 4  -> size ? "I" : "AH";
-                case 5  -> size ? "J" : "BH";
-                case 6  -> size ? "BP" : "CH";
-                case 7  -> size ? "SP" : "DH";
+                case 0  -> wideSource ? "D:A" : (size ? "A" : "AL");
+                case 1  -> wideSource ? "A:B" : (size ? "B" : "BL");
+                case 2  -> wideSource ? "B:C" : (size ? "C" : "CL");
+                case 3  -> wideSource ? "C:D" : (size ? "D" : "DL");
+                case 4  -> wideSource ? "J:I" : (size ? "I" : "AH");
+                case 5  -> wideSource ? "I:J" : (size ? "J" : "BH");
+                case 6  -> wideSource ? "BP" : (size ? "BP" : "CH");
+                case 7  -> wideSource ? "SP" : (size ? "SP" : "DH");
                 default -> "INVALID";
             };
         } else if(srcCode == 0) { // immediate value source
-            if(size) { // 16 bit
-                // BP/SP
-                if(dstCode > 5) { // 32
-                    source = String.format("%08X", read32(memory, address + 2));
-                } else { // 16
-                    source = String.format("%04X", read16(memory, address + 2));
-                }
+            if(!thinSource && (wideSource || (size && dstCode > 5))) { // 32 bit
+                source = String.format("%08X", read32(memory, address + 2));
+            } else if(size) { // 16 bit
+                source = String.format("%04X", read16(memory, address + 2));
             } else { // 8 bit
                 source = String.format("%02X", memory[address + 2]);
             }
@@ -188,14 +203,14 @@ public class Disassembler {
         // register destination
         if((rim & 0x40) == 0 || (rim & 0x04) == 0) {
             destination = switch((rim & 0x38) >> 3) {
-                case 0  -> size ? "A" : "AL";
-                case 1  -> size ? "B" : "BL";
-                case 2  -> size ? "C" : "CL";
-                case 3  -> size ? "D" : "DL";
-                case 4  -> size ? "I" : "AH";
-                case 5  -> size ? "J" : "BH";
-                case 6  -> size ? "BP" : "CH";
-                case 7  -> size ? "SP" : "DH";
+                case 0  -> wideDestination ? "D:A" : (size ? "A" : "AL");
+                case 1  -> wideDestination ? "A:B" : (size ? "B" : "BL");
+                case 2  -> wideDestination ? "B:C" : (size ? "C" : "CL");
+                case 3  -> wideDestination ? "C:D" : (size ? "D" : "DL");
+                case 4  -> wideDestination ? "J:I" : (size ? "I" : "AH");
+                case 5  -> wideDestination ? "I:J" : (size ? "J" : "BH");
+                case 6  -> wideDestination ? "BP" : (size ? "BP" : "CH");
+                case 7  -> wideDestination ? "SP" : (size ? "SP" : "DH");
                 default -> "INVALID";
             };
         } else if(srcCode == 4) { // immediate value destination, invalid
@@ -401,10 +416,11 @@ public class Disassembler {
             case SUB_C_C:       case SUB_C_D:       case SUB_D_A:       case SUB_D_B:       case SUB_D_C:
             case SUB_D_D:
             case RET:           case IRET:
-                lastIsRIM = false;
-                lastIsI8 = false;
-                lastIsI16 = false;
-                lastIsI32 = false;
+                this.lastIsRIM = false;
+                this.lastIsI8 = false;
+                this.lastIsI16 = false;
+                this.lastIsI32 = false;
+                this.lastHasDestination = true;
                 return 1;
             
             // 1 byte
@@ -413,14 +429,22 @@ public class Disassembler {
             case ADC_B_I8:      case ADC_C_I8:      case ADC_D_I8:
             case SUB_A_I8:      case SUB_B_I8:      case SUB_C_I8:      case SUB_D_I8:      case SBB_A_I8:
             case SBB_B_I8:      case SBB_C_I8:      case SBB_D_I8:
+                this.lastIsRIM = false;
+                this.lastIsI8 = true;
+                this.lastIsI16 = false;
+                this.lastIsI32 = false;
+                this.lastHasDestination = true;
+                return 2;
+            
             case JMP_I8:        case JC_I8:         case JNC_I8:        case JS_I8:         case JNS_I8:
             case JO_I8:         case JNO_I8:        case JZ_I8:         case JNZ_I8:        case JA_I8:
             case JAE_I8:        case JB_I8:         case JBE_I8:        case JG_I8:         case JGE_I8:
             case JL_I8:         case JLE_I8:
-                lastIsRIM = false;
-                lastIsI8 = true;
-                lastIsI16 = false;
-                lastIsI32 = false;
+                this.lastIsRIM = false;
+                this.lastIsI8 = true;
+                this.lastIsI16 = false;
+                this.lastIsI32 = false;
+                this.lastHasDestination = false;
                 return 2;
             
             // 2 bytes
@@ -430,23 +454,40 @@ public class Disassembler {
             case ADC_B_I16:     case ADC_C_I16:     case ADC_D_I16:
             case SUB_A_I16:     case SUB_B_I16:     case SUB_C_I16:     case SUB_D_I16:     case SBB_A_I16:
             case SBB_B_I16:     case SBB_C_I16:     case SBB_D_I16:
+                this.lastIsRIM = false;
+                this.lastIsI8 = false;
+                this.lastIsI16 = true;
+                this.lastIsI32 = false;
+                this.lastHasDestination = true;
+                return 3;
+            
             case JMP_I16:       case CALL_I16:      case INT_I16:
-                lastIsRIM = false;
-                lastIsI8 = false;
-                lastIsI16 = true;
-                lastIsI32 = false;
+                this.lastIsRIM = false;
+                this.lastIsI8 = false;
+                this.lastIsI16 = true;
+                this.lastIsI32 = false;
+                this.lastHasDestination = false;
                 return 3;
             
             // 4 bytes
             case MOV_BP_I32:    case MOV_SP_I32:
+                this.lastIsRIM = false;
+                this.lastIsI8 = false;
+                this.lastIsI16 = false;
+                this.lastIsI32 = true;
+                this.lastHasDestination = true;
+                return 4;
+            
             case JMP_I32:       case JMPA_I32:      case CALLA_I32:
-                lastIsRIM = false;
-                lastIsI8 = false;
-                lastIsI16 = false;
-                lastIsI32 = true;
+                this.lastIsRIM = false;
+                this.lastIsI8 = false;
+                this.lastIsI16 = false;
+                this.lastIsI32 = true;
+                this.lastHasDestination = false;
                 return 4;
             
             // special cases
+            case MOVW_RIM:      case MOVS_RIM:      case MOVZ_RIM:
             case PADD_RIMP:     case PADC_RIMP:     case PSUB_RIMP:     case PSBB_RIMP:
             case PINC_RIMP:     case PICC_RIMP:     case PDEC_RIMP:     case PDCC_RIMP:
             case MULH_RIM:      case MULSH_RIM:     case PMUL_RIMP:     case PMULS_RIMP:
@@ -454,10 +495,11 @@ public class Disassembler {
             case DIVM_RIM:      case DIVMS_RIM:     case PDIV_RIMP:     case PDIVS_RIMP:
             case PDIVM_RIMP:    case PDIVMS_RIMP:
             case CMP_RIM_I8:
-                lastIsRIM = false;
-                lastIsI8 = false;
-                lastIsI16 = false;
-                lastIsI32 = false;
+                this.lastIsRIM = false;
+                this.lastIsI8 = false;
+                this.lastIsI16 = false;
+                this.lastIsI32 = false;
+                this.lastHasDestination = true;
                 return getInstructionLengthSpecialCases(memory, address, op);
             
             // RIM
@@ -507,6 +549,39 @@ public class Disassembler {
      * @return
      */
     private int getInstructionLengthSpecialCases(byte[] memory, int address, Opcode op) {
+        switch(op) {
+            case MOVW_RIM:
+                byte rim = memory[address + 1];
+                
+                // register register? 1 byte
+                if((rim & 0x40) == 0) {
+                    return 2;
+                } else {
+                    // what are we dealing with
+                    int diff = switch(rim & 0x07) {
+                        case 0, 4   -> ((rim & 0x80) == 0) ? 3 : 2; // immediate value
+                        case 1, 5   -> 5; // immediate address
+                        case 2, 6   -> 2; // bio
+                        case 3, 7   -> {  // bio + offset
+                            // if index != 111, offset is 4 bytes. Otherwise offset is scale + 1 bytes
+                            byte bio = memory[address + 2];
+                            
+                            if((bio & 0x07) == 0x07) {
+                                yield (bio >> 6) + 3;
+                            } else {
+                                yield 6;
+                            }
+                        }
+                        
+                        default     -> 0; // not possible
+                    };
+                    
+                    return diff + 1;
+                }
+                
+            default:
+        }
+        
         return -1; // TODO
     }
     

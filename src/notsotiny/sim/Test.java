@@ -42,7 +42,7 @@ public class Test {
         MemoryManager mmu = new MemoryManager();
         mmu.registerSegment(new FlatMemoryController(mem), 0, mem.length);
         mmu.registerSegment(new CharacterIOMC(System.in, System.out), 0x8000, 16);
-        mmu.registerSegment(halter, 0x0000_FFFF, 0x0000_FFFF);
+        mmu.registerSegment(halter, 0x0000_FFFF, 1);
         
         int entry = 0;
         
@@ -70,9 +70,12 @@ public class Test {
                                              sim.getRegI(), sim.getRegJ(), sim.getRegF(),
                                              sim.getRegIP(), sim.getRegBP(), sim.getRegSP()));
             
+            /*
             for(int j = 0x00F0; j < 0x0100; j += 2) {
                 System.out.println(String.format("%08X: %02X%02X", j, mem[j + 1], mem[j]));
             }
+            */
+            
             System.out.println(dis.disassemble(mem, sim.getRegIP()));
             
             stdin.readLine();

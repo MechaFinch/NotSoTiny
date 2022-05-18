@@ -33,10 +33,10 @@ public class MemoryManager implements MemoryController {
      * @param end End address
      * @throws IllegalArgumentException if the specified range overlaps with an existing segment
      */
-    public void registerSegment(MemoryController mc, int start, int end) {
+    public void registerSegment(MemoryController mc, int start, int size) {
         // check for overlap
         if(this.segmentControllers.size() != 0) {
-            int closestSegmentStart = this.startAddresses.floor(end),
+            int closestSegmentStart = this.startAddresses.floor(start + size - 1),
                 closestSegmentEnd = this.endAddresses.get(closestSegmentStart);
             
             if(closestSegmentStart > start || closestSegmentEnd > start) {
@@ -46,7 +46,7 @@ public class MemoryManager implements MemoryController {
         
         // add
         this.startAddresses.add(start);
-        this.endAddresses.put(start, end);
+        this.endAddresses.put(start, start + size - 1);
         this.segmentControllers.put(start, mc);
     }
     

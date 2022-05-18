@@ -56,35 +56,36 @@ public class NotSoTinySimulator {
      * opcodes off to operation-specific methods. All for organization.
      */
     public void step() {
-        Opcode op = Opcode.fromOp(this.memory.readByte(this.reg_ip++));
+        InstructionDescriptor desc = new InstructionDescriptor();
+        desc.op = Opcode.fromOp(this.memory.readByte(this.reg_ip++));
         
-        if(op == Opcode.NOP) return; 
+        if(desc.op == Opcode.NOP) return; 
         
-        System.out.println(op.getType().getFamily());
+        System.out.println(desc.op.getType().getFamily()); 
         
-        switch(op.getType().getFamily()) {
+        switch(desc.op.getType().getFamily()) {
             case ADDITION:
-                stepAdditionFamily(op);
+                stepAdditionFamily(desc);
                 break;
                 
             case JUMP:
-                stepJumpFamily(op);
+                stepJumpFamily(desc);
                 break;
                 
             case LOGIC:
-                stepLogicFamily(op);
+                stepLogicFamily(desc);
                 break;
                 
             case MISC:
-                stepMiscFamily(op);
+                stepMiscFamily(desc);
                 break;
                 
             case MOVE:
-                stepMoveFamily(op);
+                stepMoveFamily(desc);
                 break;
                 
             case MULTIPLICATION:
-                stepMultiplicationFamily(op);
+                stepMultiplicationFamily(desc);
                 break;
                 
             default:
@@ -92,8 +93,8 @@ public class NotSoTinySimulator {
         }
         
         // don't update after absolute jumps
-        if(op.getType() != Operation.JMPA) {
-            updateIP(op);
+        if(desc.op.getType() != Operation.JMPA) {
+            updateIP(desc);
         }
     }
     
@@ -102,15 +103,15 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void stepMiscFamily(Opcode op) {
-        System.out.println(op.getType());
+    private void stepMiscFamily(InstructionDescriptor desc) {
+        System.out.println(desc.op.getType());
         
-        switch(op.getType()) {
+        switch(desc.op.getType()) {
             case NOP: // just NOP
                 break;
             
             default:
-                throw new IllegalStateException("Sent invalid instruction to MISC Family handler: " + op);
+                throw new IllegalStateException("Sent invalid instruction to MISC Family handler: " + desc.op);
         }
     }
     
@@ -119,19 +120,19 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void stepLogicFamily(Opcode op) {
-        System.out.println(op.getType());
+    private void stepLogicFamily(InstructionDescriptor desc) {
+        System.out.println(desc.op.getType());
         
-        switch(op.getType()) {
+        switch(desc.op.getType()) {
             case AND:
             case OR:
             case XOR:
-                run2Logic(op);
+                run2Logic(desc);
                 break;
             
             case NOT:
             case NEG:
-                run1Logic(op);
+                run1Logic(desc);
                 break;
             
             case SHL:
@@ -141,11 +142,11 @@ public class NotSoTinySimulator {
             case ROR:
             case RCL:
             case RCR:
-                runRotateLogic(op);
+                runRotateLogic(desc);
                 break;
             
             default:
-                throw new IllegalStateException("Sent invalid instruction to LOGIC Family handler: " + op);
+                throw new IllegalStateException("Sent invalid instruction to LOGIC Family handler: " + desc.op);
         }
     }
     
@@ -154,7 +155,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void run2Logic(Opcode op) {
+    private void run2Logic(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -163,7 +164,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void run1Logic(Opcode op) {
+    private void run1Logic(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -172,7 +173,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runRotateLogic(Opcode op) {
+    private void runRotateLogic(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -181,40 +182,40 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void stepMultiplicationFamily(Opcode op) {
-        System.out.println(op.getType());
+    private void stepMultiplicationFamily(InstructionDescriptor desc) {
+        System.out.println(desc.op.getType());
         
-        switch(op.getType()) {
+        switch(desc.op.getType()) {
             case MUL:
             case MULS:
             case MULH:
             case MULSH:
-                runMUL(op);
+                runMUL(desc);
                 break;
             
             case PMUL:
             case PMULS:
             case PMULH:
             case PMULSH:
-                runPMUL(op);
+                runPMUL(desc);
                 break;
             
             case DIV:
             case DIVS:
             case DIVM:
             case DIVMS:
-                runDIV(op);
+                runDIV(desc);
                 break;
             
             case PDIV:
             case PDIVS:
             case PDIVM:
             case PDIVMS:
-                runPDIV(op);
+                runPDIV(desc);
                 break;
             
             default:
-                throw new IllegalStateException("Sent invalid instruction to MULTIPLICATION Family handler: " + op);
+                throw new IllegalStateException("Sent invalid instruction to MULTIPLICATION Family handler: " + desc.op);
         }
     }
     
@@ -223,7 +224,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runMUL(Opcode op) {
+    private void runMUL(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -232,7 +233,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runPMUL(Opcode op) {
+    private void runPMUL(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -241,7 +242,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runDIV(Opcode op) {
+    private void runDIV(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -250,7 +251,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runPDIV(Opcode op) {
+    private void runPDIV(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -259,40 +260,40 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void stepAdditionFamily(Opcode op) {
-        System.out.println(op.getType());
+    private void stepAdditionFamily(InstructionDescriptor desc) {
+        System.out.println(desc.op.getType());
         
-        switch(op.getType()) {
+        switch(desc.op.getType()) {
             case INC:
             case ICC:
             case DEC:
             case DCC:
-                runINC(op);
+                runINC(desc);
                 break;
             
             case PINC:
             case PICC:
             case PDEC:
             case PDCC:
-                runPINC(op);
+                runPINC(desc);
                 break;
                 
             case ADD:
             case ADC:
             case SUB:
             case SBB:
-                runADD(op);
+                runADD(desc);
                 break;
             
             case PADD:
             case PADC:
             case PSUB:
             case PSBB:
-                runPADD(op);
+                runPADD(desc);
                 break;
             
             default:
-                throw new IllegalStateException("Sent invalid instruction to ADDITION Family handler: " + op);
+                throw new IllegalStateException("Sent invalid instruction to ADDITION Family handler: " + desc.op);
         }
     }
     
@@ -301,7 +302,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runINC(Opcode op) {
+    private void runINC(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -310,7 +311,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runPINC(Opcode op) {
+    private void runPINC(InstructionDescriptor desc) {
        // TODO 
     }
     
@@ -319,7 +320,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runADD(Opcode op) {
+    private void runADD(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -328,7 +329,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runPADD(Opcode op) {
+    private void runPADD(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -337,42 +338,43 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void stepJumpFamily(Opcode op) {
-        System.out.println(op.getType());
+    private void stepJumpFamily(InstructionDescriptor desc) {
+        System.out.println(desc.op.getType());
         
-        switch(op.getType()) {
+        switch(desc.op.getType()) {
             case JMP:
             case JMPA:
-                runJMP(op);
+                runJMP(desc);
                 break;
             
             case CALL:
             case CALLA:
-                runCALL(op);
+                runCALL(desc);
                 break;
             
             case RET:
             case IRET:
-                runRET(op);
+                runRET(desc);
                 break;
             
             case INT:
-                runINT(op);
+                runINT(desc);
                 break;
             
             case LEA:
-                runLEA(op);
+                runLEA(desc);
                 break;
             
             case CMP:
-                runCMP(op);
+                runCMP(desc);
                 break;
             
             case JCC:
-                runJCC(op);
+                runJCC(desc);
+                break;
                 
             default:
-                throw new IllegalStateException("Sent invalid instruction to JUMP Family handler: " + op);
+                throw new IllegalStateException("Sent invalid instruction to JUMP Family handler: " + desc.op);
         }
     }
     
@@ -381,36 +383,42 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runJMP(Opcode op) {
+    private void runJMP(InstructionDescriptor desc) {
         // get value
         int val = 0;
         
-        switch(op) {
+        switch(desc.op) {
             case JMP_I8:
+                desc.hasImmediateValue = true;
+                desc.immediateWidth = 1;
                 val = this.memory.readByte(this.reg_ip);
                 break;
             
             case JMP_I16:
+                desc.hasImmediateValue = true;
+                desc.immediateWidth = 2;
                 val = this.memory.read2Bytes(this.reg_ip);
                 break;
             
             case JMP_I32:
             case JMPA_I32:
+                desc.hasImmediateValue = true;
+                desc.immediateWidth = 4;
                 val = this.memory.read4Bytes(this.reg_ip);
                 break;
             
             case JMP_RIM:
-                val = getNormalRIMSource();
+                val = getNormalRIMSource(desc);
                 break;
             
             case JMPA_RIM32:
-                val = getWideRIMSource();
+                val = getWideRIMSource(desc);
                 break;
             
             default:
         }
         
-        if(op.getType() == Operation.JMP) { // relative 
+        if(desc.op.getType() == Operation.JMP) { // relative 
             this.reg_ip += val;
         } else { // absolute
             this.reg_ip = val;
@@ -422,7 +430,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runCALL(Opcode op) {
+    private void runCALL(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -431,7 +439,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runRET(Opcode op) {
+    private void runRET(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -440,7 +448,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runINT(Opcode op) {
+    private void runINT(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -449,7 +457,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runLEA(Opcode op) {
+    private void runLEA(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -458,7 +466,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runCMP(Opcode op) {
+    private void runCMP(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -467,7 +475,7 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runJCC(Opcode op) {
+    private void runJCC(InstructionDescriptor desc) {
         // TODO
     }
     
@@ -476,28 +484,28 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void stepMoveFamily(Opcode op) {
-        System.out.println(op.getType());
+    private void stepMoveFamily(InstructionDescriptor desc) {
+        System.out.println(desc.op.getType());
         
-        switch(op.getType()) {
+        switch(desc.op.getType()) {
             case MOV:
-                runMOV(op);
+                runMOV(desc);
                 break;
             
             case XCHG:
-                runXCHG(op);
+                runXCHG(desc);
                 break;
             
             case PUSH:
-                runPUSH(op);
+                runPUSH(desc);
                 break;
             
             case POP:
-                runPOP(op);
+                runPOP(desc);
                 break;
             
             default:
-                throw new IllegalStateException("Sent invalid instruction to MOVE Family handler: " + op);
+                throw new IllegalStateException("Sent invalid instruction to MOVE Family handler: " + desc.op);
         }
     }
     
@@ -506,11 +514,11 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runMOV(Opcode op) {
-        System.out.println(op);
+    private void runMOV(InstructionDescriptor desc) {
+        System.out.println(desc.op);
         
         // deal with register-register moves
-        switch(op) {
+        switch(desc.op) {
             case MOV_A_B:
                 this.reg_a = this.reg_b;
                 return;
@@ -612,12 +620,14 @@ public class NotSoTinySimulator {
         // get source
         int src = 0;
         
-        switch(op) {
+        switch(desc.op) {
             // immediate 8 moves
             case MOV_A_I8:
             case MOV_B_I8:
             case MOV_C_I8:
             case MOV_D_I8:
+                desc.hasImmediateValue = true;
+                desc.immediateWidth = 1;
                 src = this.memory.readByte(this.reg_ip);
                 break;
             
@@ -628,25 +638,33 @@ public class NotSoTinySimulator {
             case MOV_B_I16:
             case MOV_C_I16:
             case MOV_D_I16:
+                desc.hasImmediateValue = true;
+                desc.immediateWidth = 2;
                 src = this.memory.read2Bytes(this.reg_ip);
                 break;
             
             // immediate 32 moves
             case MOV_SP_I32:
             case MOV_BP_I32:
+                desc.hasImmediateValue = true;
+                desc.immediateWidth = 4;
                 src = this.memory.read4Bytes(this.reg_ip);
                 break;
             
             // wide rim
             case MOVW_RIM:
-                src = getWideRIMSource();
+                src = getWideRIMSource(desc);
+                break;
+            
+            // thin rim
+            case MOVS_RIM:
+            case MOVZ_RIM:
+                src = getThinRIMSource(desc);
                 break;
             
             // rim
             case MOV_RIM:
-            case MOVS_RIM:
-            case MOVZ_RIM:
-                src = getNormalRIMSource();
+                src = getNormalRIMSource(desc);
                 break;
             
             default:
@@ -655,7 +673,7 @@ public class NotSoTinySimulator {
         System.out.println(String.format("source value: %08X", src));
         
         // put source in destination
-        switch(op) {
+        switch(desc.op) {
             // A
             case MOV_A_I8:
             case MOV_A_I16:
@@ -698,21 +716,29 @@ public class NotSoTinySimulator {
                 return;
             
             case MOVW_RIM:
-                putWideRIMDestination(src);
+                putWideRIMDestination(desc, src);
                 return;
             
             case MOVS_RIM:
                 // sign extend
-                putWideRIMDestination((int)((short) src));
+                if(desc.sourceWidth == 1) { // 1 byte
+                    putWideRIMDestination(desc, (int)((byte) src));
+                } else { // 2 byte
+                    putWideRIMDestination(desc, (int)((short) src));
+                }
                 return;
             
             case MOVZ_RIM:
                 // zero extend
-                putWideRIMDestination(src & 0x0000_FFFF);
+                if(desc.sourceWidth == 1) { // 1 byte
+                    putWideRIMDestination(desc, src & 0x0000_00FF);
+                } else { // 2 byte
+                    putWideRIMDestination(desc, src & 0x0000_FFFF);
+                }
                 return;
             
             case MOV_RIM:
-                putNormalRIMDestination(src);
+                putNormalRIMDestination(desc, src);
                 return;
             
             default:
@@ -724,11 +750,11 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runXCHG(Opcode op) {
+    private void runXCHG(InstructionDescriptor desc) {
         int tmp;
         
         // ez cases
-        switch(op) {
+        switch(desc.op) {
             // internal byte swaps
             case XCHG_AH_AL:
                 this.reg_a = (short)((this.reg_a << 8) | (this.reg_a >>> 8));
@@ -824,8 +850,8 @@ public class NotSoTinySimulator {
         }
         
         // i love abstraction
-        LocationDescriptor srcDesc = getNormalRIMSourceDescriptor(),
-                           dstDesc = getNormalRIMDestinationDescriptor();
+        LocationDescriptor srcDesc = getNormalRIMSourceDescriptor(desc),
+                           dstDesc = getNormalRIMDestinationDescriptor(desc);
         
         tmp = readLocation(srcDesc);
         writeLocation(srcDesc, readLocation(dstDesc));
@@ -838,9 +864,9 @@ public class NotSoTinySimulator {
      * @param op
      * @return
      */
-    private void runPUSH(Opcode op) {
+    private void runPUSH(InstructionDescriptor desc) {
         // deal with operand size
-        int opSize = switch(op) {
+        int opSize = switch(desc.op) {
             case PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_F -> 2;
             case PUSH_BP, PUSH_SP -> 4;
             default -> getNormalRIMSourceWidth();
@@ -849,7 +875,7 @@ public class NotSoTinySimulator {
         this.reg_sp -= opSize;
         
         // get value
-        int val = switch(op) {
+        int val = switch(desc.op) {
             case PUSH_A     -> this.reg_a;
             case PUSH_B     -> this.reg_b;
             case PUSH_C     -> this.reg_c;
@@ -857,10 +883,8 @@ public class NotSoTinySimulator {
             case PUSH_I     -> this.reg_i;
             case PUSH_J     -> this.reg_j;
             case PUSH_F     -> this.reg_f;
-            default         -> getNormalRIMSource(); // rim
+            default         -> getNormalRIMSource(desc); // rim
         };
-        
-        System.out.println(String.format("source value: %08X", val));
         
         // write
         if(opSize == 1) {
@@ -877,9 +901,9 @@ public class NotSoTinySimulator {
      * 
      * @param op
      */
-    private void runPOP(Opcode op) {
+    private void runPOP(InstructionDescriptor desc) {
         // deal with operand size
-        int opSize = switch(op) {
+        int opSize = switch(desc.op) {
             case POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_F -> 2;
             case POP_BP, POP_SP -> 4;
             default -> getNormalRIMSourceWidth();
@@ -897,7 +921,7 @@ public class NotSoTinySimulator {
         this.reg_sp += opSize;
         
         // write
-        switch(op) {
+        switch(desc.op) {
             case POP_A:     this.reg_a = (short) val; break;
             case POP_B:     this.reg_b = (short) val; break;
             case POP_C:     this.reg_c = (short) val; break;
@@ -907,7 +931,7 @@ public class NotSoTinySimulator {
             case POP_F:     this.reg_f = (short) val; break;
             case POP_BP:    this.reg_bp = val; break;
             case POP_SP:    this.reg_sp = val; break; // must happen after sp is incremented
-            default:        putNormalRIMDestination(val); // rim
+            default:        putNormalRIMDestination(desc, val); // rim
         }
     }
     
@@ -916,7 +940,9 @@ public class NotSoTinySimulator {
      * 
      * @return
      */
-    private LocationDescriptor getNormalRIMDestinationDescriptor() {
+    private LocationDescriptor getNormalRIMDestinationDescriptor(InstructionDescriptor desc) {
+        desc.hasRIMByte = true;
+        
         byte rim = this.memory.readByte(this.reg_ip);
         boolean size = (rim & 0x80) == 0;
         
@@ -952,13 +978,16 @@ public class NotSoTinySimulator {
                 };
             }
         } else {
-            // immediate address
+            // memory destination
             int addr = 0;
             
-            if((rim & 0x02) == 0) {
+            if((rim & 0x02) == 0) { // immediate address
+                desc.hasImmediateAddress = true;
+                desc.immediateWidth = 4;
+                
                 addr = this.memory.read4Bytes(this.reg_ip + 1);
-            } else {
-                addr = getBIOAddress();
+            } else { // bio address
+                addr = getBIOAddress(desc);
             }
             
             System.out.println(String.format("immediate address destination: %08X   ", addr));
@@ -1110,8 +1139,8 @@ public class NotSoTinySimulator {
      * 
      * @param val
      */
-    private void putNormalRIMDestination(int val) {
-        writeLocation(getNormalRIMDestinationDescriptor(), val);
+    private void putNormalRIMDestination(InstructionDescriptor desc, int val) {
+        writeLocation(getNormalRIMDestinationDescriptor(desc), val);
     }
     
     /**
@@ -1119,8 +1148,8 @@ public class NotSoTinySimulator {
      * 
      * @param val
      */
-    private void putWideRIMDestination(int val) {
-        LocationDescriptor normalDesc = getNormalRIMDestinationDescriptor();
+    private void putWideRIMDestination(InstructionDescriptor desc, int val) {
+        LocationDescriptor normalDesc = getNormalRIMDestinationDescriptor(desc);
         
         // set size to 4
         writeLocation(new LocationDescriptor(normalDesc.type(), 4, normalDesc.address()), val);
@@ -1151,7 +1180,9 @@ public class NotSoTinySimulator {
      * 
      * @return
      */
-    private LocationDescriptor getNormalRIMSourceDescriptor() {
+    private LocationDescriptor getNormalRIMSourceDescriptor(InstructionDescriptor desc) {
+        desc.hasRIMByte = true;
+        
         byte rim = this.memory.readByte(this.reg_ip);
         boolean size = (rim & 0x80) == 0;
         
@@ -1199,19 +1230,27 @@ public class NotSoTinySimulator {
         } else if((rim & 0x07) == 0) {
             System.out.println("immediate value");
             
+            desc.hasImmediateValue = true;
+            
             // immediate value
             if(size) { // 16 bit
                 // BP/SP?
                 if((rim & 0x38) > 0x28) {
+                    desc.immediateWidth = 4;
                     return new LocationDescriptor(LocationType.MEMORY, 4, this.reg_ip + 1);
                 } else {
+                    desc.immediateWidth = 2;
                     return new LocationDescriptor(LocationType.MEMORY, 2, this.reg_ip + 1);
                 }
             } else { // 8 bit
+                desc.immediateWidth = 1;
                 return new LocationDescriptor(LocationType.MEMORY, 1, this.reg_ip + 1);
             }
         } else if((rim & 0x07) == 1) {
             System.out.println("immediate address source");
+            
+            desc.hasImmediateAddress = true;
+            desc.immediateWidth = 4;
             
             // immediate address
             int addr = this.memory.read4Bytes(this.reg_ip + 1);
@@ -1230,7 +1269,7 @@ public class NotSoTinySimulator {
             System.out.println("bio address source");
             
             // BIO memory source
-            int addr = getBIOAddress();
+            int addr = getBIOAddress(desc);
             
             if(size) { // 16 bit
                 // BP/SP?
@@ -1307,20 +1346,85 @@ public class NotSoTinySimulator {
      * 
      * @return
      */
-    private int getNormalRIMSource() {
-        return readLocation(getNormalRIMSourceDescriptor());
+    private int getNormalRIMSource(InstructionDescriptor desc) {
+        return readLocation(getNormalRIMSourceDescriptor(desc));
     }
     
     /**
-     * Gets the souce of a wide RIM. Forces sources to be 4 bytes.
+     * Gets the source of a wide RIM. Forces sources to be 4 bytes.
      * 
      * @return
      */
-    private int getWideRIMSource() {
-        LocationDescriptor normalDesc = getNormalRIMSourceDescriptor();
+    private int getWideRIMSource(InstructionDescriptor desc) {
+        LocationDescriptor normalDesc = getNormalRIMSourceDescriptor(desc);
+        
+        if(desc.hasImmediateValue) {
+            desc.immediateWidth = 4;
+        }
         
         // change the size to 4 bytes
         return readLocation(new LocationDescriptor(normalDesc.type(), 4, normalDesc.address()));
+    }
+    
+    /**
+     * Gets the source of a thin RIM. Makes sure BP/SP isn't a special case
+     * 
+     * @param desc
+     * @return
+     */
+    private int getThinRIMSource(InstructionDescriptor desc) {
+        LocationDescriptor normalDesc = getNormalRIMSourceDescriptor(desc);
+        
+        // if the destination is BP or SP, set size according to the size bit
+        if(normalDesc.size() == 4) {
+            byte rim = this.memory.readByte(this.reg_ip);
+            boolean size = (rim & 0x80) == 0,
+                    regreg = (rim & 0x40) == 0;
+            
+            if(desc.hasImmediateValue) {
+                desc.immediateWidth = size ? 2 : 1;
+            }
+            
+            // handle half registers correctly
+            if(!size && regreg) {
+                LocationType type = null;
+                int addr = 0;
+                
+                switch(rim & 0x07) {
+                    case 4: // AH
+                        addr = 1;
+                    case 0: // AL
+                        type = LocationType.REG_A;
+                        break;
+                        
+                    case 5: // BH
+                        addr = 1;
+                    case 1: // BL
+                        type = LocationType.REG_B;
+                        break;
+                        
+                    case 6: // CH
+                        addr = 1;
+                    case 2: // CL
+                        type = LocationType.REG_C;
+                        break;
+                        
+                    case 7: // DH
+                        addr = 1;
+                    case 3: // DL
+                        type = LocationType.REG_D;
+                        break;
+                }
+                
+                desc.sourceWidth = 1;
+                return readLocation(new LocationDescriptor(type, 1, addr));
+            } else {
+                desc.sourceWidth = size ? 2 : 1;
+                return readLocation(new LocationDescriptor(normalDesc.type(), size ? 2 : 1, normalDesc.address()));
+            }
+        } else {
+            return readLocation(normalDesc);
+        }
     }
     
     /**
@@ -1328,7 +1432,9 @@ public class NotSoTinySimulator {
      * 
      * @return
      */
-    private int getBIOAddress() {
+    private int getBIOAddress(InstructionDescriptor desc) {
+        desc.hasBIOByte = true;
+        
         byte rim = this.memory.readByte(this.reg_ip),
              bio = this.memory.readByte(this.reg_ip + 1),
              scale = (byte)(bio >> 6),
@@ -1356,7 +1462,7 @@ public class NotSoTinySimulator {
             
             addr <<= scale;
         } else {
-            offsetSize = ++scale;
+            offsetSize = ++scale; // increment to avoid casting
         }
         
         System.out.println(String.format("addr from index: %08X", addr));
@@ -1378,6 +1484,9 @@ public class NotSoTinySimulator {
         
         // offset
         if((rim & 0x01) == 1) {
+            desc.hasImmediateAddress = true;
+            desc.immediateWidth = offsetSize;
+            
             int imm = 0;
             
             for(int i = 0; i < offsetSize; i++) {
@@ -1393,151 +1502,25 @@ public class NotSoTinySimulator {
     }
     
     /**
-     * Updates the instruction pointer based on the instruction
+     * Updates the instruction pointer based on the InstructionDescriptor
      * 
-     * @param op
+     * @param desc
      */
-    private void updateIP(Opcode op) {
-        // big ole switch
-        switch(op) {
-            // no arguments, do nothing
-            case NOP:
-            case XCHG_AH_AL:    case XCHG_BH_BL:    case XCHG_CH_CL:    case XCHG_DH_DL:
-            case MOV_A_B:       case MOV_A_C:       case MOV_A_D:       case MOV_B_A:       case MOV_B_C:
-            case MOV_B_D:       case MOV_C_A:       case MOV_C_B:       case MOV_C_D:       case MOV_D_A:
-            case MOV_D_B:       case MOV_D_C:       case MOV_AL_BL:     case MOV_AL_CL:     case MOV_AL_DL:
-            case MOV_BL_AL:     case MOV_BL_CL:     case MOV_BL_DL:     case MOV_CL_AL:     case MOV_CL_BL:
-            case MOV_CL_DL:     case MOV_DL_AL:     case MOV_DL_BL:     case MOV_DL_CL:
-            case XCHG_A_B:      case XCHG_A_C:      case XCHG_A_D:      case XCHG_B_C:      case XCHG_B_D:
-            case XCHG_C_D:      case XCHG_AL_BL:    case XCHG_AL_CL:    case XCHG_AL_DL:    case XCHG_BL_CL:
-            case XCHG_BL_DL:    case XCHG_CL_DL:
-            case PUSH_A:        case PUSH_B:        case PUSH_C:        case PUSH_D:        case PUSH_I:
-            case PUSH_J:        case PUSH_BP:       case PUSH_SP:       case PUSH_F:
-            case POP_A:         case POP_B:         case POP_C:         case POP_D:         case POP_I:
-            case POP_J:         case POP_BP:        case POP_SP:        case POP_F:
-            case NOT_F:
-            case INC_I:         case INC_J:         case ICC_I:         case ICC_J:         case DEC_I:
-            case DEC_J:         case DCC_I:         case DCC_J:
-            case ADD_A_A:       case ADD_A_B:       case ADD_A_C:       case ADD_A_D:       case ADD_B_A:
-            case ADD_B_B:       case ADD_B_C:       case ADD_B_D:       case ADD_C_A:       case ADD_C_B:
-            case ADD_C_C:       case ADD_C_D:       case ADD_D_A:       case ADD_D_B:       case ADD_D_C:
-            case ADD_D_D:
-            case SUB_A_A:       case SUB_A_B:       case SUB_A_C:       case SUB_A_D:       case SUB_B_A:
-            case SUB_B_B:       case SUB_B_C:       case SUB_B_D:       case SUB_C_A:       case SUB_C_B:
-            case SUB_C_C:       case SUB_C_D:       case SUB_D_A:       case SUB_D_B:       case SUB_D_C:
-            case SUB_D_D:
-            case RET:           case IRET:
-                System.out.println("zero arguments ip += 1");
-                return;
-            
-            // 1 byte
-            case MOV_A_I8:      case MOV_B_I8:      case MOV_C_I8:      case MOV_D_I8:
-            case ADD_A_I8:      case ADD_B_I8:      case ADD_C_I8:      case ADD_D_I8:      case ADC_A_I8:
-            case ADC_B_I8:      case ADC_C_I8:      case ADC_D_I8:
-            case SUB_A_I8:      case SUB_B_I8:      case SUB_C_I8:      case SUB_D_I8:      case SBB_A_I8:
-            case SBB_B_I8:      case SBB_C_I8:      case SBB_D_I8:
-            case JMP_I8:        case JC_I8:         case JNC_I8:        case JS_I8:         case JNS_I8:
-            case JO_I8:         case JNO_I8:        case JZ_I8:         case JNZ_I8:        case JA_I8:
-            case JAE_I8:        case JB_I8:         case JBE_I8:        case JG_I8:         case JGE_I8:
-            case JL_I8:         case JLE_I8:
-                System.out.println("one byte argument ip += 2");
-                this.reg_ip += 1;
-                return;
-            
-            // 2 bytes
-            case MOV_I_I16:     case MOV_J_I16:     case MOV_A_I16:     case MOV_B_I16:     case MOV_C_I16:
-            case MOV_D_I16:
-            case ADD_A_I16:     case ADD_B_I16:     case ADD_C_I16:     case ADD_D_I16:     case ADC_A_I16:
-            case ADC_B_I16:     case ADC_C_I16:     case ADC_D_I16:
-            case SUB_A_I16:     case SUB_B_I16:     case SUB_C_I16:     case SUB_D_I16:     case SBB_A_I16:
-            case SBB_B_I16:     case SBB_C_I16:     case SBB_D_I16:
-            case JMP_I16:       case CALL_I16:      case INT_I16:
-                System.out.println("two byte argument ip += 3");
-                this.reg_ip += 2;
-                return;
-            
-            // 4 bytes
-            case MOV_BP_I32:    case MOV_SP_I32:
-            case JMP_I32:       case JMPA_I32:      case CALLA_I32:
-                System.out.println("four byte argument ip += 5");
-                this.reg_ip += 4;
-                return;
-            
-            // special cases
-            case MOVW_RIM:      case MOVS_RIM:      case MOVZ_RIM:
-            case PADD_RIMP:     case PADC_RIMP:     case PSUB_RIMP:     case PSBB_RIMP:
-            case PINC_RIMP:     case PICC_RIMP:     case PDEC_RIMP:     case PDCC_RIMP:
-            case MULH_RIM:      case MULSH_RIM:     case PMUL_RIMP:     case PMULS_RIMP:
-            case PMULH_RIMP:    case PMULSH_RIMP:
-            case DIVM_RIM:      case DIVMS_RIM:     case PDIV_RIMP:     case PDIVS_RIMP:
-            case PDIVM_RIMP:    case PDIVMS_RIMP:
-            case CMP_RIM_I8:
-                updateIPSpecialCases(op);
-                return;
-            
-            // RIM
-            default:
-        }
-        
-        // General RIM
-        byte rim = this.memory.readByte(this.reg_ip);
-        
-        // register register? 1 byte
-        if((rim & 0x40) == 0) {
-            System.out.println("register-register rim ip += 2");
+    private void updateIP(InstructionDescriptor desc) {
+        // RIM byte
+        if(desc.hasRIMByte) {
             this.reg_ip += 1;
-            return;
-        } else {
-            // what are we dealing with
-            int diff = switch(rim & 0x07) {
-                case 0, 4   -> ((rim & 0x80) == 0) ? 3 : 2; // immediate value
-                case 1, 5   -> 5; // immediate address
-                case 2, 6   -> 2; // bio
-                case 3, 7   -> {  // bio + offset
-                    // if index != 111, offset is 4 bytes. Otherwise offset is scale + 1 bytes
-                    byte bio = this.memory.readByte(this.reg_ip + 1);
-                    
-                    if((bio & 0x07) == 0x07) {
-                        yield (bio >>> 6) + 3;
-                    } else {
-                        yield 6;
-                    }
-                }
-                
-                default     -> 0; // not possible
-            };
-            
-            System.out.println("register-memory rim ip += " + (diff + 1));
-            
-            this.reg_ip += diff;
-        }
-    }
-    
-    /**
-     * Deals with special cases for updating the IP
-     * 
-     * @param op
-     */
-    private void updateIPSpecialCases(Opcode op) {
-        switch(op) {
-            // wide source
-            case MOVW_RIM:
-                updateIPWideSourceRIM(op);
-                break;
-            
-            default:
         }
         
-        throw new IllegalStateException("Update IP Special Cases not fully implemented");
-    }
-    
-    /**
-     * Updates IP according to wide RIM
-     * 
-     * @param op
-     */
-    private void updateIPWideSourceRIM(Opcode op) {
-        throw new IllegalStateException("Wide Source RIM IP Update not implemented");
+        // BIO byte
+        if(desc.hasBIOByte) {
+            this.reg_ip += 1;
+        }
+        
+        // immediates
+        if(desc.hasImmediateAddress || desc.hasImmediateValue) {
+            this.reg_ip += desc.immediateWidth;
+        }
     }
     
     /*
