@@ -487,7 +487,6 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runCALL(InstructionDescriptor desc) {
-        // TODO
         int target = 0;
         
         switch(desc.op) {
