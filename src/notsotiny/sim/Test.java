@@ -48,8 +48,8 @@ public class Test {
         
         NotSoTinySimulator sim = new NotSoTinySimulator(mmu, entry);
         
-        runStepped(sim, mem, 20, halter);
-        //runFast(sim, mem, 20, halter);
+        //runStepped(sim, mem, 20, halter);
+        runFast(sim, mem, 128, halter);
     }
     
     public static void runFast(NotSoTinySimulator sim, byte[] mem, int maxInstructions, Halter halter) throws IOException {

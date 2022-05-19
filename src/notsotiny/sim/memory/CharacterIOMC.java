@@ -69,18 +69,19 @@ public class CharacterIOMC implements MemoryController {
     public void writeByte(int address, byte value) {
         // write
         if(address == 4) { // char
+            //System.out.println("IOMC Value: " + Integer.toHexString(this.val));
             this.writer.print((char) this.val);
         } else if(address == 5) { // int
             this.writer.println(this.val);
+        } else {
+            // val writes
+            this.val = switch(address) {
+                case 0  -> (this.val & 0xFFFF_FF00) | (value & 0xFF);
+                case 1  -> (this.val & 0xFFFF_00FF) | ((value & 0xFF) << 8);
+                case 2  -> (this.val & 0xFF00_FFFF) | ((value & 0xFF) << 16);
+                case 3  -> (this.val & 0x00FF_FFFF) | ((value & 0xFF) << 24);
+                default -> -1;
+            };
         }
-        
-        // val writes
-        this.val = switch(address) {
-            case 0  -> (this.val & 0xFFFF_FF00) | (value & 0xFF);
-            case 1  -> (this.val & 0xFFFF_00FF) | ((value & 0xFF) << 8);
-            case 2  -> (this.val & 0xFF00_FFFF) | ((value & 0xFF) << 16);
-            case 3  -> (this.val & 0x00FF_FFFF) | ((value & 0xFF) << 24);
-            default -> -1;
-        };
     }
 }

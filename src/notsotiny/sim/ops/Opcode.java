@@ -287,11 +287,7 @@ public enum Opcode {
     
     JA_I8       (0xF0, Operation.JCC),
     JA_RIM      (0xF1, Operation.JCC),
-    JAE_I8      (0xF2, Operation.JCC),
-    JAE_RIM     (0xF3, Operation.JCC),
     
-    JB_I8       (0xF4, Operation.JCC),
-    JB_RIM      (0xF5, Operation.JCC),
     JBE_I8      (0xF6, Operation.JCC),
     JBE_RIM     (0xF7, Operation.JCC),
     

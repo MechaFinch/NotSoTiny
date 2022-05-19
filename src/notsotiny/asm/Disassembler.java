@@ -100,11 +100,19 @@ public class Disassembler {
             // some only use source/destination
             if(op.getType() == Operation.PUSH || (op.getType().getFamily() == Family.JUMP && op.getType() != Operation.CMP)) {
                 incDst = false;
-            } else if(op.getType() == Operation.POP) { 
+            } else if(op.getType() == Operation.POP || op == Opcode.CMP_RIM_0 || op == Opcode.CMP_RIM_I8) { 
                 incSrc = false;
             }
             
-            return disassembleRIM(memory, address, op, incSrc, incDst, false, false, false);
+            String s = disassembleRIM(memory, address, op, incSrc, incDst, false, false, false);
+            
+            if(op == Opcode.CMP_RIM_0) {
+                s += ", " + 0;
+            } else if(op == Opcode.CMP_RIM_I8) {
+                s += ", " + String.format("%s %02X", s, memory[address + this.lastInstructionLength - 1]);
+            }
+            
+            return s;
         } else if(this.lastIsI8 || this.lastIsI16 || this.lastIsI32) {
             String s = "";
             
@@ -438,8 +446,7 @@ public class Disassembler {
             
             case JMP_I8:        case JC_I8:         case JNC_I8:        case JS_I8:         case JNS_I8:
             case JO_I8:         case JNO_I8:        case JZ_I8:         case JNZ_I8:        case JA_I8:
-            case JAE_I8:        case JB_I8:         case JBE_I8:        case JG_I8:         case JGE_I8:
-            case JL_I8:         case JLE_I8:
+            case JBE_I8:        case JG_I8:         case JGE_I8:        case JL_I8:         case JLE_I8:
                 this.lastIsRIM = false;
                 this.lastIsI8 = true;
                 this.lastIsI16 = false;
@@ -570,6 +577,35 @@ public class Disassembler {
                                 yield (bio >> 6) + 3;
                             } else {
                                 yield 6;
+                            }
+                        }
+                        
+                        default     -> 0; // not possible
+                    };
+                    
+                    return diff + 1;
+                }
+                
+            case CMP_RIM_I8:
+                rim = memory[address + 1];
+                
+                // register register? 1 byte
+                if((rim & 0x40) == 0) {
+                    return 3;
+                } else {
+                    // what are we dealing with
+                    int diff = switch(rim & 0x07) {
+                        case 0, 4   -> ((rim & 0x80) == 0) ? 4 : 3; // immediate value
+                        case 1, 5   -> 6; // immediate address
+                        case 2, 6   -> 3; // bio
+                        case 3, 7   -> {  // bio + offset
+                            // if index != 111, offset is 4 bytes. Otherwise offset is scale + 1 bytes
+                            byte bio = memory[address + 2];
+                            
+                            if((bio & 0x07) == 0x07) {
+                                yield (bio >> 6) + 4;
+                            } else {
+                                yield 7;
                             }
                         }
                         

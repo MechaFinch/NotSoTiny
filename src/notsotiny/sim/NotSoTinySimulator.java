@@ -61,7 +61,7 @@ public class NotSoTinySimulator {
         
         if(desc.op == Opcode.NOP) return; 
         
-        System.out.println(desc.op.getType().getFamily()); 
+        //System.out.println(desc.op.getType().getFamily()); 
         
         switch(desc.op.getType().getFamily()) {
             case ADDITION:
@@ -104,7 +104,7 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void stepMiscFamily(InstructionDescriptor desc) {
-        System.out.println(desc.op.getType());
+        //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
             case NOP: // just NOP
@@ -121,7 +121,7 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void stepLogicFamily(InstructionDescriptor desc) {
-        System.out.println(desc.op.getType());
+        //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
             case AND:
@@ -183,7 +183,7 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void stepMultiplicationFamily(InstructionDescriptor desc) {
-        System.out.println(desc.op.getType());
+        //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
             case MUL:
@@ -261,7 +261,7 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void stepAdditionFamily(InstructionDescriptor desc) {
-        System.out.println(desc.op.getType());
+        //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
             case INC:
@@ -303,7 +303,19 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runINC(InstructionDescriptor desc) {
-        // TODO
+        LocationDescriptor dst = switch(desc.op) {
+            case INC_I, ICC_I, DEC_I, DCC_I -> LocationDescriptor.REGISTER_I;
+            case INC_J, ICC_J, DEC_J, DCC_J -> LocationDescriptor.REGISTER_J;
+            default                         -> getNormalRIMDestinationDescriptor(desc);
+        };
+        
+        // unconditional or condition met
+        if(desc.op.getType() == Operation.INC || desc.op.getType() == Operation.DEC || (this.reg_f & 0x01) != 0) {
+            boolean inc = desc.op.getType() == Operation.INC || desc.op.getType() == Operation.ICC;
+            int v = add(readLocation(dst), inc ? 1 : -1, dst.size());
+            
+            writeLocation(dst, v);
+        }
     }
     
     /**
@@ -339,7 +351,7 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void stepJumpFamily(InstructionDescriptor desc) {
-        System.out.println(desc.op.getType());
+        //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
             case JMP:
@@ -467,7 +479,29 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runCMP(InstructionDescriptor desc) {
-        // TODO
+        LocationDescriptor dest = getNormalRIMDestinationDescriptor(desc);
+        
+        int a = readLocation(dest);
+                
+        int b = switch(desc.op) {
+            case CMP_RIM    -> getNormalRIMSource(desc);
+            case CMP_RIM_I8 -> {
+                // figure out where our immediate is
+                int offset = 1;                 // rim
+                if(desc.hasBIOByte) offset++;   // bio
+                if(desc.hasImmediateAddress || desc.hasImmediateValue) offset += desc.immediateWidth; // immediate
+                
+                desc.hasImmediateValue = true;
+                desc.immediateWidth++; // our immediate
+                
+                yield this.memory.readByte(this.reg_ip + offset);
+            }
+            default -> 0; // also CMP_RIM_0
+        };
+        
+        // subtract and discard
+        b = ~b + 1;
+        add(a, b, dest.size());
     }
     
     /**
@@ -476,7 +510,52 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runJCC(InstructionDescriptor desc) {
-        // TODO
+        int offset = 0;
+        
+        // target
+        switch(desc.op) {
+            // immediate
+            case JC_I8: case JNC_I8:
+            case JS_I8: case JNS_I8:
+            case JO_I8: case JNO_I8:
+            case JZ_I8: case JNZ_I8:
+            case JA_I8:
+            case JBE_I8:
+            case JG_I8: case JGE_I8:
+            case JL_I8: case JLE_I8:
+                desc.hasImmediateValue = true;
+                desc.immediateWidth = 1;
+                offset = this.memory.readByte(this.reg_ip);
+                break;
+            
+            // rim
+            default:
+                offset = getNormalRIMSource(desc);
+        }
+        
+        // check condition
+        boolean condition = switch(desc.op) {
+            case JC_I8, JC_RIM      -> (this.reg_f & 0x01) != 0;    // carry - carry set
+            case JNC_I8, JNC_RIM    -> (this.reg_f & 0x01) == 0;    // not carry - carry clear
+            case JS_I8, JS_RIM      -> (this.reg_f & 0x02) != 0;    // sign - sign set
+            case JNS_I8, JNS_RIM    -> (this.reg_f & 0x02) == 0;    // not sign - sign clear
+            case JO_I8, JO_RIM      -> (this.reg_f & 0x04) != 0;    // overflow - overflow set
+            case JNO_I8, JNO_RIM    -> (this.reg_f & 0x04) == 0;    // not overflow - overflow clear
+            case JZ_I8, JZ_RIM      -> (this.reg_f & 0x08) != 0;    // zero - zero set
+            case JNZ_I8, JNZ_RIM    -> (this.reg_f & 0x08) == 0;    // not zero - zero clear
+            case JA_I8, JA_RIM      -> (this.reg_f & 0x09) == 0;    // above - carry clear and zero clear 
+            case JBE_I8, JBE_RIM    -> (this.reg_f & 0x09) != 0;    // below equal - carry set or zero set
+            case JG_I8, JG_RIM      -> ((this.reg_f & 0x08) == 0) && (((this.reg_f & 0x04) >> 1) == (this.reg_f & 0x02));   // greater - zero clear and sign = overflow
+            case JGE_I8, JGE_RIM    -> (((this.reg_f & 0x04) >> 1) == (this.reg_f & 0x02));                                 // greater equal - sign = overflow
+            case JL_I8, JL_RIM      -> (((this.reg_f & 0x04) >> 1) != (this.reg_f & 0x02));                                 // less - sign != overflow
+            case JLE_I8, JLE_RIM    -> ((this.reg_f & 0x08) != 0) || (((this.reg_f & 0x04) >> 1) != (this.reg_f & 0x02));   // less equal - zero set or sign != overflow
+            default                 -> false;
+        };
+        
+        // jump
+        if(condition) {
+            this.reg_ip += offset;
+        }
     }
     
     /**
@@ -485,7 +564,7 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void stepMoveFamily(InstructionDescriptor desc) {
-        System.out.println(desc.op.getType());
+        //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
             case MOV:
@@ -515,7 +594,7 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runMOV(InstructionDescriptor desc) {
-        System.out.println(desc.op);
+        //System.out.println(desc.op);
         
         // deal with register-register moves
         switch(desc.op) {
@@ -670,7 +749,7 @@ public class NotSoTinySimulator {
             default:
         }
         
-        System.out.println(String.format("source value: %08X", src));
+        //System.out.println(String.format("source value: %08X", src));
         
         // put source in destination
         switch(desc.op) {
@@ -916,7 +995,7 @@ public class NotSoTinySimulator {
             default -> -1; // not possible
         };
         
-        System.out.println(String.format("source value: %08X", val));
+        //System.out.println(String.format("source value: %08X", val));
         
         this.reg_sp += opSize;
         
@@ -936,6 +1015,118 @@ public class NotSoTinySimulator {
     }
     
     /**
+     * Adds two numbers and sets flags accordingly
+     * 
+     * @param a
+     * @param b
+     * @param size
+     * @return a + b
+     */
+    private int add(int a, int b, int size) {
+        int c = a + b;
+        
+        boolean zero = false,
+                overflow = false,
+                sign = false,
+                carry = false;
+        
+        if(size == 1) { // 8 bit
+            zero = (c & 0xFF) == 0;
+            overflow = ((a & 0x80) == (b & 0x80)) ? ((a & 0x80) != (c & 0x80)) : false;
+            sign = (c & 0x80) != 0;
+            carry = (c & 0x100) != 0;
+            
+            c &= 0xFF;
+        } else if(size == 2) { // 16 bit
+            zero = (c & 0xFFFF) == 0;
+            overflow = ((a & 0x8000) == (b & 0x8000)) ? ((a & 0x8000) != (c & 0x8000)) : false;
+            sign = (c & 0x8000) != 0;
+            carry = (c & 0x10000) != 0;
+            
+            c &= 0xFFFF;
+        } else { // 32 bit
+            zero = c == 0;
+            overflow = ((a & 0x8000_0000) == (b & 0x8000_0000)) ? ((a & 0x8000_0000) != (c & 0x8000_0000)) : false;
+            sign = (c & 0x8000_0000) != 0;
+            
+            // we need that carry bit xd
+            long d = ((long) a) + ((long) b);
+            carry = (d & 0x1_0000_0000l) != 0;
+        }
+        
+        this.reg_f = (short)((zero ? 0x08 : 0x00) | (overflow ? 0x04 : 0x00) | (sign ? 0x02 : 0x00) | (carry ? 0x01 : 0x00));
+        
+        return c;
+    }
+    
+    /**
+     * Adds packed numbers and sets flags accordingly
+     * 
+     * @param a
+     * @param b
+     * @param bytes
+     * @return a + b
+     */
+    private short addPacked(int a, int b, boolean bytes) {
+        //TODO
+        return -1;
+    }
+    
+    /**
+     * Multiplies two numbers and sets flags accordingly
+     * 
+     * @param a
+     * @param b
+     * @param signed
+     * @return a * b {lower, upper}
+     */
+    private int multiply(int a, int b, boolean signed) {
+        //TODO
+        return -1;
+    }
+    
+    /**
+     * Multiplies packed numbers and sets flags accordingly.
+     * 
+     * @param a
+     * @param b
+     * @param signed
+     * @param bytes
+     * @return a * b {lower, upper}
+     */
+    private int[] multiplyPacked(int a, int b, boolean signed, boolean bytes) {
+        //TODO
+        return new int[] {-1, -1};
+    }
+    
+    /**
+     * Divides two numbers and sets flags accordingly
+     * 
+     * @param a
+     * @param b
+     * @param signed
+     * @return a / b {quotient, remainder}
+     */
+    private int divide(int a, int b, boolean signed) {
+        //TODO
+        return -1;
+    }
+    
+    /**
+     * Divides packed numbers and sets flags accordingly
+     * 
+     * @param a
+     * @param b
+     * @param signed
+     * @param bytes
+     * @return a / b {quotient, remainder}
+     */
+    private int[] dividePacked(int a, int b, boolean signed, boolean bytes) {
+        //TODO
+        return new int[] {-1, -1};
+    }
+    
+    /**
      * Gets the descriptor of a RIM destination
      * 
      * @return
@@ -946,10 +1137,10 @@ public class NotSoTinySimulator {
         byte rim = this.memory.readByte(this.reg_ip);
         boolean size = (rim & 0x80) == 0;
         
-        System.out.println(String.format("rim, size: %02X, %s", rim, size));
+        //System.out.println(String.format("rim, size: %02X, %s", rim, size));
         
         if((rim & 0x40) == 0 || (rim & 0x04) == 0) {
-            System.out.println(String.format("register destination %s", (rim & 0x38) >>> 3));
+            //System.out.println(String.format("register destination %s", (rim & 0x38) >>> 3));
             
             // register destination
             if(size) { // 16 bit
@@ -990,7 +1181,7 @@ public class NotSoTinySimulator {
                 addr = getBIOAddress(desc);
             }
             
-            System.out.println(String.format("immediate address destination: %08X   ", addr));
+            //System.out.println(String.format("immediate address destination: %08X   ", addr));
             
             if(size) { // 16 bit
                 // if the source is SP or BP, 32 bit
@@ -1186,7 +1377,7 @@ public class NotSoTinySimulator {
         byte rim = this.memory.readByte(this.reg_ip);
         boolean size = (rim & 0x80) == 0;
         
-        System.out.println(String.format("rim, size: %02X, %s", rim, size));
+        //System.out.println(String.format("rim, size: %02X, %s", rim, size));
         
         // rim or mem
         if((rim & 0x40) == 0 || (rim & 0x04) != 0) {
@@ -1198,7 +1389,7 @@ public class NotSoTinySimulator {
                 src = (rim & 0x38) >> 3;
             }
             
-            System.out.println(String.format("register source %s", src));
+            //System.out.println(String.format("register source %s", src));
             
             // wide register source for BP/SP destination
             if(size && (rim & 0x38) > 0x28) {
@@ -1228,7 +1419,7 @@ public class NotSoTinySimulator {
                 default -> null;
             };
         } else if((rim & 0x07) == 0) {
-            System.out.println("immediate value");
+            //System.out.println("immediate value");
             
             desc.hasImmediateValue = true;
             
@@ -1247,7 +1438,7 @@ public class NotSoTinySimulator {
                 return new LocationDescriptor(LocationType.MEMORY, 1, this.reg_ip + 1);
             }
         } else if((rim & 0x07) == 1) {
-            System.out.println("immediate address source");
+            //System.out.println("immediate address source");
             
             desc.hasImmediateAddress = true;
             desc.immediateWidth = 4;
@@ -1266,7 +1457,7 @@ public class NotSoTinySimulator {
                 return new LocationDescriptor(LocationType.MEMORY, 1, addr);
             }
         } else {
-            System.out.println("bio address source");
+            //System.out.println("bio address source");
             
             // BIO memory source
             int addr = getBIOAddress(desc);
@@ -1444,7 +1635,7 @@ public class NotSoTinySimulator {
        
         int addr = 0;
         
-        System.out.println(String.format("rim, bio, scale, index: %02X, %02X, %s, %s", rim, bio, scale, hasIndex));
+        //System.out.println(String.format("rim, bio, scale, index: %02X, %02X, %s, %s", rim, bio, scale, hasIndex));
         
         // index
         if(hasIndex) {
@@ -1465,7 +1656,7 @@ public class NotSoTinySimulator {
             offsetSize = ++scale; // increment to avoid casting
         }
         
-        System.out.println(String.format("addr from index: %08X", addr));
+        //System.out.println(String.format("addr from index: %08X", addr));
         
         // base
         addr += switch((bio & 0x38) >> 3) {
@@ -1480,7 +1671,7 @@ public class NotSoTinySimulator {
             default -> -1; // not possible
         };
         
-        System.out.println(String.format("addr from base: %08X", addr));
+        //System.out.println(String.format("addr from base: %08X", addr));
         
         // offset
         if((rim & 0x01) == 1) {
@@ -1496,7 +1687,7 @@ public class NotSoTinySimulator {
             addr += imm;
         }
         
-        System.out.println(String.format("final address: %08X", addr));
+        //System.out.println(String.format("final address: %08X", addr));
         
         return addr;
     }
