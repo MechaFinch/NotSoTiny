@@ -93,7 +93,8 @@ public class NotSoTinySimulator {
         }
         
         // don't update after absolute jumps
-        if(desc.op.getType() != Operation.JMPA) {
+        Operation type = desc.op.getType();
+        if(!(type == Operation.JMPA || type == Operation.CALLA || type == Operation.RET || type == Operation.IRET)) {
             updateIP(desc);
         }
     }
@@ -312,7 +313,7 @@ public class NotSoTinySimulator {
         // unconditional or condition met
         if(desc.op.getType() == Operation.INC || desc.op.getType() == Operation.DEC || (this.reg_f & 0x01) != 0) {
             boolean inc = desc.op.getType() == Operation.INC || desc.op.getType() == Operation.ICC;
-            int v = add(readLocation(dst), inc ? 1 : -1, dst.size());
+            int v = add(readLocation(dst), inc ? 1 : -1, dst.size(), false, false);
             
             writeLocation(dst, v);
         }
@@ -333,7 +334,50 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runADD(InstructionDescriptor desc) {
-        // TODO
+        LocationDescriptor dst = switch(desc.op) {
+            case ADD_A_A, ADD_A_B, ADD_A_C, ADD_A_D, ADD_A_I8, ADC_A_I8, ADD_A_I16, ADC_A_I16,
+                 SUB_A_A, SUB_A_B, SUB_A_C, SUB_A_D, SUB_A_I8, SBB_A_I8, SUB_A_I16, SBB_A_I16   -> LocationDescriptor.REGISTER_A;
+            case ADD_B_A, ADD_B_B, ADD_B_C, ADD_B_D, ADD_B_I8, ADC_B_I8, ADD_B_I16, ADC_B_I16,
+                 SUB_B_A, SUB_B_B, SUB_B_C, SUB_B_D, SUB_B_I8, SBB_B_I8, SUB_B_I16, SBB_B_I16   -> LocationDescriptor.REGISTER_B;
+            case ADD_C_A, ADD_C_B, ADD_C_C, ADD_C_D, ADD_C_I8, ADC_C_I8, ADD_C_I16, ADC_C_I16,
+                 SUB_C_A, SUB_C_B, SUB_C_C, SUB_C_D, SUB_C_I8, SBB_C_I8, SUB_C_I16, SBB_C_I16   -> LocationDescriptor.REGISTER_C;
+            case ADD_D_A, ADD_D_B, ADD_D_C, ADD_D_D, ADD_D_I8, ADC_D_I8, ADD_D_I16, ADC_D_I16,
+                 SUB_D_A, SUB_D_B, SUB_D_C, SUB_D_D, SUB_D_I8, SBB_D_I8, SUB_D_I16, SBB_D_I16   -> LocationDescriptor.REGISTER_D;
+            default                                                                             -> getNormalRIMDestinationDescriptor(desc);
+        };
+        
+        int b = switch(desc.op) {
+            case ADD_A_A, ADD_B_A, ADD_C_A, ADD_D_A, SUB_A_A, SUB_B_A, SUB_C_A, SUB_D_A                 -> this.reg_a;
+            case ADD_A_B, ADD_B_B, ADD_C_B, ADD_D_B, SUB_A_B, SUB_B_B, SUB_C_B, SUB_D_B                 -> this.reg_b;
+            case ADD_A_C, ADD_B_C, ADD_C_C, ADD_D_C, SUB_A_C, SUB_B_C, SUB_C_C, SUB_D_C                 -> this.reg_c;
+            case ADD_A_D, ADD_B_D, ADD_C_D, ADD_D_D, SUB_A_D, SUB_B_D, SUB_C_D, SUB_D_D                 -> this.reg_d;
+            case ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADC_A_I8, ADC_B_I8, ADC_C_I8, ADC_D_I8,
+                 SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SBB_A_I8, SBB_B_I8, SBB_C_I8, SBB_D_I8         -> {
+                     desc.hasImmediateValue = true;
+                     desc.immediateWidth = 1;
+                     yield this.memory.readByte(this.reg_ip);
+                 }
+                 
+            case ADD_A_I16, ADD_B_I16, ADD_C_I16, ADD_D_I16, ADC_A_I16, ADC_B_I16, ADC_C_I16, ADC_D_I16,
+                 SUB_A_I16, SUB_B_I16, SUB_C_I16, SUB_D_I16, SBB_A_I16, SBB_B_I16, SBB_C_I16, SBB_D_I16 -> {
+                     desc.hasImmediateValue = true;
+                     desc.immediateWidth = 2;
+                     yield this.memory.read2Bytes(this.reg_ip);
+                 }
+                 
+            default                                                                                     -> getNormalRIMSource(desc);
+        };
+        
+        boolean includeCarry = desc.op.getType() == Operation.ADC || desc.op.getType() == Operation.SBB;
+        int c;
+        
+        if(desc.op.getType() == Operation.ADD || desc.op.getType() == Operation.ADC) { // add
+            c = add(readLocation(dst), b, dst.size(), includeCarry, false);
+        } else { // subtract
+            c = add(readLocation(dst), ~b, dst.size(), includeCarry, true);
+        }
+        
+        writeLocation(dst, c);
     }
     
     /**
@@ -444,6 +488,44 @@ public class NotSoTinySimulator {
      */
     private void runCALL(InstructionDescriptor desc) {
         // TODO
+        int target = 0;
+        
+        switch(desc.op) {
+            case CALL_I16:
+                desc.hasImmediateValue = true;
+                desc.immediateWidth = 2;
+                target = this.memory.read2Bytes(this.reg_ip);
+                break;
+            
+            case CALLA_I32:
+                desc.hasImmediateValue = true;
+                desc.immediateWidth = 4;
+                target = this.memory.read4Bytes(this.reg_ip);
+                break;
+            
+            case CALL_RIM:
+                target = getNormalRIMSource(desc);
+                break;
+            
+            case CALLA_RIM32:
+                target = getWideRIMSource(desc);
+                break;
+            
+            default:
+        }
+        
+        // push correct value
+        updateIP(desc);
+        
+        this.reg_sp -= 4;
+        this.memory.write4Bytes(this.reg_sp, this.reg_ip);
+        
+        // jump
+        if(desc.op.getType() == Operation.CALL) { // relative
+            this.reg_ip += target;
+        } else { // absolute
+            this.reg_ip = target;
+        }
     }
     
     /**
@@ -452,7 +534,13 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runRET(InstructionDescriptor desc) {
-        // TODO
+        if(desc.op == Opcode.RET) { // normal ret
+            this.reg_ip = this.memory.read4Bytes(this.reg_sp);
+            this.reg_sp += 4;
+        } else { // interrupt ret
+            // TODO
+            throw new IllegalStateException("IRET not implemented");
+        }
     }
     
     /**
@@ -470,7 +558,8 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runLEA(InstructionDescriptor desc) {
-        // TODO
+        // souper simple
+        putNormalRIMDestination(desc, getNormalRIMSourceDescriptor(desc).address());
     }
     
     /**
@@ -501,7 +590,7 @@ public class NotSoTinySimulator {
         
         // subtract and discard
         b = ~b + 1;
-        add(a, b, dest.size());
+        add(a, b, dest.size(), false, false);
     }
     
     /**
@@ -1020,10 +1109,15 @@ public class NotSoTinySimulator {
      * @param a
      * @param b
      * @param size
+     * @param includeCarry
+     * @param invertCarry
      * @return a + b
      */
-    private int add(int a, int b, int size) {
-        int c = a + b;
+    private int add(int a, int b, int size, boolean includeCarry, boolean invertCarry) {
+        int carryIn = includeCarry ? (this.reg_f & 0x01) : 0;
+        if(invertCarry) carryIn ^= 0x01; // xor bit flip
+        
+        int c = a + b + carryIn;
         
         boolean zero = false,
                 overflow = false,
@@ -1050,7 +1144,7 @@ public class NotSoTinySimulator {
             sign = (c & 0x8000_0000) != 0;
             
             // we need that carry bit xd
-            long d = ((long) a) + ((long) b);
+            long d = ((long) a) + ((long) b) + ((long) carryIn);
             carry = (d & 0x1_0000_0000l) != 0;
         }
         
@@ -1065,9 +1159,10 @@ public class NotSoTinySimulator {
      * @param a
      * @param b
      * @param bytes
+     * @param cin
      * @return a + b
      */
-    private short addPacked(int a, int b, boolean bytes) {
+    private short addPacked(int a, int b, boolean bytes, boolean cin) {
         //TODO
         return -1;
     }
