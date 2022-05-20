@@ -1171,12 +1171,61 @@ public class NotSoTinySimulator {
      * 
      * @param a
      * @param b
+     * @param size
+     * @param high
      * @param signed
      * @return a * b {lower, upper}
      */
-    private int multiply(int a, int b, boolean signed) {
-        //TODO
-        return -1;
+    private int multiply(int a, int b, int size, boolean high, boolean signed) {
+        // calculate
+        long res;
+        
+        if(signed) {
+            res = ((long) a) * ((long) b);
+        } else {
+            res = (((long) a) & 0xFFFF_FFFFl) * (((long) b) & 0xFFFF_FFFFl);
+        }
+        
+        // flags time
+        boolean zero = false,
+                overflow = false,
+                sign = false,
+                carry = false;
+        
+        if(size == 1) { // 8 bit operands
+            if(high) { // 16 bit result
+                zero = (res & 0xFFFFl) == 0l;
+                sign = (res & 0x8000l) != 0l;
+            } else { // 8 bit result
+                zero = (res & 0xFFl) == 0l;
+                sign = (res & 0x80l) != 0l;
+            }
+            
+            // if the top half matches the lower's sign bit, overflow/carry are cleared
+            overflow = signed ? !((res & 0xFF80l) == 0l || (res & 0xFF80l) == 0xFF80l) : ((res & 0xFF00l) != 0l);
+            carry = overflow;
+        } else if(size == 2) { // 16 bit operands
+            if(high) { // 32 bit result
+                zero = (res & 0xFFFF_FFFFl) == 0l;
+                sign = (res & 0x8000_0000l) != 0l;
+            } else { // 16 bit result
+                zero = (res & 0xFFFFl) == 0l;
+                sign = (res & 0x8000l) != 0l;
+            }
+            
+            // as above
+            overflow = signed ? !((res & 0xFFFF_8000l) == 0l || (res & 0xFFFF_8000l) == 0xFFFF_8000l) : ((res & 0xFFFF_0000) != 0l);
+            carry = overflow;
+        } else { // 32 bit operands, 32 bit result
+            zero = (res & 0xFFFF_FFFFl) == 0;
+            sign = (res & 0x8000_0000l) != 0;
+            overflow = signed ? !((res & 0xFFFF_FFFF_8000_0000l) == 0l || (res & 0xFFFF_FFFF_8000_0000l) == 0xFFFF_FFFF_8000_0000l) : ((res & 0xFFFF_FFFF_0000_0000l) != 0l);
+            carry = overflow;
+        }
+        
+        this.reg_f = (short)((zero ? 0x08 : 0x00) | (overflow ? 0x04 : 0x00) | (sign ? 0x02 : 0x00) | (carry ? 0x01 : 0x00));
+        
+        return (int) res;
     }
     
     /**
@@ -1429,15 +1478,20 @@ public class NotSoTinySimulator {
     }
     
     /**
-     * Puts the result of a wide RIM in its destination
+     * Puts the result of a wide RIM in its destination (double normal width)
      * 
      * @param val
      */
     private void putWideRIMDestination(InstructionDescriptor desc, int val) {
         LocationDescriptor normalDesc = getNormalRIMDestinationDescriptor(desc);
         
-        // set size to 4
-        writeLocation(new LocationDescriptor(normalDesc.type(), 4, normalDesc.address()), val);
+        if(normalDesc.size() < 4) {
+            // size < 4, double it
+            writeLocation(new LocationDescriptor(normalDesc.type(), normalDesc.size() * 2, normalDesc.address()), val);
+        } else {
+            // size is 4 write as normal
+            writeLocation(normalDesc, val);
+        }
     }
     
     /**

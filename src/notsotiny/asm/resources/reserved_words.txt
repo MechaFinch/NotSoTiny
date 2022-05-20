@@ -29,11 +29,9 @@ picc
 pdec
 pdcc
 mul
-muls
 mulh
 mulsh
 pmul
-pmuls
 pmulh
 pmulsh
 div
