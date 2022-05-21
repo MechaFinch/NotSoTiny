@@ -497,7 +497,7 @@ public class Disassembler {
             case MOVW_RIM:      case MOVS_RIM:      case MOVZ_RIM:
             case PADD_RIMP:     case PADC_RIMP:     case PSUB_RIMP:     case PSBB_RIMP:
             case PINC_RIMP:     case PICC_RIMP:     case PDEC_RIMP:     case PDCC_RIMP:
-            case MULH_RIM:      case MULSH_RIM:     case PMUL_RIMP:     case PMULS_RIMP:
+            case MULH_RIM:      case MULSH_RIM:     case PMUL_RIMP:
             case PMULH_RIMP:    case PMULSH_RIMP:
             case DIVM_RIM:      case DIVMS_RIM:     case PDIV_RIMP:     case PDIVS_RIMP:
             case PDIVM_RIMP:    case PDIVMS_RIMP:

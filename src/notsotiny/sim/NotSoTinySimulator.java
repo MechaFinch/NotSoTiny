@@ -221,16 +221,26 @@ public class NotSoTinySimulator {
     }
     
     /**
-     * Executes MUL, MULS, MULH, and MULSH instructions
+     * Executes MUL, MULH, and MULSH instructions
      * 
      * @param op
      */
     private void runMUL(InstructionDescriptor desc) {
-        // TODO
+        LocationDescriptor thinDst = getNormalRIMDestinationDescriptor(desc);
+        
+        int a = getNormalRIMSource(desc),
+            b = readLocation(thinDst);
+        
+        boolean high = desc.op == Opcode.MULH_RIM || desc.op == Opcode.MULSH_RIM,
+                signed = desc.op == Opcode.MULSH_RIM;
+        
+        int c = multiply(a, b, thinDst.size(), high, signed);
+        
+        putWideRIMDestination(thinDst, c);
     }
     
     /**
-     * Executes PMUL, PMULS, PMULH, and PMULSH instructions
+     * Executes PMUL, PMULH, and PMULSH instructions
      * 
      * @param op
      */
@@ -1193,34 +1203,44 @@ public class NotSoTinySimulator {
                 carry = false;
         
         if(size == 1) { // 8 bit operands
-            if(high) { // 16 bit result
-                zero = (res & 0xFFFFl) == 0l;
-                sign = (res & 0x8000l) != 0l;
-            } else { // 8 bit result
-                zero = (res & 0xFFl) == 0l;
-                sign = (res & 0x80l) != 0l;
-            }
-            
             // if the top half matches the lower's sign bit, overflow/carry are cleared
             overflow = signed ? !((res & 0xFF80l) == 0l || (res & 0xFF80l) == 0xFF80l) : ((res & 0xFF00l) != 0l);
             carry = overflow;
-        } else if(size == 2) { // 16 bit operands
-            if(high) { // 32 bit result
-                zero = (res & 0xFFFF_FFFFl) == 0l;
-                sign = (res & 0x8000_0000l) != 0l;
-            } else { // 16 bit result
+            
+            if(high) { // 16 bit result
                 zero = (res & 0xFFFFl) == 0l;
                 sign = (res & 0x8000l) != 0l;
+                
+                res &= 0xFFFFl;
+            } else { // 8 bit result
+                zero = (res & 0xFFl) == 0l;
+                sign = (res & 0x80l) != 0l;
+                
+                res &= 0xFFl;
             }
-            
+        } else if(size == 2) { // 16 bit operands
             // as above
             overflow = signed ? !((res & 0xFFFF_8000l) == 0l || (res & 0xFFFF_8000l) == 0xFFFF_8000l) : ((res & 0xFFFF_0000) != 0l);
             carry = overflow;
+            
+            if(high) { // 32 bit result
+                zero = (res & 0xFFFF_FFFFl) == 0l;
+                sign = (res & 0x8000_0000l) != 0l;
+                
+                res &= 0xFFFF_FFFFl;
+            } else { // 16 bit result
+                zero = (res & 0xFFFFl) == 0l;
+                sign = (res & 0x8000l) != 0l;
+                
+                res &= 0xFFFFl;
+            }
         } else { // 32 bit operands, 32 bit result
             zero = (res & 0xFFFF_FFFFl) == 0;
             sign = (res & 0x8000_0000l) != 0;
             overflow = signed ? !((res & 0xFFFF_FFFF_8000_0000l) == 0l || (res & 0xFFFF_FFFF_8000_0000l) == 0xFFFF_FFFF_8000_0000l) : ((res & 0xFFFF_FFFF_0000_0000l) != 0l);
             carry = overflow;
+            
+            res &= 0xFFFF_FFFFl;
         }
         
         this.reg_f = (short)((zero ? 0x08 : 0x00) | (overflow ? 0x04 : 0x00) | (sign ? 0x02 : 0x00) | (carry ? 0x01 : 0x00));
@@ -1485,6 +1505,17 @@ public class NotSoTinySimulator {
     private void putWideRIMDestination(InstructionDescriptor desc, int val) {
         LocationDescriptor normalDesc = getNormalRIMDestinationDescriptor(desc);
         
+        putWideRIMDestination(normalDesc, val);
+    }
+    
+    /**
+     * Puts the result of a wide RIM in its destination (double normal width)
+     * Takes the LocationDescriptor to avoid recalculation 
+     * 
+     * @param normalDesc
+     * @param val
+     */
+    private void putWideRIMDestination(LocationDescriptor normalDesc, int val) {
         if(normalDesc.size() < 4) {
             // size < 4, double it
             writeLocation(new LocationDescriptor(normalDesc.type(), normalDesc.size() * 2, normalDesc.address()), val);

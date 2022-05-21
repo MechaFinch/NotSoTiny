@@ -210,12 +210,10 @@ public enum Opcode {
     PDCC_RIMP   (0xAF, Operation.PDCC),
     
     MUL_RIM     (0xB0, Operation.MUL),
-    MULS_RIM    (0xB1, Operation.MULS),
     MULH_RIM    (0xB2, Operation.MULH),
     MULSH_RIM   (0xB3, Operation.MULSH),
     
     PMUL_RIMP  (0xB4, Operation.PMUL),
-    PMULS_RIMP  (0xB5, Operation.PMULS),
     PMULH_RIMP  (0xB6, Operation.PMULH),
     PMULSH_RIMP (0xB7, Operation.PMULSH),
     
