@@ -345,22 +345,14 @@ public class NotSoTinySimulator {
      */
     private void runADD(InstructionDescriptor desc) {
         LocationDescriptor dst = switch(desc.op) {
-            case ADD_A_A, ADD_A_B, ADD_A_C, ADD_A_D, ADD_A_I8, ADC_A_I8, ADD_A_I16, ADC_A_I16,
-                 SUB_A_A, SUB_A_B, SUB_A_C, SUB_A_D, SUB_A_I8, SBB_A_I8, SUB_A_I16, SBB_A_I16   -> LocationDescriptor.REGISTER_A;
-            case ADD_B_A, ADD_B_B, ADD_B_C, ADD_B_D, ADD_B_I8, ADC_B_I8, ADD_B_I16, ADC_B_I16,
-                 SUB_B_A, SUB_B_B, SUB_B_C, SUB_B_D, SUB_B_I8, SBB_B_I8, SUB_B_I16, SBB_B_I16   -> LocationDescriptor.REGISTER_B;
-            case ADD_C_A, ADD_C_B, ADD_C_C, ADD_C_D, ADD_C_I8, ADC_C_I8, ADD_C_I16, ADC_C_I16,
-                 SUB_C_A, SUB_C_B, SUB_C_C, SUB_C_D, SUB_C_I8, SBB_C_I8, SUB_C_I16, SBB_C_I16   -> LocationDescriptor.REGISTER_C;
-            case ADD_D_A, ADD_D_B, ADD_D_C, ADD_D_D, ADD_D_I8, ADC_D_I8, ADD_D_I16, ADC_D_I16,
-                 SUB_D_A, SUB_D_B, SUB_D_C, SUB_D_D, SUB_D_I8, SBB_D_I8, SUB_D_I16, SBB_D_I16   -> LocationDescriptor.REGISTER_D;
-            default                                                                             -> getNormalRIMDestinationDescriptor(desc);
+            case ADD_A_I8, ADC_A_I8, ADD_A_I16, ADC_A_I16, SUB_A_I8, SBB_A_I8, SUB_A_I16, SBB_A_I16 -> LocationDescriptor.REGISTER_A;
+            case ADD_B_I8, ADC_B_I8, ADD_B_I16, ADC_B_I16, SUB_B_I8, SBB_B_I8, SUB_B_I16, SBB_B_I16 -> LocationDescriptor.REGISTER_B;
+            case ADD_C_I8, ADC_C_I8, ADD_C_I16, ADC_C_I16, SUB_C_I8, SBB_C_I8, SUB_C_I16, SBB_C_I16 -> LocationDescriptor.REGISTER_C;
+            case ADD_D_I8, ADC_D_I8, ADD_D_I16, ADC_D_I16, SUB_D_I8, SBB_D_I8, SUB_D_I16, SBB_D_I16 -> LocationDescriptor.REGISTER_D;
+            default                                                                                 -> getNormalRIMDestinationDescriptor(desc);
         };
         
         int b = switch(desc.op) {
-            case ADD_A_A, ADD_B_A, ADD_C_A, ADD_D_A, SUB_A_A, SUB_B_A, SUB_C_A, SUB_D_A                 -> this.reg_a;
-            case ADD_A_B, ADD_B_B, ADD_C_B, ADD_D_B, SUB_A_B, SUB_B_B, SUB_C_B, SUB_D_B                 -> this.reg_b;
-            case ADD_A_C, ADD_B_C, ADD_C_C, ADD_D_C, SUB_A_C, SUB_B_C, SUB_C_C, SUB_D_C                 -> this.reg_c;
-            case ADD_A_D, ADD_B_D, ADD_C_D, ADD_D_D, SUB_A_D, SUB_B_D, SUB_C_D, SUB_D_D                 -> this.reg_d;
             case ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADC_A_I8, ADC_B_I8, ADC_C_I8, ADC_D_I8,
                  SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SBB_A_I8, SBB_B_I8, SBB_C_I8, SBB_D_I8         -> {
                      desc.hasImmediateValue = true;
@@ -798,6 +790,30 @@ public class NotSoTinySimulator {
         int src = 0;
         
         switch(desc.op) {
+            // A
+            case MOV_BI_A:
+            case MOV_BIO_A:
+                src = this.reg_a;
+                break;
+            
+            // B
+            case MOV_BI_B:
+            case MOV_BIO_B:
+                src = this.reg_b;
+                break;
+            
+            // C
+            case MOV_BI_C:
+            case MOV_BIO_C:
+                src = this.reg_c;
+                break;
+            
+            // D
+            case MOV_BI_D:
+            case MOV_BIO_D:
+                src = this.reg_d;
+                break;
+            
             // immediate 8 moves
             case MOV_A_I8:
             case MOV_B_I8:
@@ -828,6 +844,22 @@ public class NotSoTinySimulator {
                 src = this.memory.read4Bytes(this.reg_ip);
                 break;
             
+            // BIO w/o offset
+            case MOV_A_BI:
+            case MOV_B_BI:
+            case MOV_C_BI:
+            case MOV_D_BI:
+                src = this.memory.read2Bytes(getBIOAddress(desc, false, false));
+                break;
+            
+            // BIO with offset
+            case MOV_A_BIO:
+            case MOV_B_BIO:
+            case MOV_C_BIO:
+            case MOV_D_BIO:
+                src = this.memory.read2Bytes(getBIOAddress(desc, false, true));
+                break;
+            
             // wide rim
             case MOVW_RIM:
                 src = getWideRIMSource(desc);
@@ -854,28 +886,36 @@ public class NotSoTinySimulator {
             // A
             case MOV_A_I8:
             case MOV_A_I16:
+            case MOV_A_BI:
+            case MOV_A_BIO:
                 this.reg_a = (short) src;
                 return;
             
             // B
             case MOV_B_I8:
             case MOV_B_I16:
+            case MOV_B_BI:
+            case MOV_B_BIO:
                 this.reg_b = (short) src;
                 return;
             
             // C
             case MOV_C_I8:
             case MOV_C_I16:
+            case MOV_C_BI:
+            case MOV_C_BIO:
                 this.reg_c = (short) src;
                 return;
             
             // D
             case MOV_D_I8:
             case MOV_D_I16:
+            case MOV_D_BI:
+            case MOV_D_BIO:
                 this.reg_d = (short) src;
                 return;
             
-            // others
+            // other regs
             case MOV_I_I16:
                 this.reg_i = (short) src;
                 return;
@@ -892,6 +932,23 @@ public class NotSoTinySimulator {
                 this.reg_sp = src;
                 return;
             
+            // BIO w/o offset
+            case MOV_BI_A:
+            case MOV_BI_B:
+            case MOV_BI_C:
+            case MOV_BI_D:
+                this.memory.write2Bytes(getBIOAddress(desc, false, false), reg_a);
+                return;
+                
+            // BIO with offset
+            case MOV_BIO_A:
+            case MOV_BIO_B:
+            case MOV_BIO_C:
+            case MOV_BIO_D:
+                this.memory.write2Bytes(getBIOAddress(desc, false, true), reg_a);
+                return;
+            
+            // rim
             case MOVW_RIM:
                 putWideRIMDestination(desc, src);
                 return;
@@ -1341,7 +1398,7 @@ public class NotSoTinySimulator {
                 
                 addr = this.memory.read4Bytes(this.reg_ip + 1);
             } else { // bio address
-                addr = getBIOAddress(desc);
+                addr = getBIOAddress(desc, true, (rim & 0x01) == 1);
             }
             
             //System.out.println(String.format("immediate address destination: %08X   ", addr));
@@ -1639,7 +1696,7 @@ public class NotSoTinySimulator {
             //System.out.println("bio address source");
             
             // BIO memory source
-            int addr = getBIOAddress(desc);
+            int addr = getBIOAddress(desc, true, (rim & 0x01) == 1);
             
             if(size) { // 16 bit
                 // BP/SP?
@@ -1800,13 +1857,15 @@ public class NotSoTinySimulator {
     /**
      * Gets the address from BIO
      * 
+     * @param desc
+     * @param hasRIM
+     * @param hasOffset
      * @return
      */
-    private int getBIOAddress(InstructionDescriptor desc) {
+    private int getBIOAddress(InstructionDescriptor desc, boolean hasRIM, boolean hasOffset) {
         desc.hasBIOByte = true;
         
-        byte rim = this.memory.readByte(this.reg_ip),
-             bio = this.memory.readByte(this.reg_ip + 1),
+        byte bio = this.memory.readByte(this.reg_ip + (hasRIM ? 1 : 0)),
              scale = (byte)(bio >> 6),
              offsetSize = 4;
         
@@ -1853,7 +1912,7 @@ public class NotSoTinySimulator {
         //System.out.println(String.format("addr from base: %08X", addr));
         
         // offset
-        if((rim & 0x01) == 1) {
+        if(hasOffset) {
             desc.hasImmediateAddress = true;
             desc.immediateWidth = offsetSize;
             
