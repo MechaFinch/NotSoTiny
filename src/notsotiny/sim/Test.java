@@ -42,7 +42,7 @@ public class Test {
         MemoryManager mmu = new MemoryManager();
         mmu.registerSegment(new FlatMemoryController(mem), 0, mem.length);
         mmu.registerSegment(new CharacterIOMC(System.in, System.out), 0x8000, 16);
-        mmu.registerSegment(halter, 0x0000_FFFF, 1);
+        mmu.registerSegment(halter, 0x0000_FFFE, 2);
         
         int entry = 0;
         

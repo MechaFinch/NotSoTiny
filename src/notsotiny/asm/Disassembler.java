@@ -415,14 +415,6 @@ public class Disassembler {
             case NOT_F:
             case INC_I:         case INC_J:         case ICC_I:         case ICC_J:         case DEC_I:
             case DEC_J:         case DCC_I:         case DCC_J:
-            case ADD_A_A:       case ADD_A_B:       case ADD_A_C:       case ADD_A_D:       case ADD_B_A:
-            case ADD_B_B:       case ADD_B_C:       case ADD_B_D:       case ADD_C_A:       case ADD_C_B:
-            case ADD_C_C:       case ADD_C_D:       case ADD_D_A:       case ADD_D_B:       case ADD_D_C:
-            case ADD_D_D:
-            case SUB_A_A:       case SUB_A_B:       case SUB_A_C:       case SUB_A_D:       case SUB_B_A:
-            case SUB_B_B:       case SUB_B_C:       case SUB_B_D:       case SUB_C_A:       case SUB_C_B:
-            case SUB_C_C:       case SUB_C_D:       case SUB_D_A:       case SUB_D_B:       case SUB_D_C:
-            case SUB_D_D:
             case RET:           case IRET:
                 this.lastIsRIM = false;
                 this.lastIsI8 = false;
@@ -495,12 +487,17 @@ public class Disassembler {
             
             // special cases
             case MOVW_RIM:      case MOVS_RIM:      case MOVZ_RIM:
+            case MOV_A_BI:      case MOV_A_BIO:     case MOV_BI_A:      case MOV_BIO_A:
+            case MOV_B_BI:      case MOV_B_BIO:     case MOV_BI_B:      case MOV_BIO_B:
+            case MOV_C_BI:      case MOV_C_BIO:     case MOV_BI_C:      case MOV_BIO_C:
+            case MOV_D_BI:      case MOV_D_BIO:     case MOV_BI_D:      case MOV_BIO_D:
             case PADD_RIMP:     case PADC_RIMP:     case PSUB_RIMP:     case PSBB_RIMP:
             case PINC_RIMP:     case PICC_RIMP:     case PDEC_RIMP:     case PDCC_RIMP:
             case MULH_RIM:      case MULSH_RIM:     case PMUL_RIMP:
             case PMULH_RIMP:    case PMULSH_RIMP:
             case DIVM_RIM:      case DIVMS_RIM:     case PDIV_RIMP:     case PDIVS_RIMP:
             case PDIVM_RIMP:    case PDIVMS_RIMP:
+            case ADD_RIM_I8:    case ADC_RIM_I8:    case SUB_RIM_I8:    case SBB_RIM_I8: 
             case CMP_RIM_I8:
                 this.lastIsRIM = false;
                 this.lastIsI8 = false;

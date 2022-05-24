@@ -354,7 +354,8 @@ public class NotSoTinySimulator {
         
         int b = switch(desc.op) {
             case ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADC_A_I8, ADC_B_I8, ADC_C_I8, ADC_D_I8,
-                 SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SBB_A_I8, SBB_B_I8, SBB_C_I8, SBB_D_I8         -> {
+                 SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SBB_A_I8, SBB_B_I8, SBB_C_I8, SBB_D_I8,
+                 ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8                                 -> {
                      desc.hasImmediateValue = true;
                      desc.immediateWidth = 1;
                      yield this.memory.readByte(this.reg_ip);
@@ -791,24 +792,28 @@ public class NotSoTinySimulator {
         
         switch(desc.op) {
             // A
+            case MOV_O_A:
             case MOV_BI_A:
             case MOV_BIO_A:
                 src = this.reg_a;
                 break;
             
             // B
+            case MOV_O_B:
             case MOV_BI_B:
             case MOV_BIO_B:
                 src = this.reg_b;
                 break;
             
             // C
+            case MOV_O_C:
             case MOV_BI_C:
             case MOV_BIO_C:
                 src = this.reg_c;
                 break;
             
             // D
+            case MOV_O_D:
             case MOV_BI_D:
             case MOV_BIO_D:
                 src = this.reg_d;
@@ -840,6 +845,16 @@ public class NotSoTinySimulator {
             case MOV_SP_I32:
             case MOV_BP_I32:
                 desc.hasImmediateValue = true;
+                desc.immediateWidth = 4;
+                src = this.memory.read4Bytes(this.reg_ip);
+                break;
+            
+            // offset
+            case MOV_A_O:
+            case MOV_B_O:
+            case MOV_C_O:
+            case MOV_D_O:
+                desc.hasImmediateAddress = true;
                 desc.immediateWidth = 4;
                 src = this.memory.read4Bytes(this.reg_ip);
                 break;
@@ -886,6 +901,7 @@ public class NotSoTinySimulator {
             // A
             case MOV_A_I8:
             case MOV_A_I16:
+            case MOV_A_O:
             case MOV_A_BI:
             case MOV_A_BIO:
                 this.reg_a = (short) src;
@@ -894,6 +910,7 @@ public class NotSoTinySimulator {
             // B
             case MOV_B_I8:
             case MOV_B_I16:
+            case MOV_B_O:
             case MOV_B_BI:
             case MOV_B_BIO:
                 this.reg_b = (short) src;
@@ -902,6 +919,7 @@ public class NotSoTinySimulator {
             // C
             case MOV_C_I8:
             case MOV_C_I16:
+            case MOV_C_O:
             case MOV_C_BI:
             case MOV_C_BIO:
                 this.reg_c = (short) src;
@@ -910,6 +928,7 @@ public class NotSoTinySimulator {
             // D
             case MOV_D_I8:
             case MOV_D_I16:
+            case MOV_D_O:
             case MOV_D_BI:
             case MOV_D_BIO:
                 this.reg_d = (short) src;
@@ -932,12 +951,22 @@ public class NotSoTinySimulator {
                 this.reg_sp = src;
                 return;
             
+            // offset
+            case MOV_O_A:
+            case MOV_O_B:
+            case MOV_O_C:
+            case MOV_O_D:
+                desc.hasImmediateAddress = true;
+                desc.immediateWidth = 4;
+                this.memory.write2Bytes(this.memory.read4Bytes(this.reg_ip), (short) src);
+                return;
+            
             // BIO w/o offset
             case MOV_BI_A:
             case MOV_BI_B:
             case MOV_BI_C:
             case MOV_BI_D:
-                this.memory.write2Bytes(getBIOAddress(desc, false, false), reg_a);
+                this.memory.write2Bytes(getBIOAddress(desc, false, false), (short) src);
                 return;
                 
             // BIO with offset
@@ -945,7 +974,7 @@ public class NotSoTinySimulator {
             case MOV_BIO_B:
             case MOV_BIO_C:
             case MOV_BIO_D:
-                this.memory.write2Bytes(getBIOAddress(desc, false, true), reg_a);
+                this.memory.write2Bytes(getBIOAddress(desc, false, true), (short) src);
                 return;
             
             // rim
@@ -1102,7 +1131,7 @@ public class NotSoTinySimulator {
         // deal with operand size
         int opSize = switch(desc.op) {
             case PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_F -> 2;
-            case PUSH_BP, PUSH_SP -> 4;
+            case PUSH_BP, PUSH_SP, PUSH_I32 -> 4;
             default -> getNormalRIMSourceWidth();
         };
         
@@ -1117,6 +1146,11 @@ public class NotSoTinySimulator {
             case PUSH_I     -> this.reg_i;
             case PUSH_J     -> this.reg_j;
             case PUSH_F     -> this.reg_f;
+            case PUSH_I32   -> {
+                desc.hasImmediateValue = true;
+                desc.immediateWidth = 4;
+                yield this.memory.read4Bytes(this.reg_ip);
+            }
             default         -> getNormalRIMSource(desc); // rim
         };
         

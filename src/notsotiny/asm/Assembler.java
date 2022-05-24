@@ -168,6 +168,14 @@ public class Assembler {
         HashMap<String, List<Integer>> incomingReferences = new HashMap<>();
         HashMap<File, String> libraryNames = new HashMap<>();
         
+        /*
+         * Assembler Passes
+         * 1. Initial parse pass        - Figure out what each instruction is, record labels.
+         * 2. Relative jump width pass  - Determine whether relative jumps can hit their targets and update accordingly
+         * 3. Label resolution pass     - Resolve the values of labels (excluding externals).
+         * 4. Expression reduction pass - Reduce expressions to values. Error if an unresolved label is part of an expression.
+         */
+        
         // symbols to parse
         LinkedList<Symbol> symbolQueue = new LinkedList<>(symbols);
         

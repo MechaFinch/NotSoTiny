@@ -49,7 +49,7 @@ public class CharacterIOMC implements MemoryController {
                     s += (char) c;
                 }
                 
-                this.val = Integer.parseInt(s);
+                this.val = Integer.parseInt(s.trim());
             }
         } catch(IOException e) {
             this.val = -1;
