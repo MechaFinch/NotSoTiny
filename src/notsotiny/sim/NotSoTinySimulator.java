@@ -2,6 +2,7 @@ package notsotiny.sim;
 
 import notsotiny.sim.LocationDescriptor.LocationType;
 import notsotiny.sim.memory.MemoryController;
+import notsotiny.sim.ops.Family;
 import notsotiny.sim.ops.Opcode;
 import notsotiny.sim.ops.Operation;
 
@@ -92,9 +93,8 @@ public class NotSoTinySimulator {
                 break;
         }
         
-        // don't update after absolute jumps
-        Operation type = desc.op.getType();
-        if(!(type == Operation.JMPA || type == Operation.CALLA || type == Operation.RET || type == Operation.IRET)) {
+        // jumps update themselves
+        if(!(desc.op.getType().getFamily() == Family.JUMP && desc.op.getType() != Operation.CMP)) {
             updateIP(desc);
         }
     }
@@ -354,12 +354,23 @@ public class NotSoTinySimulator {
         
         int b = switch(desc.op) {
             case ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADC_A_I8, ADC_B_I8, ADC_C_I8, ADC_D_I8,
-                 SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SBB_A_I8, SBB_B_I8, SBB_C_I8, SBB_D_I8,
-                 ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8                                 -> {
+                 SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SBB_A_I8, SBB_B_I8, SBB_C_I8, SBB_D_I8 -> {
                      desc.hasImmediateValue = true;
                      desc.immediateWidth = 1;
                      yield this.memory.readByte(this.reg_ip);
                  }
+                 
+            case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8 -> {
+                // figure out where our immediate is
+                int offset = 1;                 // rim
+                if(desc.hasBIOByte) offset++;   // bio
+                if(desc.hasImmediateAddress || desc.hasImmediateValue) offset += desc.immediateWidth; // immediate
+                
+                desc.hasImmediateValue = true;
+                desc.immediateWidth++; // our immediate
+                
+                yield this.memory.readByte(this.reg_ip + offset);
+            }
                  
             case ADD_A_I16, ADD_B_I16, ADD_C_I16, ADD_D_I16, ADC_A_I16, ADC_B_I16, ADC_C_I16, ADC_D_I16,
                  SUB_A_I16, SUB_B_I16, SUB_C_I16, SUB_D_I16, SBB_A_I16, SBB_B_I16, SBB_C_I16, SBB_D_I16 -> {
@@ -477,7 +488,8 @@ public class NotSoTinySimulator {
             default:
         }
         
-        if(desc.op.getType() == Operation.JMP) { // relative 
+        if(desc.op.getType() == Operation.JMP) { // relative
+            updateIP(desc); // relative to next inst.
             this.reg_ip += val;
         } else { // absolute
             this.reg_ip = val;
@@ -642,6 +654,8 @@ public class NotSoTinySimulator {
             case JLE_I8, JLE_RIM    -> ((this.reg_f & 0x08) != 0) || (((this.reg_f & 0x04) >> 1) != (this.reg_f & 0x02));   // less equal - zero set or sign != overflow
             default                 -> false;
         };
+        
+        updateIP(desc);
         
         // jump
         if(condition) {
@@ -1146,6 +1160,8 @@ public class NotSoTinySimulator {
             case PUSH_I     -> this.reg_i;
             case PUSH_J     -> this.reg_j;
             case PUSH_F     -> this.reg_f;
+            case PUSH_BP    -> this.reg_bp;
+            case PUSH_SP    -> this.reg_sp;
             case PUSH_I32   -> {
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 4;
@@ -1789,7 +1805,7 @@ public class NotSoTinySimulator {
                     default     -> 0;
                 };
                 
-                return rawVal | (v << 16);
+                return (rawVal & 0xFFFF) | (v << 16);
             } else if(desc.size() == 1) { // 8 bit
                 if(desc.address() == 0) { // lower
                     return rawVal & 0xFF;
@@ -1923,6 +1939,7 @@ public class NotSoTinySimulator {
                 default -> -1; // not possible
             };
             
+            // implicit sign extension
             addr <<= scale;
         } else {
             offsetSize = ++scale; // increment to avoid casting
@@ -1932,12 +1949,12 @@ public class NotSoTinySimulator {
         
         // base
         addr += switch((bio & 0x38) >> 3) {
-            case 0  -> (this.reg_d << 16) | this.reg_a; // D:A
-            case 1  -> (this.reg_a << 16) | this.reg_b; // A:B
-            case 2  -> (this.reg_b << 16) | this.reg_c; // B:C
-            case 3  -> (this.reg_c << 16) | this.reg_d; // C:D
-            case 4  -> (this.reg_j << 16) | this.reg_i; // J:I
-            case 5  -> (this.reg_i << 16) | this.reg_j; // I:J
+            case 0  -> (this.reg_d << 16) | (this.reg_a & 0xFFFF); // D:A
+            case 1  -> (this.reg_a << 16) | (this.reg_b & 0xFFFF); // A:B
+            case 2  -> (this.reg_b << 16) | (this.reg_c & 0xFFFF); // B:C
+            case 3  -> (this.reg_c << 16) | (this.reg_d & 0xFFFF); // C:D
+            case 4  -> (this.reg_j << 16) | (this.reg_i & 0xFFFF); // J:I
+            case 5  -> (this.reg_i << 16) | (this.reg_j & 0xFFFF); // I:J
             case 6  -> this.reg_bp;
             case 7  -> hasIndex ? 0 : this.reg_sp;
             default -> -1; // not possible
@@ -1999,4 +2016,18 @@ public class NotSoTinySimulator {
     public int getRegIP() { return this.reg_ip; }
     public int getRegBP() { return this.reg_bp; }
     public int getRegSP() { return this.reg_sp; }
+    
+    /*
+     * setty bois
+     */
+    public void setRegA(short a) { this.reg_a = a; }
+    public void setRegB(short b) { this.reg_b = b; }
+    public void setRegC(short c) { this.reg_c = c; }
+    public void setRegD(short d) { this.reg_d = d; }
+    public void setRegI(short i) { this.reg_i = i; }
+    public void setRegJ(short j) { this.reg_j = j; }
+    public void setRegF(short f) { this.reg_f = f; }
+    public void setRegIP(int ip) { this.reg_ip = ip; }
+    public void setRegBP(int bp) { this.reg_bp = bp; }
+    public void setRegSP(int sp) { this.reg_sp = sp; }
 }

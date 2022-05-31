@@ -1,0 +1,195 @@
+
+
+func_main:		0000 0000:	08 00					MOV A, 00
+.loop:			0000 0002:	52						PUSH A
+				0000 0003:	66 65 01 00 00			PUSH msg_accumulator
+				0000 0008:	D2 37 01				CALL func_printstr
+				0000 000B:	98 38 04				ADD SP, 04
+				0000 000E:	5C						POP A
+				0000 000F:	24 00 80 00 00			MOV [IOMC_ADDRESS], A
+				0000 0014:	28 C5 05 80 00 00		MOV [IOMC_ADDRESS + 5], AL
+				0000 001A:	09 0A					MOV B, 0A
+				0000 001C:	28 CD 00 80 00 00		MOV [IOMC_ADDRESS], BL
+				0000 0022:	28 CD 04 80 00 00		MOV [IOMC_ADDRESS + 4], BL
+				0000 0028:	52						PUSH A
+				0000 0029:	66 8F 01 00 00			PUSH prompt_op
+				0000 002E:	D2 11 01				CALL func_printstr
+				0000 0031:	98 38 04				ADD SP, 04
+				0000 0034:	5B C0 05				PUSH 05
+				0000 0037:	66 A9 01 00 00			PUSH buffer
+				0000 003C:	D2 DA 00				CALL func_getstr
+				0000 003F:	98 38 05				ADD SP, 05
+				0000 0042:	66 A1 01 00 00			PUSH symbol_clr
+				0000 0047:	66 A9 01 00 00			PUSH buffer
+				0000 004C:	D2 A3 00				CALL func_matches
+				0000 004F:	98 38 08				ADD SP, 08
+				0000 0052:	DD 00					CMP A, 0
+				0000 0054:	EC 05					JZ .next0
+				0000 0056:	5D						POP B
+				0000 0057:	08 00					MOV A, 00
+				0000 0059:	CC A7					JMP .loop
+.next0:			0000 005B:	66 A5 01 00 00			PUSH symbol_end
+				0000 0060:	66 A9 01 00 00			PUSH buffer
+				0000 0065:	D2 8A 00				CALL func_matches
+				0000 0068:	98 38 08				ADD SP, 08
+				0000 006B:	DD 00					CMP A, 00
+				0000 006D:	EC 03					JZ .next1
+				0000 006F:	CD F0 00				JMP func_halt
+.next1:			0000 0072:	66 9B 01 00 00			PUSH symbol_add
+				0000 0077:	66 A9 01 00 00			PUSH buffer
+				0000 007C:	D2 73 00				CALL func_matches
+				0000 007F:	98 38 08				ADD SP, 08
+				0000 0082:	DD 00					CMP A, 00
+				0000 0084:	EC 04					JZ .next2
+				0000 0086:	08 00					MOV A, 00
+				0000 0088:	CC 42					JMP .readint
+.next2:			0000 008A:	66 9D 01 00 00			PUSH symbol_sub
+				0000 008F:	66 A9 01 00 00			PUSH buffer
+				0000 0094:	D2 5B 00				CALL func_matches
+				0000 0097:	98 38 08				ADD SP, 08
+				0000 009A:	DD 00					CMP A, 00
+				0000 009C:	EC 04					JZ .next3
+				0000 009E:	08 01					MOV A, 01
+				0000 00A0:	CC 2A					JMP .readint
+.next3:			0000 00A2:	66 9F 01 00 00			PUSH symbol_mul
+				0000 00A7:	66 A9 01 00 00			PUSH buffer
+				0000 00AC:	D2 43 00				CALL func_matches
+				0000 00AF:	98 38 08				ADD SP, 08
+				0000 00B2:	DD 00					CMP A, 00
+				0000 00B4:	EC 04					JZ .next4
+				0000 00B6:	08 02					MOV A, 02
+				0000 00B8:	CC 12					JMP .readint
+.next4:			0000 00BA:	66 73 01 00 00			PUSH msg_unknown
+				0000 00BF:	D2 80 00				CALL func_printstr
+				0000 00C2:	98 38 04				ADD SP, 04
+				0000 00C5:	5C						POP A
+				0000 00C6:	CD 39 FF				JMP .loop
+.switch_table:	0000 00C9:	00						.case0 -> .case0
+				0000 00CA:	05						.case0 -> .case1
+				0000 00CB:	0A						.case0 -> .case2
+.readint:		0000 00CC:	28 C9 05 80 00 00		MOV BL, [IOMC_ADDRESS + 5]
+				0000 00D2:	21 00 80 00 00			MOV B, [IOMC_ADDRESS]
+				0000 00D7:	01 58 C9 00 00 00		MOVW C:D, .switch_table
+				0000 00DD:	28 DA 18				MOV DL, [C:D + A]
+				0000 00E0:	5C						POP A
+				0000 00E1:	CF 83					JMP DL
+.case0:			0000 00E3:	90 01					ADD A, B
+				0000 00E5:	CD 1A FF				JMP .loop
+.case1:			0000 00E8:	94 01					SUB A, B
+				0000 00EA:	CD 15 FF				JMP .loop
+.case2:			0000 00ED:	B0 01					MUL A, B
+				0000 00EF:	CD 10 FF				JMP .loop
+func_matches:	0000 00F2:	56						PUSH I
+				0000 00F3:	58						PUSH BP
+				0000 00F4:	04 00 00				MOV I, 0000
+				0000 00F7:	01 5B 3F 0A				MOVW C:D, [SP + 0A]
+				0000 00FB:	28 73 3F 0E				MOV BP, [SP + 0E]
+.loop:			0000 00FF:	28 C2 1C				MOV AL, [C:D + I]
+				0000 0102:	28 CA 34				MOV BL, [BP + I]
+				0000 0105:	DB 81					CMP AL, BL
+				0000 0107:	EE 0B					JNZ .false
+				0000 0109:	DD 80					CMP AL, 00
+				0000 010B:	EC 03					JZ .true
+				0000 010D:	A8						INC I
+				0000 010E:	CC EF					JMP .loop
+.true:			0000 0110:	08 01					MOV A, 01
+				0000 0112:	CC 02					JMP .end
+.false:			0000 0114:	08 00					MOV A, 00
+.end:			0000 0116:	62						POP BP
+				0000 0117:	60						POP I
+				0000 0118:	D6						RET
+func_getstr:	0000 0119:	08 00					MOV A, 00
+				0000 011B:	01 53 3F 04				MOVW B:C, [SP + 04]
+				0000 011F:	28 DB 3F 08				MOV DL, [SP + 08]
+				0000 0123:	58						PUSH BP
+				0000 0124:	07 00 80 00 00			MOV BP, IOMC_ADDRESS
+.loop:			0000 0129:	DB 83					CMP AL, DL
+				0000 012B:	FA 13					JGE .end
+				0000 012D:	28 E3 37 04				MOV AH, [BP + 4]
+				0000 0131:	28 E2 37				MOV AH, [BP]
+				0000 0134:	28 E6 17				MOV [B:C], AH
+				0000 0137:	A0 10					INC C
+				0000 0139:	A1 08					ICC B
+				0000 013B:	DB E0 0A				CMP AH, 0A
+				0000 013E:	EE E9					JNZ .loop
+.end:			0000 0140:	62						POP BP
+				0000 0141:	D6						RET
+func_printstr:	0000 0142:	56						PUSH I
+				0000 0143:	57						PUSH J
+				0000 0144:	01 63 3F 08				MOVW J:I, [SP + 08]
+				0000 0148:	03 50 00 80				MOVZ B:C, IOMC_ADDRESS
+.loop:			0000 014C:	28 C2 27				MOV AL, [J:I]
+				0000 014F:	A8						INC I
+				0000 0150:	AB						ICC J
+				0000 0151:	28 C6 17				MOV [B:C], AL
+				0000 0154:	28 C7 17 04				MOV [B:C + 04], AL
+				0000 0158:	DD 00					CMP A, 00
+				0000 015A:	EE F0					JNZ .loop
+.end:			0000 015C:	61						POP J
+				0000 015D:	60						POP I
+				0000 015E:	D6						RET
+func_halt:		0000 015F:	28 45 FE FF 00 00		MOV [HALTER_ADDRESS], A
+msg_accumulator	0000 0165:	41 63 63 75 6D 75 6C 61
+				0000 016D:	74 6F 72 3A 20 00
+msg_unknown		0000 0173:	55 6E 6B 6E 6F 77 6E 20
+				0000 017B:	6F 70 65 72 61 74 69 6F
+				0000 0183:	6E 2E 0A 00
+prompt_value	0000 0187:	56 61 6C 75 65 3A 20 00
+prompt_op		0000 018F:	4F 70 65 72 61 74 69 6F
+				0000 0197:	6E 3A 20 00
+symbol_add		0000 019B:	2B 00
+symbol_sub		0000 019D:	2D 00
+symbol_mul		0000 019F:	2A 00
+symbol_clr		0000 01A1:	63 6C 72 00
+symbol_end		0000 01A5:	65 6E 64 00
+buffer			0000 01A9:	00 00 00 00 00
+
+
+defined values
+HALTER_ADDRESS 0xFFFE
+IOMC_ADDRESS 0x8000
+
+
+label values
+func_main					0000 0000
+func_main.loop				0000 0002
+func_main.next0				0000 005B
+func_main.next1				0000 0072
+func_main.next2				0000 0089
+func_main.next3				0000 00A1
+func_main.next4				0000 00B9
+func_main.switch_table		0000 00C8
+func_main.readint			0000 00CB
+func_main.case0				0000 00E2
+func_main.case1				0000 00E7
+func_main.case2				0000 00EC
+
+func_matches				0000 00F1
+func_matches.loop			0000 00FE
+func_matches.true			0000 010F
+func_matches.false			0000 0113
+func_matches.end			0000 0115
+
+func_getstr					0000 0118
+func_getstr.loop			0000 0127
+func_getstr.end				0000 013E
+
+func_printstr				0000 0140
+func_printstr.loop			0000 014C
+func_printstr.end			0000 015C
+
+func_halt					0000 015F
+
+msg_accumulator				0000 0165
+msg_unknown					0000 0173
+
+prompt_value				0000 0187
+prompt_op					0000 018F
+
+symbol_add					0000 019B
+symbol_sub					0000 019D
+symbol_mul					0000 019F
+symbol_clr					0000 01A1
+symbol_end					0000 01A5
+
+buffer						0000 01A9

@@ -312,7 +312,7 @@ public enum Opcode {
     
     static {
         for(Opcode op : values()) {
-            opMap.put(op.getOp(), op);
+            opMap.put(op.op, op);
         }
     }
     

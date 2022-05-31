@@ -1,9 +1,10 @@
 package notsotiny.sim;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.Arrays;
 
 import notsotiny.asm.Disassembler;
 import notsotiny.sim.memory.CharacterIOMC;
@@ -18,23 +19,33 @@ import notsotiny.sim.memory.MemoryManager;
 public class Test {
     
     public static void main(String[] args) throws IOException {
-        byte[] mem = new byte[0x02FF];
-        int[] prog = new int[] {
-                       0x01, 0x58, 0x22, 0x00, 0x00, 0x00,
-                       0x03, 0x70, 0x00, 0x80,
-                       0x04, 0x00, 0x00,
-                       0x20, 0xC2, 0x1C,
-                       0x68,
-                       0x20, 0xC6, 0x37,
-                       0x20, 0xCF, 0x37, 0x04,
-                       0xDD, 0x00,
-                       0xEE, 0xF1,
-                       0x20, 0xCD, 0xFF, 0xFF, 0x00, 0x00,
-                       0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21, 0x00
-               };
+        byte[] mem = new byte[0x0800];
         
-        for(int i = 0; i < prog.length; i++) {
-            mem[i] = (byte) prog[i];
+        try(BufferedReader br = new BufferedReader(new FileReader(new File("calculator_assembled.txt")))) {
+            int i = 0;
+            
+            for(String ln : br.lines().toList()) {
+                if(ln.contains(":")) {
+                    System.out.println(ln);
+                    int a = ln.lastIndexOf(":\t") + 1,
+                        b = ln.lastIndexOf('\t');
+                    
+                    String[] bytes;
+                    
+                    if(a == b) {
+                        bytes = ln.substring(a).strip().split(" ");
+                    } else {
+                        bytes = ln.substring(a, b).strip().split(" ");
+                    }
+                    
+                    for(int j = 0; j < bytes.length; j++) {
+                        System.out.println(bytes[j]);
+                        mem[i] = (byte) Integer.parseInt(bytes[j], 16);
+                        
+                        i++;
+                    }
+                }
+            }
         }
         
         Halter halter = new Halter();
@@ -47,9 +58,17 @@ public class Test {
         int entry = 0;
         
         NotSoTinySimulator sim = new NotSoTinySimulator(mmu, entry);
+        sim.setRegSP(0x0800);
         
-        //runStepped(sim, mem, 20, halter);
-        runFast(sim, mem, 128, halter);
+        try {
+            //runStepped(sim, mem, 1024, halter);
+            runFast(sim, mem, 2048, halter);
+        } catch(Exception e) {
+            e.printStackTrace();
+        }
+        
+        System.out.println("\n");
+        printState(sim, mem, new Disassembler());
     }
     
     public static void runFast(NotSoTinySimulator sim, byte[] mem, int maxInstructions, Halter halter) throws IOException {
@@ -65,18 +84,7 @@ public class Test {
         Disassembler dis = new Disassembler();
         
         for(int i = 0; i < maxInstructions; i++) {
-            System.out.println(String.format("A    B    C    D%n%04X %04X %04X %04X%nI    J    F%n%04X %04X %04X%nip       bp       sp%n%08X %08X %08X",
-                                             sim.getRegA(), sim.getRegB(), sim.getRegC(), sim.getRegD(),
-                                             sim.getRegI(), sim.getRegJ(), sim.getRegF(),
-                                             sim.getRegIP(), sim.getRegBP(), sim.getRegSP()));
-            
-            /*
-            for(int j = 0x00F0; j < 0x0100; j += 2) {
-                System.out.println(String.format("%08X: %02X%02X", j, mem[j + 1], mem[j]));
-            }
-            */
-            
-            System.out.println(dis.disassemble(mem, sim.getRegIP()));
+            printState(sim, mem, dis);
             
             stdin.readLine();
             
@@ -89,5 +97,26 @@ public class Test {
                 break;
             }
         }
+    }
+    
+    public static void printState(NotSoTinySimulator sim, byte[] mem, Disassembler dis) {
+        for(int j = 0x07F0; j < 0x0800; j += 2) {
+            System.out.println(String.format("%08X: %02X%02X", j, mem[j + 1], mem[j]));
+        }
+        
+        System.out.println();
+        
+        System.out.println(String.format("A    B    C    D%n%04X %04X %04X %04X%nI    J    F%n%04X %04X %04X%nip       bp       sp%n%08X %08X %08X",
+                                         sim.getRegA(), sim.getRegB(), sim.getRegC(), sim.getRegD(),
+                                         sim.getRegI(), sim.getRegJ(), sim.getRegF(),
+                                         sim.getRegIP(), sim.getRegBP(), sim.getRegSP()));
+        
+        System.out.println(dis.disassemble(mem, sim.getRegIP()));
+        
+        for(int j = 0; j < dis.getLastInstructionLength(); j++) {
+            System.out.print(String.format("%02X ", mem[sim.getRegIP() + j]));
+        }
+        
+        System.out.println();
     }
 }

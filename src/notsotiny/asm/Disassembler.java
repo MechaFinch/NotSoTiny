@@ -475,15 +475,16 @@ public class Disassembler {
                 this.lastIsI16 = false;
                 this.lastIsI32 = true;
                 this.lastHasDestination = true;
-                return 4;
+                return 5;
             
             case JMP_I32:       case JMPA_I32:      case CALLA_I32:
+            case PUSH_I32:
                 this.lastIsRIM = false;
                 this.lastIsI8 = false;
                 this.lastIsI16 = false;
                 this.lastIsI32 = true;
                 this.lastHasDestination = false;
-                return 4;
+                return 5;
             
             // special cases
             case MOVW_RIM:      case MOVS_RIM:      case MOVZ_RIM:

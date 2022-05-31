@@ -13,10 +13,10 @@ import java.util.List;
 import java.util.MissingResourceException;
 
 import asmlib.lex.Lexer;
-import asmlib.lex.symbols.Directive;
-import asmlib.lex.symbols.Label;
-import asmlib.lex.symbols.LineMarker;
-import asmlib.lex.symbols.Mnemonic;
+import asmlib.lex.symbols.DirectiveSymbol;
+import asmlib.lex.symbols.LabelSymbol;
+import asmlib.lex.symbols.LineMarkerSymbol;
+import asmlib.lex.symbols.MnemonicSymbol;
 import asmlib.lex.symbols.Symbol;
 import asmlib.token.Tokenizer;
 import asmlib.util.relocation.RelocatableObject;
@@ -170,20 +170,22 @@ public class Assembler {
         
         /*
          * Assembler Passes
-         * 1. Initial parse pass        - Figure out what each instruction is, record labels.
-         * 2. Relative jump width pass  - Determine whether relative jumps can hit their targets and update accordingly
-         * 3. Label resolution pass     - Resolve the values of labels (excluding externals).
-         * 4. Expression reduction pass - Reduce expressions to values. Error if an unresolved label is part of an expression.
+         * 1. Definitions pass          - Parse %define statements and apply them
+         * 2. Main parse pass           - Figure out what each instruction is, record labels.
+         * 3. Jump distinction pass     - Jumps to internal references are relative, jumps to external references are absolute 
+         * 4. Relative jump width pass  - Determine whether relative jumps can hit their targets and update accordingly. Continues until all jumps are stable.
+         * 5. Expression reduction pass - Reduce expressions to values. Error if an unresolved label is part of an expression.
          */
         
         // symbols to parse
         LinkedList<Symbol> symbolQueue = new LinkedList<>(symbols);
+        LinkedList<Instruction> instructions = new LinkedList<>();
         
         while(symbolQueue.size() > 0) {
             Symbol s = symbolQueue.poll();
             
             // newline = update current line
-            if(s instanceof LineMarker lm) {
+            if(s instanceof LineMarkerSymbol lm) {
                 line = lm.lineNumber();
                 continue;
             }
@@ -191,15 +193,15 @@ public class Assembler {
             // parse
             try {
                 switch(s) {
-                    case Directive d:
+                    case DirectiveSymbol d:
                         // TODO
                         break;
                         
-                    case Label l:
+                    case LabelSymbol l:
                         // TODO
                         break;
                     
-                    case Mnemonic m:
+                    case MnemonicSymbol m:
                         // TODO
                         break;
                         

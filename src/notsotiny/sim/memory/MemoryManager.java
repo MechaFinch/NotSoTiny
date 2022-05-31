@@ -70,9 +70,9 @@ public class MemoryManager implements MemoryController {
      * @throws NullPointerException if no segments have been registered
      */
     private int getSegment(int address) {
-        int start = this.startAddresses.floor(address);
+        Integer start = this.startAddresses.floor(address);
         
-        if(this.endAddresses.get(start) < address) {
+        if(start == null || this.endAddresses.get(start) < address) {
             throw new IndexOutOfBoundsException(String.format("Attempted to access non-registered address: %04X", address));
         }
         
