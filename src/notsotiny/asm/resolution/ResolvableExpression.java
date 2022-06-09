@@ -8,11 +8,12 @@ import notsotiny.asm.Operator;
  * 
  * @author Mechafinch
  */
-public class ResolvableExpression implements Resolvable {
+public class ResolvableExpression implements ResolvableValue {
     
-    private Resolvable parent,  // container Resolvable
-                       left,    // left side
-                       right;   // right side
+    private Resolvable parent;  // container Resolvable
+    
+    private ResolvableValue left,    // left side
+                            right;   // right side
     
     private Operator operation;
 
@@ -24,7 +25,7 @@ public class ResolvableExpression implements Resolvable {
      * @param right
      * @param operation
      */
-    public ResolvableExpression(Resolvable parent, Resolvable left, Resolvable right, Operator operation) {
+    public ResolvableExpression(Resolvable parent, ResolvableValue left, ResolvableValue right, Operator operation) {
         this.parent = parent;
         this.left = left;
         this.right = right;

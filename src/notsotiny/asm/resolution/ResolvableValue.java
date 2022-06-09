@@ -1,67 +1,9 @@
 package notsotiny.asm.resolution;
 
-
-/**
- * A value
- * 
- * @author Mechafinch
- */
-public class ResolvableValue implements Resolvable {
-    
-    private int val;
-    
-    private boolean resolved;
-    
-    private Resolvable parent;
+public interface ResolvableValue extends Resolvable {
     
     /**
-     * Resolved constructor
-     * 
-     * @param val
+     * @return The value
      */
-    public ResolvableValue(Resolvable parent, int val) {
-        this.val = val;
-        this.parent = parent;
-        
-        this.resolved = true;
-    }
-    
-    /**
-     * Unresolved constructor
-     * 
-     * @param e
-     */
-    public ResolvableValue(Resolvable parent) {
-        this.parent = parent;
-        
-        this.val = -1;
-        this.resolved = false;
-    }
-
-    @Override
-    public boolean isResolved() {
-        return this.resolved;
-    }
-
-    @Override
-    public void resolve() {
-        this.parent.resolve();
-    }
-    
-    @Override
-    public int value() {
-        return this.val;
-    }
-    
-    /**
-     * Set the value and resolve
-     * 
-     * @param val
-     */
-    public void setValue(int val) {
-        this.val = val;
-        this.resolved = true;
-        
-        resolve();
-    }
+    public int value();
 }

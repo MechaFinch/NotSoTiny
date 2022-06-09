@@ -673,6 +673,9 @@ public class NotSoTinySimulator {
         
         switch(desc.op.getType()) {
             case MOV:
+            case MOVW:
+            case MOVS:
+            case MOVZ:
                 runMOV(desc);
                 break;
             

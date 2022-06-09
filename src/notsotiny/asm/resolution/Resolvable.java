@@ -17,9 +17,4 @@ public interface Resolvable {
      * Called by children when their values are resolved
      */
     public void resolve();
-    
-    /**
-     * @return The resolved value of this object
-     */
-    public int value();
 }

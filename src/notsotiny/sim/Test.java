@@ -5,7 +5,11 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.List;
 
+import asmlib.util.relocation.RelocatableObject;
+import asmlib.util.relocation.Relocator;
+import notsotiny.asm.Assembler;
 import notsotiny.asm.Disassembler;
 import notsotiny.sim.memory.CharacterIOMC;
 import notsotiny.sim.memory.FlatMemoryController;
@@ -21,6 +25,7 @@ public class Test {
     public static void main(String[] args) throws IOException {
         byte[] mem = new byte[0x0800];
         
+        /*
         try(BufferedReader br = new BufferedReader(new FileReader(new File("calculator_assembled.txt")))) {
             int i = 0;
             
@@ -47,6 +52,18 @@ public class Test {
                 }
             }
         }
+        */
+        
+        List<RelocatableObject> objects = Assembler.assemble(new File("calculator.asm"));
+        
+        Relocator rel = new Relocator();
+        objects.forEach(rel::add);
+        
+        byte[] prog = rel.relocate(0);
+        
+        for(int i = 0; i < prog.length; i++) {
+            mem[i] = prog[i];
+        }
         
         Halter halter = new Halter();
         
@@ -61,8 +78,8 @@ public class Test {
         sim.setRegSP(0x0800);
         
         try {
-            //runStepped(sim, mem, 1024, halter);
-            runFast(sim, mem, 2048, halter);
+            runStepped(sim, mem, 1024, halter);
+            //runFast(sim, mem, 2048, halter);
         } catch(Exception e) {
             e.printStackTrace();
         }

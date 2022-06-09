@@ -11,9 +11,9 @@ import java.util.Map;
 public enum Opcode {    
     NOP         (0x00, Operation.NOP),
     
-    MOVW_RIM    (0x01, Operation.MOV),
-    MOVS_RIM    (0x02, Operation.MOV),
-    MOVZ_RIM    (0x03, Operation.MOV),
+    MOVW_RIM    (0x01, Operation.MOVW),
+    MOVS_RIM    (0x02, Operation.MOVS),
+    MOVZ_RIM    (0x03, Operation.MOVZ),
     
     MOV_I_I16   (0x04, Operation.MOV),
     MOV_J_I16   (0x05, Operation.MOV),

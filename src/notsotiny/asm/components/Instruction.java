@@ -1,6 +1,7 @@
-package notsotiny.asm;
+package notsotiny.asm.components;
 
 import notsotiny.asm.resolution.Resolvable;
+import notsotiny.asm.resolution.ResolvableLocationDescriptor;
 import notsotiny.sim.ops.Opcode;
 
 /**
@@ -8,30 +9,58 @@ import notsotiny.sim.ops.Opcode;
  * 
  * @author Mechafinch
  */
-public class Instruction {
+public class Instruction implements Component {
     
     public Opcode op;
     
-    public Resolvable source, destination;
-    
-    public int address;
+    public ResolvableLocationDescriptor destination, source;
     
     private int width = -1;
     
     /**
-     * Create an instruction
+     * Create an instruction with source and destination
      * 
      * @param op
+     * @param destination
+     * @param source
      * @param address
      */
-    public Instruction(Opcode op, Resolvable source, Resolvable destination, int address) {
+    public Instruction(Opcode op, ResolvableLocationDescriptor destination, ResolvableLocationDescriptor source) {
         this.op = op;
-        this.source = source;
         this.destination = destination;
-        this.address = address;
+        this.source = source;
     }
     
-    public int getWidth() {
+    /**
+     * Create an instruction with destination only
+     * 
+     * @param op
+     * @param location
+     * @param destination
+     * @param address
+     */
+    public Instruction(Opcode op, ResolvableLocationDescriptor location, boolean destination) {
+        this(op, destination ? location : ResolvableLocationDescriptor.NONE, destination ? ResolvableLocationDescriptor.NONE : location);
+    }
+    
+    /**
+     * Create an instruction with no parameters
+     * 
+     * @param op
+     */
+    public Instruction(Opcode op) {
+        this(op, ResolvableLocationDescriptor.NONE, ResolvableLocationDescriptor.NONE);
+    }
+    
+    /**
+     * @return true if resolved
+     */
+    public boolean isResolved() {
+        return this.source.isResolved() && this.destination.isResolved();
+    }
+    
+    @Override
+    public int getSize() {
         if(this.width != -1) return this.width;
         
         // thank u assign & use value construction
@@ -113,5 +142,10 @@ public class Instruction {
     
     private int getBIOWidth(Resolvable location) {
         return -1;
+    }
+    
+    @Override
+    public String toString() {
+        return this.op.toString() + " " + this.destination.toString() + " " + this.source.toString();
     }
 }

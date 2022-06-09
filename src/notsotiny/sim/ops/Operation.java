@@ -9,6 +9,9 @@ public enum Operation {
     NOP     (Family.MISC),
     
     MOV     (Family.MOVE),
+    MOVW    (Family.MOVE),
+    MOVS    (Family.MOVE),
+    MOVZ    (Family.MOVE),
     XCHG    (Family.MOVE),
     PUSH    (Family.MOVE),
     POP     (Family.MOVE),
