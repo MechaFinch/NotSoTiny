@@ -3,6 +3,7 @@ package notsotiny.ui;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
+import notsotiny.sim.memory.MemoryController;
 
 /**
  * black & white bitmap of a section of memory
@@ -16,6 +17,13 @@ public class Screen extends Canvas {
                 pixelSize,
                 widthBytes;
     
+    /**
+     * Creates a blank screen of a given size
+     * 
+     * @param screenWidth
+     * @param screenHeight
+     * @param pixelSize
+     */
     public Screen(int screenWidth, int screenHeight, int pixelSize) {
         this.screenWidth = screenWidth;
         this.screenHeight = screenHeight;
@@ -33,7 +41,7 @@ public class Screen extends Canvas {
      * @param mem
      * @param startAddress
      */
-    public void update(byte[] mem, int startAddress) {
+    public void update(MemoryController mem, int startAddress) {
         GraphicsContext g = this.getGraphicsContext2D();
         
         // clear
@@ -43,7 +51,7 @@ public class Screen extends Canvas {
         // draw
         for(int y = 0; y < this.screenHeight; y++) {
             for(int x = 0; x < this.widthBytes; x++) {
-                byte b = mem[startAddress + x + (y * this.widthBytes)];
+                byte b = mem.readByte(startAddress + x + (y * this.widthBytes));
                 
                 for(int i = 7; i >= 0; i--) {
                     if(((b >> i) & 0x01) == 1) {
