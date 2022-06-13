@@ -25,11 +25,15 @@ public class ResolvableExpression implements ResolvableValue {
      * @param right
      * @param operation
      */
-    public ResolvableExpression(Resolvable parent, ResolvableValue left, ResolvableValue right, Operator operation) {
-        this.parent = parent;
+    public ResolvableExpression(ResolvableValue left, ResolvableValue right, Operator operation) {
         this.left = left;
         this.right = right;
         this.operation = operation;
+        
+        this.parent = null;
+        
+        this.left.setParent(this);
+        this.right.setParent(this);
     }
     
     @Override
@@ -58,6 +62,11 @@ public class ResolvableExpression implements ResolvableValue {
             case MULTIPLY   -> a * b;
             case DIVIDE     -> a / b;
         };
+    }
+    
+    @Override
+    public void setParent(Resolvable r) {
+        this.parent = r;
     }
     
     public Resolvable getLeft() { return this.left; }

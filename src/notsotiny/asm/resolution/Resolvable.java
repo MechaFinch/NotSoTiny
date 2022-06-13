@@ -17,4 +17,11 @@ public interface Resolvable {
      * Called by children when their values are resolved
      */
     public void resolve();
+    
+    /**
+     * Sets this Resolvable's parent
+     * 
+     * @param r
+     */
+    public void setParent(Resolvable r);
 }

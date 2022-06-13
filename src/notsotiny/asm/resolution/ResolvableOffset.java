@@ -1,18 +1,18 @@
 package notsotiny.asm.resolution;
 
-
 /**
- * A value. Has a name if unresolved
+ * An offset between two labels
  * 
  * @author Mechafinch
  */
-public class ResolvableConstant implements ResolvableValue {
+public class ResolvableOffset implements ResolvableValue {
     
     private int val;
     
     private boolean resolved;
     
-    private String name;
+    private String originName,
+                   targetName;
     
     private Resolvable parent;
     
@@ -21,32 +21,35 @@ public class ResolvableConstant implements ResolvableValue {
      * 
      * @param val
      */
-    public ResolvableConstant(int val) {
+    public ResolvableOffset(int val) {
         this.val = val;
         
         this.resolved = true;
-        this.name = null;
+        this.originName = null;
+        this.targetName = null;
         this.parent = null;
     }
     
     /**
      * Unresolved constructor
      * 
-     * @param name
+     * @param originName
+     * @param targetName
      */
-    public ResolvableConstant(String name) {
-        this.name = name;
+    public ResolvableOffset(String originName, String targetName) {
+        this.originName = originName;
+        this.targetName = targetName;
         
         this.val = -1;
         this.resolved = false;
         this.parent = null;
     }
-
+    
     @Override
     public boolean isResolved() {
         return this.resolved;
     }
-
+    
     @Override
     public void resolve() {
         this.parent.resolve();
@@ -63,7 +66,7 @@ public class ResolvableConstant implements ResolvableValue {
     }
     
     /**
-     * Set the value and resolve
+     * Set the value and resolve 
      * 
      * @param val
      */
@@ -79,9 +82,10 @@ public class ResolvableConstant implements ResolvableValue {
         if(this.resolved) {
             return Integer.toString(this.val);
         } else {
-            return this.name;
+            return this.originName + "->" + this.targetName;
         }
     }
     
-    public String getName() { return this.name; }
+    public String getOriginName() { return this.originName; }
+    public String getTargetName() { return this.targetName; }
 }

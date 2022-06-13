@@ -30,13 +30,13 @@ public class ResolvableMemory implements Resolvable {
      * @param scale
      * @param offset
      */
-    public ResolvableMemory(Register base, Register index, int scale, int offset, Resolvable parent) {
+    public ResolvableMemory(Register base, Register index, int scale, int offset) {
         this.base = base;
         this.index = index;
         this.scale = scale;
         this.offset = offset;
-        this.parent = parent;
         
+        this.parent = null;
         this.rOffset = null;
         this.resolved = true;
     }
@@ -55,8 +55,11 @@ public class ResolvableMemory implements Resolvable {
         this.scale = scale;
         this.rOffset = offset;
         
+        this.parent = null;
         this.offset = -1;
         this.resolved = false;
+        
+        this.rOffset.setParent(this);
     }
 
     @Override
@@ -72,6 +75,11 @@ public class ResolvableMemory implements Resolvable {
             this.offset = this.rOffset.value();
             this.parent.resolve();
         }
+    }
+    
+    @Override
+    public void setParent(Resolvable r) {
+        this.parent = r;
     }
     
     public Register getBase() { return this.base; }

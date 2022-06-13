@@ -91,5 +91,34 @@ public enum Operation {
         this.fam = fam;
     }
     
+    /**
+     * Converts a mnemonic to an Operation
+     * 
+     * @param n
+     * @return
+     */
+    public static Operation fromMnemonic(String n) {
+        try {
+            // easy ones
+            return Operation.valueOf(n);
+        } catch(IllegalArgumentException e) {
+            // packed stuff
+            if(n.endsWith("4") || n.endsWith("8")) {
+                return Operation.valueOf(n.substring(0, n.length() - 1));
+            }
+            
+            // JCC
+            switch(n) {
+                case "JC", "JNC", "JS", "JNS", "JO", "JNO", "JZ", "JNZ", "JE", "JNE",
+                     "JA", "JNA", "JAE", "JNAE", "JB", "JNB", "JBE", "JNBE",
+                     "JG", "JNG", "JGE", "JNGE", "JL", "JNL", "JLE", "JNLE":
+                         return Operation.JCC;
+                
+                default:
+                    throw new IllegalArgumentException("Invalid mnemonic " + n);
+            }
+        }
+    }
+    
     public Family getFamily() { return this.fam; }
 }

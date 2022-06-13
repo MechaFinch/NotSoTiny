@@ -59,6 +59,16 @@ public class Instruction implements Component {
         return this.source.isResolved() && this.destination.isResolved();
     }
     
+    /**
+     * Determines if this instruction has valid operands. 
+     * 
+     * @return
+     */
+    public boolean hasValidOperands() {
+        // TODO
+        return true;
+    }
+    
     @Override
     public int getSize() {
         if(this.width != -1) return this.width;
@@ -146,6 +156,20 @@ public class Instruction implements Component {
     
     @Override
     public String toString() {
-        return this.op.toString() + " " + this.destination.toString() + " " + this.source.toString();
+        String src = this.source.toString(),
+               dst = this.destination.toString(),
+               str = this.op.toString();
+        
+        if(!dst.equals("")) {
+            str += " " + dst;
+            
+            if(!src.equals("")) {
+                str += ", " + src;
+            }
+        } else if(!src.equals("")) {
+            str += " " + src;
+        }
+        
+        return str;
     }
 }

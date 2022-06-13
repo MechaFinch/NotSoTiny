@@ -14,17 +14,24 @@ import java.util.Map;
 import java.util.MissingResourceException;
 
 import asmlib.lex.Lexer;
+import asmlib.lex.symbols.ConstantSymbol;
 import asmlib.lex.symbols.DirectiveSymbol;
+import asmlib.lex.symbols.ExpressionSymbol;
 import asmlib.lex.symbols.LabelSymbol;
 import asmlib.lex.symbols.LineMarkerSymbol;
+import asmlib.lex.symbols.MemorySymbol;
 import asmlib.lex.symbols.MnemonicSymbol;
 import asmlib.lex.symbols.NameSymbol;
+import asmlib.lex.symbols.RegisterSymbol;
+import asmlib.lex.symbols.SizeSymbol;
+import asmlib.lex.symbols.SpecialCharacterSymbol;
 import asmlib.lex.symbols.Symbol;
 import asmlib.token.Tokenizer;
 import asmlib.util.relocation.RelocatableObject;
 import asmlib.util.relocation.RelocatableObject.Endianness;
 import notsotiny.asm.components.Component;
 import notsotiny.asm.components.Instruction;
+import notsotiny.asm.resolution.ResolvableConstant;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor.LocationType;
 import notsotiny.sim.ops.Opcode;
@@ -240,9 +247,11 @@ public class Assembler {
                         
                         if(inst == null) {
                             // placeholder
+                        } else if(!inst.hasValidOperands()) {
+                            System.out.println("Illegal operands for instruction: " + inst + " on line " + line);
                         } else {
                             allInstructions.add(inst);
-                            if(!inst.isResolved()) unresolvedInstructions.add(inst);
+                            //if(!inst.isResolved()) unresolvedInstructions.add(inst);
                         }
                         break;
                         
@@ -251,6 +260,8 @@ public class Assembler {
                 }
             } catch(IndexOutOfBoundsException e) { // these let us avoid checking that needed symbols exist
                 throw new IllegalArgumentException("Missing symbol after " + s + " on line " + line);
+            } catch(IllegalArgumentException e) { // add line info to parser errors
+                System.out.println(e.getMessage() + " on line " + line);
             } catch(ClassCastException e) {
                 throw new IllegalArgumentException("Invalid symbol after " + s + " on line " + line);
             }
@@ -278,22 +289,7 @@ public class Assembler {
      */
     private static Instruction parseInstruction(LinkedList<Symbol> symbolQueue, MnemonicSymbol m) {
         // convert to Operation for argument count
-        Operation opr;
-        
-        try {
-            opr = Operation.valueOf(m.name());
-        } catch(IllegalArgumentException e) { // JCC doesn't match mnemonic
-            switch(m.name()) {
-                case "JC", "JNC", "JS", "JNS", "JO", "JNO", "JZ", "JNZ", "JE", "JNE",
-                     "JA", "JNA", "JAE", "JNAE", "JB", "JNB", "JBE", "JNBE",
-                     "JG", "JNG", "JGE", "JNGE", "JL", "JNL", "JLE", "JNLE":
-                         opr = Operation.JCC;
-                break;
-                
-                default:
-                    throw new IllegalArgumentException("Invalid mnemonic " + m);
-            }
-        }
+        Operation opr = Operation.fromMnemonic(m.name());
         
         // how many arguments does this mnemonic have
         if(!hasFirstOperand(opr)) {
@@ -306,58 +302,153 @@ public class Assembler {
             };
         } else {
             // parse first operand
-            ResolvableLocationDescriptor firstOperand = parseOperand(true);
+            ResolvableLocationDescriptor firstOperand = parseOperand(symbolQueue, true);
             
             if(!hasSecondOperand(opr)) {
                 // 1 argument.
                 // PUSH, JMP, JCC, CALL, and INT are all source only while the others are destination only
-                Opcode opcode;
+                Opcode opcode = null;
+                boolean isImmediate = firstOperand.getType() == LocationType.IMMEDIATE;
                 
                 // everything has its own rules
                 switch(opr) {
                         // register shortcuts + F
-                    case PUSH, POP:
-                        // TODO
+                    case PUSH:
+                        opcode = switch(firstOperand.getType()) {
+                            case REG_A  -> Opcode.PUSH_A;
+                            case REG_B  -> Opcode.PUSH_B;
+                            case REG_C  -> Opcode.PUSH_C;
+                            case REG_D  -> Opcode.PUSH_D;
+                            case REG_I  -> Opcode.PUSH_I;
+                            case REG_J  -> Opcode.PUSH_J;
+                            case REG_BP -> Opcode.PUSH_BP;
+                            case REG_SP -> Opcode.PUSH_SP;
+                            case REG_F  -> Opcode.PUSH_F;
+                            default     -> Opcode.PUSH_RIM;
+                        };
+                        break;
+                    
+                    case POP:
+                        opcode = switch(firstOperand.getType()) {
+                            case REG_A  -> Opcode.POP_A;
+                            case REG_B  -> Opcode.POP_B;
+                            case REG_C  -> Opcode.POP_C;
+                            case REG_D  -> Opcode.POP_D;
+                            case REG_I  -> Opcode.POP_I;
+                            case REG_J  -> Opcode.POP_J;
+                            case REG_BP -> Opcode.POP_BP;
+                            case REG_SP -> Opcode.POP_SP;
+                            case REG_F  -> Opcode.POP_F;
+                            default     -> Opcode.POP_RIM;
+                        };
                         break;
                     
                         // I/J shortcuts
-                    case INC, ICC, DEC, DCC:
-                        // TODO
+                    case INC:
+                        opcode = switch(firstOperand.getType()) {
+                            case REG_I  -> Opcode.INC_I;
+                            case REG_J  -> Opcode.INC_J;
+                            default     -> Opcode.INC_RIM;
+                        };
+                        break;
+                        
+                    case ICC:
+                        opcode = switch(firstOperand.getType()) {
+                            case REG_I  -> Opcode.ICC_I;
+                            case REG_J  -> Opcode.ICC_J;
+                            default     -> Opcode.ICC_RIM;
+                        };
+                        break;
+                        
+                    case DEC:
+                        opcode = switch(firstOperand.getType()) {
+                            case REG_I  -> Opcode.DEC_I;
+                            case REG_J  -> Opcode.DEC_J;
+                            default     -> Opcode.DEC_RIM;
+                        };
+                        break;
+                        
+                    case DCC:
+                        opcode = switch(firstOperand.getType()) {
+                            case REG_I  -> Opcode.DCC_I;
+                            case REG_J  -> Opcode.DCC_J;
+                            default     -> Opcode.DCC_RIM;
+                        };
                         break;
                     
                         // 8, 16, 32 bit immediates
                     case JMP:
-                        // TODO
+                        if(firstOperand.getType() == LocationType.IMMEDIATE) {
+                            opcode = switch(firstOperand.getSize()) {
+                                case 1  -> Opcode.JMP_I8;
+                                case 2  -> Opcode.JMP_I16;
+                                default -> Opcode.JMP_I32;
+                            };
+                        } else {
+                            opcode = Opcode.JMP_RIM;
+                        }
                         break;
                         
                         // 16 bit immediates
                     case CALL:
-                        // TODO
+                        opcode = isImmediate ? Opcode.CALL_I16 : Opcode.CALL_RIM;
                         break;
                         
                         // 32 bit immediates & 32 bit rim
-                    case JMPA, CALLA:
-                        // TODO
+                    case JMPA:
+                        opcode = isImmediate ? Opcode.JMPA_I32 : Opcode.JMPA_RIM32;
+                        break;
+                        
+                    case CALLA:
+                        opcode = isImmediate ? Opcode.CALLA_I32 : Opcode.CALLA_RIM32;
                         break;
                     
                         // 8 bit immediates & aliases
                     case JCC:
-                        // TODO
+                        opcode = switch(m.name()) {
+                            case "JC", "JB", "JNAE"     -> isImmediate ? Opcode.JC_I8 : Opcode.JC_RIM;
+                            case "JNC", "JAE", "JNB"    -> isImmediate ? Opcode.JNC_I8 : Opcode.JNC_RIM;
+                            case "JS"                   -> isImmediate ? Opcode.JS_I8 : Opcode.JS_RIM;
+                            case "JNS"                  -> isImmediate ? Opcode.JNS_I8 : Opcode.JNS_RIM;
+                            case "JO"                   -> isImmediate ? Opcode.JO_I8 : Opcode.JO_RIM;
+                            case "JNO"                  -> isImmediate ? Opcode.JNO_I8 : Opcode.JNO_RIM;
+                            case "JZ", "JE"             -> isImmediate ? Opcode.JZ_I8 : Opcode.JZ_RIM;
+                            case "JNZ", "JNE"           -> isImmediate ? Opcode.JNZ_I8 : Opcode.JNZ_RIM;
+                            case "JA", "JNBE"           -> isImmediate ? Opcode.JA_I8 : Opcode.JA_RIM;
+                            case "JBE", "JNA"           -> isImmediate ? Opcode.JBE_I8 : Opcode.JBE_RIM;
+                            case "JG", "JNLE"           -> isImmediate ? Opcode.JG_I8 : Opcode.JG_RIM;
+                            case "JGE", "JNL"           -> isImmediate ? Opcode.JGE_I8 : Opcode.JGE_RIM;
+                            case "JL", "JNGE"           -> isImmediate ? Opcode.JL_I8 : Opcode.JL_RIM;
+                            case "JLE", "JNG"           -> isImmediate ? Opcode.JLE_I8 : Opcode.JLE_RIM;
+                            default -> throw new IllegalArgumentException("Invalid mnemonic " + m.name());
+                        };
                         break;
                     
                         // packed rim
-                    case PINC, PICC, PDEC, PDCC:
-                        // TODO
+                    case PINC:
+                        opcode = Opcode.PINC_RIMP;
+                        break;
+                        
+                    case PICC:
+                        opcode = Opcode.PICC_RIMP;
+                        break;
+                        
+                    case PDEC:
+                        opcode = Opcode.PDEC_RIMP;
+                        break;
+                        
+                    case PDCC:
+                        opcode = Opcode.PDCC_RIMP;
                         break;
                     
                         // rim + F
                     case NOT:
-                        // TODO
+                        opcode = isImmediate ? Opcode.NOT_F : Opcode.NOT_RIM; 
                         break;
                     
                         // rim only
                     case NEG:
-                        // TODO
+                        opcode = Opcode.NEG_RIM;
                         break;
                     
                     default: // error
@@ -371,8 +462,8 @@ public class Assembler {
                 };
             } else {
                 // parse second operand
-                boolean canBeMemory = (firstOperand.getType() != LocationType.MEMORY) && (firstOperand.getType() != LocationType.IMMEDIATE);
-                ResolvableLocationDescriptor secondOperand = parseOperand(canBeMemory);
+                //boolean canBeMemory = (firstOperand.getType() != LocationType.MEMORY) && (firstOperand.getType() != LocationType.IMMEDIATE);
+                //ResolvableLocationDescriptor secondOperand = parseOperand(canBeMemory);
                 // TODO
             }
         }
@@ -385,7 +476,79 @@ public class Assembler {
      * 
      * @return
      */
-    private static ResolvableLocationDescriptor parseOperand(boolean canBeMemory) {
+    private static ResolvableLocationDescriptor parseOperand(LinkedList<Symbol> symbolQueue, boolean canBeMemory) {
+        Symbol nextSymbol = symbolQueue.poll();
+        System.out.println("Parsing operand with symbol: " + nextSymbol);
+        
+        // what we workin with
+        switch(nextSymbol) {
+                // ez
+            case RegisterSymbol rs:
+                return new ResolvableLocationDescriptor(LocationType.valueOf("REG_" + rs.name()));
+                
+                // resolved constant
+            case ConstantSymbol cs:
+                return new ResolvableLocationDescriptor(LocationType.IMMEDIATE, -1, new ResolvableConstant(cs.value())); 
+                
+                // just a name = unresolved constant
+            case NameSymbol ns:
+                return new ResolvableLocationDescriptor(LocationType.IMMEDIATE, -1, new ResolvableConstant(ns.name()));
+            
+                // memory
+            case MemorySymbol ms:
+                return parseMemory(ms);
+            
+                // expression
+            case ExpressionSymbol es:
+                return parseExpression(es);
+                
+                // size prefix overrides operand size
+            case SizeSymbol ss:
+                ResolvableLocationDescriptor rld = parseOperand(symbolQueue, canBeMemory);
+                rld.setSize(convertSize(ss));
+                return rld;
+                
+            case Symbol s:
+                //TODO
+                throw new IllegalArgumentException("Invalid symbol while parsing operand: " + s);
+        }
+    }
+    
+    /**
+     * Conevrts a SizeSymbol name into a size
+     * 
+     * @param ss
+     * @return
+     */
+    private static int convertSize(SizeSymbol ss) {
+        return switch(ss.name()) {
+            case "BYTE"         -> 1;
+            case "WORD"         -> 2;
+            case "DWORD", "PTR" -> 4;
+            default -> throw new IllegalArgumentException("Invalid size: " + ss);
+        };
+    }
+    
+    /**
+     * Parses a memory symbol
+     * 
+     * @param ms
+     * @return
+     */
+    private static ResolvableLocationDescriptor parseMemory(MemorySymbol ms) {
+        System.out.println("Parsing memory: " + ms);
+        // TODO
+        return null;
+    }
+    
+    /**
+     * Parses an expression
+     * 
+     * @param es
+     * @return
+     */
+    private static ResolvableLocationDescriptor parseExpression(ExpressionSymbol es) {
+        System.out.println("Parsing expression: " + es);
         // TODO
         return null;
     }

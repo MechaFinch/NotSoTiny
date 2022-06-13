@@ -81,7 +81,7 @@ func_main:
 	
 	; printstr(prompt_op)
 	PUSH A
-	PUSH propmt_op
+	PUSH prompt_op
 	CALL func_printstr
 	ADD SP, 4
 	

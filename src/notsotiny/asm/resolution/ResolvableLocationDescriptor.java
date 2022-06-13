@@ -7,7 +7,7 @@ package notsotiny.asm.resolution;
  */
 public class ResolvableLocationDescriptor implements Resolvable {
     
-    public static final ResolvableLocationDescriptor NONE = new ResolvableLocationDescriptor(LocationType.REG_A, 0, null);
+    public static final ResolvableLocationDescriptor NONE = new ResolvableLocationDescriptor(LocationType.NULL);
     
     private LocationType type;
     
@@ -20,59 +20,80 @@ public class ResolvableLocationDescriptor implements Resolvable {
     Resolvable parent;
     
     public enum LocationType {
-        REG_A,
-        REG_B,
-        REG_C,
-        REG_D,
+        REG_A, REG_AH, REG_AL,
+        REG_B, REG_BH, REG_BL,
+        REG_C, REG_CH, REG_CL,
+        REG_D, REG_DH, REG_DL,
         REG_I,
         REG_J,
         REG_F,
         REG_BP,
         REG_SP,
         IMMEDIATE,
-        MEMORY
+        MEMORY,
+        NULL
     }
     
     /**
-     * Create a descriptor that includes memory
+     * Create a descriptor for memory
      * 
      * @param type
-     * @param size
+     * @param size -1 to infer, 1, 2, 4 if specified
      * @param memory
-     * @param parent
      */
-    public ResolvableLocationDescriptor(LocationType type, int size, ResolvableMemory memory, Resolvable parent) {
+    public ResolvableLocationDescriptor(LocationType type, int size, ResolvableMemory memory) {
         this.type = type;
         this.size = size;
         this.memory = memory;
-        this.parent = parent;
         
+        this.parent = null;
         this.immediate = null;
-    }
-    
-    public ResolvableLocationDescriptor(LocationType type, int size, ResolvableValue immediate, Resolvable parent) {
-        this.type = type;
-        this.size = size;
-        this.immediate = immediate;
-        this.parent = parent;
         
-        this.memory = null;
+        this.memory.setParent(this);
+        
+        if(this.type != LocationType.MEMORY) {
+            throw new IllegalArgumentException("Memory constructor valid for memory only");
+        }
     }
     
     /**
-     * Create a descriptor that doesn't include memory
+     * Create a descriptor for an immediate
      * 
      * @param type
-     * @param size
-     * @param parent
+     * @param size -1 to infer, 1, 2, 4 if specified
+     * @param immediate
      */
-    public ResolvableLocationDescriptor(LocationType type, int size, Resolvable parent) {
+    public ResolvableLocationDescriptor(LocationType type, int size, ResolvableValue immediate) {
         this.type = type;
         this.size = size;
-        this.parent = parent;
+        this.immediate = immediate;
         
+        this.parent = null;
+        this.memory = null;
+        
+        this.immediate.setParent(this);
+        
+        if(this.type != LocationType.IMMEDIATE) {
+            throw new IllegalArgumentException("Immediate constructor valid for immediates only");
+        }
+    }
+    
+    /**
+     * Create a descriptor for a register
+     * 
+     * @param type
+     */
+    public ResolvableLocationDescriptor(LocationType type) {
+        this.type = type;
+        
+        this.size = 0;
+        this.parent = null;
         this.immediate = null;
         this.memory = null;
+        
+        if(this.type == LocationType.IMMEDIATE || this.type == LocationType.MEMORY) {
+            throw new IllegalArgumentException("Single-argument constructor not valid for immediates or memory");
+        }
     }
 
     @Override
@@ -91,16 +112,32 @@ public class ResolvableLocationDescriptor implements Resolvable {
     }
     
     @Override
+    public void setParent(Resolvable r) {
+        this.parent = r;
+    }
+    
+    @Override
     public String toString() {
-        if(this.size == 0) {
+        String s = switch(this.size) {
+            case 1  -> "byte ";
+            case 2  -> "word ";
+            case 4  -> "ptr ";
+            default -> "";
+        };
+        
+        if(this.type == LocationType.NULL) {
             return "";
         } else if(this.type == LocationType.MEMORY) {
-            return this.memory.toString();
+            return s + this.memory.toString();
+        } else if(this.type == LocationType.IMMEDIATE) {
+            return s + this.immediate.toString();
         } else {
-            return this.type.toString();
+            return this.type.toString().substring(4); // remove "REG_"
         }
     }
     
+    public int getSize() { return this.size; }
+    public void setSize(int s) { this.size = s; }
     public LocationType getType() { return this.type; }
     public ResolvableMemory getMemory() { return this.memory; }
     public ResolvableValue getImmediate() { return this.immediate; }
