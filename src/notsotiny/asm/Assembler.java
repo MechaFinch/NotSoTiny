@@ -23,6 +23,7 @@ import asmlib.lex.symbols.MemorySymbol;
 import asmlib.lex.symbols.MnemonicSymbol;
 import asmlib.lex.symbols.NameSymbol;
 import asmlib.lex.symbols.RegisterSymbol;
+import asmlib.lex.symbols.SeparatorSymbol;
 import asmlib.lex.symbols.SizeSymbol;
 import asmlib.lex.symbols.SpecialCharacterSymbol;
 import asmlib.lex.symbols.Symbol;
@@ -34,6 +35,8 @@ import notsotiny.asm.components.Instruction;
 import notsotiny.asm.resolution.ResolvableConstant;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor.LocationType;
+import notsotiny.asm.resolution.ResolvableMemory;
+import notsotiny.asm.resolution.ResolvableValue;
 import notsotiny.sim.ops.Opcode;
 import notsotiny.sim.ops.Operation;
 import asmlib.util.relocation.RenameableRelocatableObject;
@@ -188,9 +191,9 @@ public class Assembler {
          * Assembler Passes
          * 1. Definitions pass          - Parse %define statements and apply them (handled by AssemblerLib)
          * 2. Main parse pass           - Figure out what each instruction is, record labels.
-         * 3. Jump distinction pass     - Jumps to internal references are relative, jumps to external references are absolute 
-         * 4. Relative jump width pass  - Determine whether relative jumps can hit their targets and update accordingly. Continues until all jumps are stable.
-         * 5. Expression reduction pass - Reduce expressions to values. Error if an unresolved label is part of an expression.
+         * 3. Jump distinction pass     - Jumps to internal references are relative, jumps to external references are absolute.
+         * 4. Constant width pass       - Determine whether relative jumps can hit their targets and update accordingly. Continues until all jumps are stable. Applies to all relative constants
+         * 5. Constant resolution pass  - Resolve constants to their final values
          */
         
         /*
@@ -303,11 +306,11 @@ public class Assembler {
         } else {
             // parse first operand
             ResolvableLocationDescriptor firstOperand = parseOperand(symbolQueue, true);
+            Opcode opcode = null;
             
             if(!hasSecondOperand(opr)) {
                 // 1 argument.
                 // PUSH, JMP, JCC, CALL, and INT are all source only while the others are destination only
-                Opcode opcode = null;
                 boolean isImmediate = firstOperand.getType() == LocationType.IMMEDIATE;
                 
                 // everything has its own rules
@@ -391,7 +394,11 @@ public class Assembler {
                         
                         // 16 bit immediates
                     case CALL:
-                        opcode = isImmediate ? Opcode.CALL_I16 : Opcode.CALL_RIM;
+                        if(isImmediate && firstOperand.getSize() != -1 && firstOperand.getSize() < 4) {
+                            opcode = Opcode.CALL_I16;
+                        } else {
+                            opcode = Opcode.CALL_RIM;
+                        }
                         break;
                         
                         // 32 bit immediates & 32 bit rim
@@ -405,21 +412,23 @@ public class Assembler {
                     
                         // 8 bit immediates & aliases
                     case JCC:
+                        boolean isByteImmediate = isImmediate && firstOperand.getSize() == 1;
+                        
                         opcode = switch(m.name()) {
-                            case "JC", "JB", "JNAE"     -> isImmediate ? Opcode.JC_I8 : Opcode.JC_RIM;
-                            case "JNC", "JAE", "JNB"    -> isImmediate ? Opcode.JNC_I8 : Opcode.JNC_RIM;
-                            case "JS"                   -> isImmediate ? Opcode.JS_I8 : Opcode.JS_RIM;
-                            case "JNS"                  -> isImmediate ? Opcode.JNS_I8 : Opcode.JNS_RIM;
-                            case "JO"                   -> isImmediate ? Opcode.JO_I8 : Opcode.JO_RIM;
-                            case "JNO"                  -> isImmediate ? Opcode.JNO_I8 : Opcode.JNO_RIM;
-                            case "JZ", "JE"             -> isImmediate ? Opcode.JZ_I8 : Opcode.JZ_RIM;
-                            case "JNZ", "JNE"           -> isImmediate ? Opcode.JNZ_I8 : Opcode.JNZ_RIM;
-                            case "JA", "JNBE"           -> isImmediate ? Opcode.JA_I8 : Opcode.JA_RIM;
-                            case "JBE", "JNA"           -> isImmediate ? Opcode.JBE_I8 : Opcode.JBE_RIM;
-                            case "JG", "JNLE"           -> isImmediate ? Opcode.JG_I8 : Opcode.JG_RIM;
-                            case "JGE", "JNL"           -> isImmediate ? Opcode.JGE_I8 : Opcode.JGE_RIM;
-                            case "JL", "JNGE"           -> isImmediate ? Opcode.JL_I8 : Opcode.JL_RIM;
-                            case "JLE", "JNG"           -> isImmediate ? Opcode.JLE_I8 : Opcode.JLE_RIM;
+                            case "JC", "JB", "JNAE"     -> isByteImmediate ? Opcode.JC_I8 : Opcode.JC_RIM;
+                            case "JNC", "JAE", "JNB"    -> isByteImmediate ? Opcode.JNC_I8 : Opcode.JNC_RIM;
+                            case "JS"                   -> isByteImmediate ? Opcode.JS_I8 : Opcode.JS_RIM;
+                            case "JNS"                  -> isByteImmediate ? Opcode.JNS_I8 : Opcode.JNS_RIM;
+                            case "JO"                   -> isByteImmediate ? Opcode.JO_I8 : Opcode.JO_RIM;
+                            case "JNO"                  -> isByteImmediate ? Opcode.JNO_I8 : Opcode.JNO_RIM;
+                            case "JZ", "JE"             -> isByteImmediate ? Opcode.JZ_I8 : Opcode.JZ_RIM;
+                            case "JNZ", "JNE"           -> isByteImmediate ? Opcode.JNZ_I8 : Opcode.JNZ_RIM;
+                            case "JA", "JNBE"           -> isByteImmediate ? Opcode.JA_I8 : Opcode.JA_RIM;
+                            case "JBE", "JNA"           -> isByteImmediate ? Opcode.JBE_I8 : Opcode.JBE_RIM;
+                            case "JG", "JNLE"           -> isByteImmediate ? Opcode.JG_I8 : Opcode.JG_RIM;
+                            case "JGE", "JNL"           -> isByteImmediate ? Opcode.JGE_I8 : Opcode.JGE_RIM;
+                            case "JL", "JNGE"           -> isByteImmediate ? Opcode.JL_I8 : Opcode.JL_RIM;
+                            case "JLE", "JNG"           -> isByteImmediate ? Opcode.JLE_I8 : Opcode.JLE_RIM;
                             default -> throw new IllegalArgumentException("Invalid mnemonic " + m.name());
                         };
                         break;
@@ -461,14 +470,496 @@ public class Assembler {
                     default                                     -> new Instruction(opcode, firstOperand, true);
                 };
             } else {
+                if(firstOperand == null) return null; // TODO TMP
+                
+                // we expect a separator, skip it if present
+                if(symbolQueue.peek() instanceof SeparatorSymbol) {
+                    symbolQueue.poll();
+                }
+                
                 // parse second operand
-                //boolean canBeMemory = (firstOperand.getType() != LocationType.MEMORY) && (firstOperand.getType() != LocationType.IMMEDIATE);
-                //ResolvableLocationDescriptor secondOperand = parseOperand(canBeMemory);
-                // TODO
+                boolean canBeMemory = (firstOperand.getType() != LocationType.MEMORY) && (firstOperand.getType() != LocationType.IMMEDIATE);
+                ResolvableLocationDescriptor secondOperand = parseOperand(symbolQueue, canBeMemory);
+                
+                if(secondOperand == null) return null; // TODO TMP
+                
+                // useful values
+                LocationType firstType = firstOperand.getType(),
+                             secondType = secondOperand.getType();
+                
+                boolean isImmediate = secondOperand.getType() == LocationType.IMMEDIATE,
+                        firstIsABCD = firstType == LocationType.REG_A || firstType == LocationType.REG_B || firstType == LocationType.REG_C || firstType == LocationType.REG_D,
+                        secondIsABCD = secondType == LocationType.REG_A || secondType == LocationType.REG_B || secondType == LocationType.REG_C || secondType == LocationType.REG_D,
+                        firstIsLByte = firstType == LocationType.REG_AL || firstType == LocationType.REG_BL || firstType == LocationType.REG_CL || firstType == LocationType.REG_DL,
+                        firstIsHByte = firstType == LocationType.REG_AH || firstType == LocationType.REG_BH || firstType == LocationType.REG_CH || firstType == LocationType.REG_DH,
+                        secondIsLByte = secondType == LocationType.REG_AL || secondType == LocationType.REG_BL || secondType == LocationType.REG_CL || secondType == LocationType.REG_DL,
+                        secondIsHByte = secondType == LocationType.REG_AH || secondType == LocationType.REG_BH || secondType == LocationType.REG_CH || secondType == LocationType.REG_DH,
+                        firstIsFlags = firstType == LocationType.REG_F,
+                        secondIsFlags = secondType == LocationType.REG_F;
+                
+                int firstSize = firstOperand.getSize(),
+                    secondSize = secondOperand.getSize(),
+                    immediateSize = -1;
+                
+                // immediate width
+                if(isImmediate) {
+                    // if it's resolved we know the size, if it's not use the widest and shorten later
+                    ResolvableValue imm = secondOperand.getImmediate();
+                    
+                    if(imm.isResolved()) {
+                        // zero extend so we don't worry about sign
+                        int v = imm.value();
+                        
+                        if(v >= -128 && v <= 127) immediateSize = 1;
+                        else if(v >= -32768 && v <= 32767) immediateSize = 2;
+                        else immediateSize = 4;
+                    } else {
+                        immediateSize = 4;
+                    }
+                }
+                
+                // figure out opcode
+                switch(opr) {
+                        // tons of shortcuts
+                    case MOV:
+                        // F
+                        if(firstIsFlags) {
+                            opcode = Opcode.MOV_F_RIM;
+                            break;
+                        } else if(secondIsFlags) {
+                            opcode = Opcode.MOV_RIM_F;
+                            break;
+                        }
+                        
+                        // MOVW stuff
+                        if(firstSize == 4) {
+                            // BP/SP immediate shortcut
+                            if(firstType == LocationType.REG_BP && secondType == LocationType.IMMEDIATE) {
+                                opcode = Opcode.MOV_BP_I32;
+                            } else if(firstType == LocationType.REG_SP && secondType == LocationType.IMMEDIATE) {
+                                opcode = Opcode.MOV_SP_I32;
+                            } else {
+                                opcode = Opcode.MOVW_RIM;
+                            }
+                            
+                            break;
+                        } else if(secondSize == 4) {
+                            // wide -> memory
+                            // BP & SP use normal RIM for this
+                            if(secondType != LocationType.REG_BP && secondType != LocationType.REG_SP) {
+                                opcode = Opcode.MOVW_RIM;
+                            } else {
+                                opcode = Opcode.MOV_RIM;
+                            }
+                            
+                            break;
+                        }
+                        
+                        // immediate shortcuts
+                        if(isImmediate) {
+                            if(firstIsABCD) {
+                                // trim to register size
+                                if(immediateSize > firstSize) immediateSize = firstSize;
+                                
+                                // 8/16
+                                if(immediateSize == 1) { // 8
+                                    opcode = switch(firstType) {
+                                        case REG_A  -> Opcode.MOV_A_I8;
+                                        case REG_B  -> Opcode.MOV_B_I8;
+                                        case REG_C  -> Opcode.MOV_C_I8;
+                                        case REG_D  -> Opcode.MOV_D_I8;
+                                        default     -> Opcode.NOP; // not possible
+                                    };
+                                } else { // 16/unknown, can be shortened
+                                    opcode = switch(firstType) {
+                                        case REG_A  -> Opcode.MOV_A_I16;
+                                        case REG_B  -> Opcode.MOV_B_I16;
+                                        case REG_C  -> Opcode.MOV_C_I16;
+                                        case REG_D  -> Opcode.MOV_D_I16;
+                                        default     -> Opcode.NOP; // not possible
+                                    };
+                                }
+                                
+                                break;
+                            } else if(firstType == LocationType.REG_I) {
+                                opcode = Opcode.MOV_I_I16;
+                                break;
+                            } else if(firstType == LocationType.REG_J) {
+                                opcode = Opcode.MOV_J_I16;
+                                break;
+                            }
+                        }
+                        
+                        // memory shortcuts
+                        if(firstType == LocationType.MEMORY && secondIsABCD) {
+                            ResolvableMemory mem = firstOperand.getMemory();
+                            
+                            // base & index?
+                            if(mem.getBase() != Register.NONE) {
+                                // offset?
+                                if(mem.isResolved() && mem.getOffset() == 0) { // definitely not
+                                    opcode = switch(firstType) {
+                                        case REG_A  -> Opcode.MOV_A_BI;
+                                        case REG_B  -> Opcode.MOV_B_BI;
+                                        case REG_C  -> Opcode.MOV_C_BI;
+                                        case REG_D  -> Opcode.MOV_D_BI;
+                                        default     -> Opcode.NOP; // not possible
+                                    };
+                                } else { // yes or maybe
+                                    opcode = switch(firstType) {
+                                        case REG_A  -> Opcode.MOV_A_BIO;
+                                        case REG_B  -> Opcode.MOV_B_BIO;
+                                        case REG_C  -> Opcode.MOV_C_BIO;
+                                        case REG_D  -> Opcode.MOV_D_BIO;
+                                        default     -> Opcode.NOP; // not possible
+                                    };
+                                }
+                            } else {
+                                // just offset
+                                opcode = switch(firstType) {
+                                    case REG_A  -> Opcode.MOV_A_O;
+                                    case REG_B  -> Opcode.MOV_B_O;
+                                    case REG_C  -> Opcode.MOV_C_O;
+                                    case REG_D  -> Opcode.MOV_D_O;
+                                    default     -> Opcode.NOP; // not possible
+                                };
+                            }
+                            
+                            break;
+                        } else if(firstIsABCD && secondType == LocationType.MEMORY) {
+                            ResolvableMemory mem = secondOperand.getMemory();
+                            
+                            // base & index?
+                            if(mem.getBase() != Register.NONE) {
+                                // offset?
+                                if(mem.isResolved() && mem.getOffset() == 0) { // definitely not
+                                    opcode = switch(secondType) {
+                                        case REG_A  -> Opcode.MOV_BI_A;
+                                        case REG_B  -> Opcode.MOV_BI_B;
+                                        case REG_C  -> Opcode.MOV_BI_C;
+                                        case REG_D  -> Opcode.MOV_BI_D;
+                                        default     -> Opcode.NOP; // not possible
+                                    };
+                                } else { // yes or maybe
+                                    opcode = switch(secondType) {
+                                        case REG_A  -> Opcode.MOV_BIO_A;
+                                        case REG_B  -> Opcode.MOV_BIO_B;
+                                        case REG_C  -> Opcode.MOV_BIO_C;
+                                        case REG_D  -> Opcode.MOV_BIO_D;
+                                        default     -> Opcode.NOP; // not possible
+                                    };
+                                }
+                            } else {
+                                // just offset
+                                opcode = switch(secondType) {
+                                    case REG_A  -> Opcode.MOV_O_A;
+                                    case REG_B  -> Opcode.MOV_O_B;
+                                    case REG_C  -> Opcode.MOV_O_C;
+                                    case REG_D  -> Opcode.MOV_O_D;
+                                    default     -> Opcode.NOP; // not possible
+                                };
+                            }
+                            
+                            break;
+                        }
+                        
+                        // register-register shortcuts
+                        if(firstType != secondType && ((firstIsABCD && secondIsABCD) || (firstIsLByte && secondIsLByte))) {
+                            // nested switch expression because funny
+                            opcode = switch(firstType) {
+                                case REG_A  -> switch(secondType) {
+                                    case REG_B  -> Opcode.MOV_A_B;
+                                    case REG_C  -> Opcode.MOV_A_C;
+                                    case REG_D  -> Opcode.MOV_A_D;
+                                    default     -> Opcode.MOV_RIM;
+                                };
+                                
+                                case REG_B  -> switch(secondType) {
+                                    case REG_A  -> Opcode.MOV_B_A;
+                                    case REG_C  -> Opcode.MOV_B_C;
+                                    case REG_D  -> Opcode.MOV_B_D;
+                                    default     -> Opcode.MOV_RIM;
+                                };
+                                
+                                case REG_C  -> switch(secondType) {
+                                    case REG_A  -> Opcode.MOV_C_A;
+                                    case REG_B  -> Opcode.MOV_C_B;
+                                    case REG_D  -> Opcode.MOV_C_D;
+                                    default     -> Opcode.MOV_RIM;
+                                };
+                                
+                                case REG_D  -> switch(secondType) {
+                                    case REG_A  -> Opcode.MOV_D_A;
+                                    case REG_B  -> Opcode.MOV_D_B;
+                                    case REG_C  -> Opcode.MOV_D_C;
+                                    default     -> Opcode.MOV_RIM;
+                                };
+                                
+                                case REG_AL -> switch(secondType) {
+                                    case REG_BL -> Opcode.MOV_AL_BL;
+                                    case REG_CL -> Opcode.MOV_AL_CL;
+                                    case REG_DL -> Opcode.MOV_AL_DL;
+                                    default     -> Opcode.MOV_RIM;
+                                };
+                                
+                                case REG_BL -> switch(secondType) {
+                                    case REG_AL -> Opcode.MOV_BL_AL;
+                                    case REG_CL -> Opcode.MOV_BL_CL;
+                                    case REG_DL -> Opcode.MOV_BL_DL;
+                                    default     -> Opcode.MOV_RIM;
+                                };
+                                
+                                case REG_CL -> switch(secondType) {
+                                    case REG_AL -> Opcode.MOV_CL_AL;
+                                    case REG_BL -> Opcode.MOV_CL_BL;
+                                    case REG_DL -> Opcode.MOV_CL_DL;
+                                    default     -> Opcode.MOV_RIM;
+                                };
+                                
+                                case REG_DL -> switch(secondType) {
+                                    case REG_AL -> Opcode.MOV_DL_AL;
+                                    case REG_BL -> Opcode.MOV_DL_BL;
+                                    case REG_CL -> Opcode.MOV_DL_CL;
+                                    default     -> Opcode.MOV_RIM;
+                                };
+                                
+                                default     -> Opcode.MOV_RIM; // fallback
+                            };
+                            
+                            break;
+                        }
+                        
+                        opcode = Opcode.MOV_RIM;
+                        break;
+                        
+                    case XCHG:
+                        // main shortcuts
+                        if(firstIsABCD && secondIsABCD && firstType != secondType) {
+                            opcode = switch(firstType) {
+                                case REG_A  -> switch(secondType) {
+                                    case REG_B  -> Opcode.XCHG_A_B;
+                                    case REG_C  -> Opcode.XCHG_A_C;
+                                    case REG_D  -> Opcode.XCHG_A_D;
+                                    default     -> Opcode.XCHG_RIM;
+                                };
+                                
+                                case REG_B  -> switch(secondType) {
+                                    case REG_A  -> Opcode.XCHG_A_B;
+                                    case REG_C  -> Opcode.XCHG_B_C;
+                                    case REG_D  -> Opcode.XCHG_B_D;
+                                    default     -> Opcode.XCHG_RIM;
+                                };
+                                
+                                case REG_C  -> switch(secondType) {
+                                    case REG_A  -> Opcode.XCHG_A_C;
+                                    case REG_B  -> Opcode.XCHG_B_C;
+                                    case REG_D  -> Opcode.XCHG_C_D;
+                                    default     -> Opcode.XCHG_RIM;
+                                };
+                                
+                                case REG_D  -> switch(secondType) {
+                                    case REG_A  -> Opcode.XCHG_A_D;
+                                    case REG_B  -> Opcode.XCHG_B_D;
+                                    case REG_C  -> Opcode.XCHG_C_D;
+                                    default     -> Opcode.XCHG_RIM;
+                                };
+                                
+                                default -> Opcode.XCHG_RIM; // fallback
+                            };
+                            
+                            break;
+                        }
+                        
+                        // low-low shortcuts
+                        if(firstIsLByte && secondIsLByte && firstType != secondType) {
+                            opcode = switch(firstType) {
+                                case REG_AL -> switch(secondType) {
+                                    case REG_BL -> Opcode.XCHG_AL_BL;
+                                    case REG_CL -> Opcode.XCHG_AL_CL;
+                                    case REG_DL -> Opcode.XCHG_AL_DL;
+                                    default     -> Opcode.XCHG_RIM;
+                                };
+                                
+                                case REG_BL -> switch(secondType) {
+                                    case REG_AL -> Opcode.XCHG_AL_BL;
+                                    case REG_CL -> Opcode.XCHG_BL_CL;
+                                    case REG_DL -> Opcode.XCHG_BL_DL;
+                                    default     -> Opcode.XCHG_RIM;
+                                };
+                                
+                                case REG_CL -> switch(secondType) {
+                                    case REG_AL -> Opcode.XCHG_AL_CL;
+                                    case REG_BL -> Opcode.XCHG_BL_CL;
+                                    case REG_DL -> Opcode.XCHG_CL_DL;
+                                    default     -> Opcode.XCHG_RIM;
+                                };
+                                
+                                case REG_DL -> switch(secondType) {
+                                    case REG_AL -> Opcode.XCHG_AL_DL;
+                                    case REG_BL -> Opcode.XCHG_BL_DL;
+                                    case REG_CL -> Opcode.XCHG_CL_DL;
+                                    default     -> Opcode.XCHG_RIM;
+                                };
+                                
+                                default -> Opcode.XCHG_RIM; // fallback
+                            };
+                            
+                            break;
+                        }
+                            
+                        // high-low shortcuts
+                        if(((firstIsLByte && secondIsHByte) || (firstIsHByte && secondIsLByte)) && firstType != secondType) {
+                            opcode = switch(firstType) {
+                                case REG_AH, REG_AL -> switch(secondType) {
+                                    case REG_AH, REG_AL -> Opcode.XCHG_AH_AL;
+                                    default             -> Opcode.XCHG_RIM;
+                                };
+                                
+                                case REG_BH, REG_BL -> switch(secondType) {
+                                    case REG_BH, REG_BL -> Opcode.XCHG_BH_BL;
+                                    default             -> Opcode.XCHG_RIM;
+                                };
+                                
+                                case REG_CH, REG_CL -> switch(secondType) {
+                                    case REG_CH, REG_CL -> Opcode.XCHG_CH_CL;
+                                    default             -> Opcode.XCHG_RIM;
+                                };
+                                
+                                case REG_DH, REG_DL -> switch(secondType) {
+                                    case REG_DH, REG_DL -> Opcode.XCHG_DH_DL;
+                                    default             -> Opcode.XCHG_RIM;
+                                };
+                                
+                                default -> Opcode.XCHG_RIM; // fallback
+                            };
+                            
+                            break;
+                        }
+                        
+                        opcode = Opcode.XCHG_RIM;
+                        break;
+                        
+                        // register-immediate shortcuts
+                    case ADD:
+                        if(isImmediate) {
+                            opcode = switch(firstType) {
+                                case REG_A  -> (immediateSize == 1) ? Opcode.ADD_A_I8 : Opcode.ADD_A_I16;
+                                case REG_B  -> (immediateSize == 1) ? Opcode.ADD_B_I8 : Opcode.ADD_B_I16;
+                                case REG_C  -> (immediateSize == 1) ? Opcode.ADD_C_I8 : Opcode.ADD_C_I16;
+                                case REG_D  -> (immediateSize == 1) ? Opcode.ADD_D_I8 : Opcode.ADD_D_I16;
+                                default     -> (immediateSize == 1) ? Opcode.ADD_RIM_I8 : Opcode.ADD_RIM;
+                            };
+                        } else {
+                            opcode = Opcode.ADD_RIM;
+                        }
+                        break;
+                        
+                    case ADC:
+                        if(isImmediate) {
+                            opcode = switch(firstType) {
+                                case REG_A  -> (immediateSize == 1) ? Opcode.ADC_A_I8 : Opcode.ADC_A_I16;
+                                case REG_B  -> (immediateSize == 1) ? Opcode.ADC_B_I8 : Opcode.ADC_B_I16;
+                                case REG_C  -> (immediateSize == 1) ? Opcode.ADC_C_I8 : Opcode.ADC_C_I16;
+                                case REG_D  -> (immediateSize == 1) ? Opcode.ADC_D_I8 : Opcode.ADC_D_I16;
+                                default     -> (immediateSize == 1) ? Opcode.ADC_RIM_I8 : Opcode.ADC_RIM;
+                            };
+                        } else {
+                            opcode = Opcode.ADC_RIM;
+                        }
+                        break;
+                    
+                    case SUB:
+                        if(isImmediate) {
+                            opcode = switch(firstType) {
+                                case REG_A  -> (immediateSize == 1) ? Opcode.SUB_A_I8 : Opcode.SUB_A_I16;
+                                case REG_B  -> (immediateSize == 1) ? Opcode.SUB_B_I8 : Opcode.SUB_B_I16;
+                                case REG_C  -> (immediateSize == 1) ? Opcode.SUB_C_I8 : Opcode.SUB_C_I16;
+                                case REG_D  -> (immediateSize == 1) ? Opcode.SUB_D_I8 : Opcode.SUB_D_I16;
+                                default     -> (immediateSize == 1) ? Opcode.SUB_RIM_I8 : Opcode.SUB_RIM;
+                            };
+                        } else {
+                            opcode = Opcode.SUB_RIM;
+                        }
+                        break;
+                        
+                    case SBB:
+                        if(isImmediate) {
+                            opcode = switch(firstType) {
+                                case REG_A  -> (immediateSize == 1) ? Opcode.SBB_A_I8 : Opcode.SBB_A_I16;
+                                case REG_B  -> (immediateSize == 1) ? Opcode.SBB_B_I8 : Opcode.SBB_B_I16;
+                                case REG_C  -> (immediateSize == 1) ? Opcode.SBB_C_I8 : Opcode.SBB_C_I16;
+                                case REG_D  -> (immediateSize == 1) ? Opcode.SBB_D_I8 : Opcode.SBB_D_I16;
+                                default     -> (immediateSize == 1) ? Opcode.SBB_RIM_I8 : Opcode.SBB_RIM;
+                            };
+                        } else {
+                            opcode = Opcode.SBB_RIM;
+                        }
+                        break;
+                        
+                        // RIM-immediate shortcuts
+                    case CMP:
+                        if(isImmediate) {
+                            ResolvableValue imm = secondOperand.getImmediate();
+                            
+                            if(imm.isResolved() && imm.value() == 0) {
+                                opcode = Opcode.CMP_RIM_0;
+                            } else if(immediateSize == 1) {
+                                opcode = Opcode.CMP_RIM_I8;
+                            } else {
+                                opcode = Opcode.CMP_RIM;
+                            }
+                        } else {
+                            opcode = Opcode.CMP_RIM;
+                        }
+                        break;
+                        
+                        // RIM + F
+                    case AND:
+                        if(firstIsFlags) {
+                            opcode = Opcode.AND_F_RIM;
+                        } else if(secondIsFlags) {
+                            opcode = Opcode.AND_RIM_F;
+                        } else {
+                            opcode = Opcode.AND_RIM;
+                        }
+                        break;
+                        
+                    case OR:
+                        if(firstIsFlags) {
+                            opcode = Opcode.OR_F_RIM;
+                        } else if(secondIsFlags) {
+                            opcode = Opcode.OR_RIM_F;
+                        } else {
+                            opcode = Opcode.OR_RIM;
+                        }
+                        break;
+                        
+                    case XOR:
+                        if(firstIsFlags) {
+                            opcode = Opcode.XOR_F_RIM;
+                        } else if(secondIsFlags) {
+                            opcode = Opcode.XOR_RIM_F;
+                        } else {
+                            opcode = Opcode.XOR_RIM;
+                        }
+                        break;
+                        
+                        // just RIM? convert directly
+                    default:
+                        String oprn = opr.toString();
+                        
+                        if(oprn.startsWith("P")) { // packed
+                            opcode = Opcode.valueOf(oprn + "_RIMP");
+                        } else { // not packed
+                            opcode = Opcode.valueOf(oprn + "_RIM");
+                        }
+                        
+                        break;
+                }
+                
+                return new Instruction(opcode, firstOperand, secondOperand);
             }
         }
-        
-        return null;
     }
     
     /**

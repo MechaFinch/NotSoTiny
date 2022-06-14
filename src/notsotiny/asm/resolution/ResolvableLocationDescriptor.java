@@ -20,12 +20,12 @@ public class ResolvableLocationDescriptor implements Resolvable {
     Resolvable parent;
     
     public enum LocationType {
-        REG_A, REG_AH, REG_AL,
-        REG_B, REG_BH, REG_BL,
-        REG_C, REG_CH, REG_CL,
-        REG_D, REG_DH, REG_DL,
-        REG_I,
-        REG_J,
+        REG_DA, REG_A, REG_AH, REG_AL,
+        REG_AB, REG_B, REG_BH, REG_BL,
+        REG_BC, REG_C, REG_CH, REG_CL,
+        REG_CD, REG_D, REG_DH, REG_DL,
+        REG_JI, REG_I,
+        REG_IJ, REG_J,
         REG_F,
         REG_BP,
         REG_SP,
@@ -86,7 +86,6 @@ public class ResolvableLocationDescriptor implements Resolvable {
     public ResolvableLocationDescriptor(LocationType type) {
         this.type = type;
         
-        this.size = 0;
         this.parent = null;
         this.immediate = null;
         this.memory = null;
@@ -94,6 +93,14 @@ public class ResolvableLocationDescriptor implements Resolvable {
         if(this.type == LocationType.IMMEDIATE || this.type == LocationType.MEMORY) {
             throw new IllegalArgumentException("Single-argument constructor not valid for immediates or memory");
         }
+        
+        // set size according to register
+        this.size = switch(this.type) {
+            case REG_A, REG_B, REG_C, REG_D, REG_I, REG_J, REG_F                -> 2;
+            case REG_AH, REG_AL, REG_BH, REG_BL, REG_CH, REG_CL, REG_DH, REG_DL -> 1;
+            case REG_DA, REG_AB, REG_BC, REG_CD, REG_JI, REG_IJ, REG_BP, REG_SP -> 4;
+            default -> 0;
+        };
     }
 
     @Override

@@ -43,11 +43,9 @@ public enum Operation {
     PSBB    (Family.ADDITION),
     
     MUL     (Family.MULTIPLICATION),
-    MULS    (Family.MULTIPLICATION),
     MULH    (Family.MULTIPLICATION),
     MULSH   (Family.MULTIPLICATION),
     PMUL    (Family.MULTIPLICATION),
-    PMULS   (Family.MULTIPLICATION),
     PMULH   (Family.MULTIPLICATION),
     PMULSH  (Family.MULTIPLICATION),
     
@@ -107,16 +105,26 @@ public enum Operation {
                 return Operation.valueOf(n.substring(0, n.length() - 1));
             }
             
-            // JCC
+            // JCC & aliases
             switch(n) {
+                // JCC
                 case "JC", "JNC", "JS", "JNS", "JO", "JNO", "JZ", "JNZ", "JE", "JNE",
                      "JA", "JNA", "JAE", "JNAE", "JB", "JNB", "JBE", "JNBE",
                      "JG", "JNG", "JGE", "JNGE", "JL", "JNL", "JLE", "JNLE":
                          return Operation.JCC;
                 
+                // alias MULS to MUL cause they're the same
+                case "MULS":
+                    return Operation.MUL;
+                
+                case "PMULS":
+                    return Operation.PMUL;
+                
                 default:
                     throw new IllegalArgumentException("Invalid mnemonic " + n);
             }
+            
+            
         }
     }
     
