@@ -188,14 +188,12 @@ public class NotSoTinySimulator {
         
         switch(desc.op.getType()) {
             case MUL:
-            case MULS:
             case MULH:
             case MULSH:
                 runMUL(desc);
                 break;
             
             case PMUL:
-            case PMULS:
             case PMULH:
             case PMULSH:
                 runPMUL(desc);
@@ -1228,13 +1226,12 @@ public class NotSoTinySimulator {
      * @param a
      * @param b
      * @param size
-     * @param includeCarry
-     * @param invertCarry
+     * @param includeCarry true to use flags for cin
+     * @param defaultCarry value of cin when includeCarry is false
      * @return a + b
      */
-    private int add(int a, int b, int size, boolean includeCarry, boolean invertCarry) {
-        int carryIn = includeCarry ? (this.reg_f & 0x01) : 0;
-        if(invertCarry) carryIn ^= 0x01; // xor bit flip
+    private int add(int a, int b, int size, boolean includeCarry, boolean defaultCarry) {
+        int carryIn = includeCarry ? (this.reg_f & 0x01) : (defaultCarry ? 1 : 0);
         
         int c = a + b + carryIn;
         

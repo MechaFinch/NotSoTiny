@@ -222,7 +222,7 @@ public class Assembler {
                 continue;
             }
             
-            System.out.println("Assembling from symbol: " + s);
+            System.out.println("Processing symbol: " + s);
             
             // parse
             try {
@@ -253,6 +253,7 @@ public class Assembler {
                         } else if(!inst.hasValidOperands()) {
                             System.out.println("Illegal operands for instruction: " + inst + " on line " + line);
                         } else {
+                            System.out.println("Parsed instruction: " + inst);
                             allInstructions.add(inst);
                             //if(!inst.isResolved()) unresolvedInstructions.add(inst);
                         }

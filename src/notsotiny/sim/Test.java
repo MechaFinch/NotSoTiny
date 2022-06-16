@@ -25,8 +25,8 @@ public class Test {
     public static void main(String[] args) throws IOException {
         byte[] mem = new byte[0x0800];
         
-        /*
-        try(BufferedReader br = new BufferedReader(new FileReader(new File("calculator_assembled.txt")))) {
+        
+        try(BufferedReader br = new BufferedReader(new FileReader(new File("wtf.txt")))) {
             int i = 0;
             
             for(String ln : br.lines().toList()) {
@@ -52,18 +52,21 @@ public class Test {
                 }
             }
         }
-        */
         
+        
+        /*
         List<RelocatableObject> objects = Assembler.assemble(new File("calculator.asm"));
         
         Relocator rel = new Relocator();
         objects.forEach(rel::add);
+        
         
         byte[] prog = rel.relocate(0);
         
         for(int i = 0; i < prog.length; i++) {
             mem[i] = prog[i];
         }
+        */
         
         Halter halter = new Halter();
         
@@ -93,6 +96,10 @@ public class Test {
             sim.step();
             
             if(halter.halted()) break;
+            
+            try {
+                Thread.sleep(1000 / 10);
+            } catch(Exception e) {}
         }
     }
     
