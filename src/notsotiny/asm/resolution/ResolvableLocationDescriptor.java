@@ -1,5 +1,7 @@
 package notsotiny.asm.resolution;
 
+import notsotiny.asm.Register;
+
 /**
  * A Resolvable that describes a location
  * 
@@ -11,24 +13,18 @@ public class ResolvableLocationDescriptor implements Resolvable {
     
     private LocationType type;
     
-    int size;
+    private int size;
     
-    ResolvableMemory memory;
+    private Register register;
     
-    ResolvableValue immediate;
+    private ResolvableMemory memory;
     
-    Resolvable parent;
+    private ResolvableValue immediate;
+    
+    private Resolvable parent;
     
     public enum LocationType {
-        REG_DA, REG_A, REG_AH, REG_AL,
-        REG_AB, REG_B, REG_BH, REG_BL,
-        REG_BC, REG_C, REG_CH, REG_CL,
-        REG_CD, REG_D, REG_DH, REG_DL,
-        REG_JI, REG_I,
-        REG_IJ, REG_J,
-        REG_F,
-        REG_BP,
-        REG_SP,
+        REGISTER,
         IMMEDIATE,
         MEMORY,
         NULL
@@ -48,6 +44,7 @@ public class ResolvableLocationDescriptor implements Resolvable {
         
         this.parent = null;
         this.immediate = null;
+        this.register = Register.NONE;
         
         this.memory.setParent(this);
         
@@ -70,6 +67,7 @@ public class ResolvableLocationDescriptor implements Resolvable {
         
         this.parent = null;
         this.memory = null;
+        this.register = Register.NONE;
         
         this.immediate.setParent(this);
         
@@ -83,8 +81,9 @@ public class ResolvableLocationDescriptor implements Resolvable {
      * 
      * @param type
      */
-    public ResolvableLocationDescriptor(LocationType type) {
+    public ResolvableLocationDescriptor(LocationType type, Register register) {
         this.type = type;
+        this.register = register;
         
         this.parent = null;
         this.immediate = null;
@@ -95,12 +94,27 @@ public class ResolvableLocationDescriptor implements Resolvable {
         }
         
         // set size according to register
-        this.size = switch(this.type) {
-            case REG_A, REG_B, REG_C, REG_D, REG_I, REG_J, REG_F                -> 2;
-            case REG_AH, REG_AL, REG_BH, REG_BL, REG_CH, REG_CL, REG_DH, REG_DL -> 1;
-            case REG_DA, REG_AB, REG_BC, REG_CD, REG_JI, REG_IJ, REG_BP, REG_SP -> 4;
+        this.size = switch(this.register) {
+            case DA, AB, BC, CD, JI, IJ, BP, SP -> 4;
+            case A, B, C, D, I, J, F            -> 2;
+            case AH, AL, BH, BL, CH, CL, DH, DL -> 1;
             default -> 0;
         };
+    }
+    
+    /**
+     * Create an empty location descriptor
+     * 
+     * @param type
+     */
+    public ResolvableLocationDescriptor(LocationType type) {
+        this.type = type;
+        
+        this.parent = null;
+        this.immediate = null;
+        this.memory = null;
+        this.register = Register.NONE;
+        this.size = 0;
     }
 
     @Override
@@ -146,6 +160,7 @@ public class ResolvableLocationDescriptor implements Resolvable {
     public int getSize() { return this.size; }
     public void setSize(int s) { this.size = s; }
     public LocationType getType() { return this.type; }
+    public Register getRegister() { return this.register; }
     public ResolvableMemory getMemory() { return this.memory; }
     public ResolvableValue getImmediate() { return this.immediate; }
 }

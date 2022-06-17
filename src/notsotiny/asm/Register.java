@@ -6,8 +6,8 @@ package notsotiny.asm;
  * @author Mechafinch
  */
 public enum Register {
-    A, B, C, D,
-    I, J, F,
-    BP, SP,
+    DA, AB, BC, CD, JI, IJ, BP, SP,
+    A, B, C, D, I, J, F,
+    AH, AL, BH, BL, CH, CL, DH, DL,
     NONE
 }

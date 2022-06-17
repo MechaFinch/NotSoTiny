@@ -25,7 +25,7 @@ public class Test {
     public static void main(String[] args) throws IOException {
         byte[] mem = new byte[0x0800];
         
-        
+        /*
         try(BufferedReader br = new BufferedReader(new FileReader(new File("wtf.txt")))) {
             int i = 0;
             
@@ -52,9 +52,8 @@ public class Test {
                 }
             }
         }
+        */
         
-        
-        /*
         List<RelocatableObject> objects = Assembler.assemble(new File("calculator.asm"));
         
         Relocator rel = new Relocator();
@@ -66,7 +65,6 @@ public class Test {
         for(int i = 0; i < prog.length; i++) {
             mem[i] = prog[i];
         }
-        */
         
         Halter halter = new Halter();
         
