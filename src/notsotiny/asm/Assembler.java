@@ -8,10 +8,12 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.MissingResourceException;
+import java.util.Set;
 
 import asmlib.lex.Lexer;
 import asmlib.lex.symbols.ConstantSymbol;
@@ -1080,11 +1082,131 @@ public class Assembler {
         ResolvableValue offset = new ResolvableConstant(0);
         
         boolean assignedBase = false,
-                assignedIndex = false;
+                assignedIndex = false,
+                assignedOffset = false;
         
         /*
-         * consuming each symbol in the MemorySymbol group, assign what we come across and construct a ResolvableExpression for the offset
+         * consuming each symbol in the MemorySymbol group, assign registers to base/index and put
+         * everything else into an ExpressionSymbol which should get parsed into a value
          */
+        
+        List<Symbol> symbols = ms.symbols();
+        ArrayList<Symbol> exprSymbols = new ArrayList<>();
+        
+        // simplify checks
+        Set<Integer> scales = Set.of(1, 2, 4, 8);
+        Set<String> reg16s = Set.of("A", "B", "C", "D", "I", "J"),
+                    reg32s = Set.of("A", "B", "C", "D", "I", "J", "BP", "SP");
+        
+        for(int i = 0; i < symbols.size(); i++) {
+            switch(symbols.get(i)) {
+                case ConstantSymbol cs:
+                    // for a constant, we're looking for [1,2,4,8]*reg16
+                    if(scales.contains(cs.value()) &&
+                       symbols.size() >= i + 3 &&
+                       symbols.get(i + 1) instanceof SpecialCharacterSymbol scs && scs.character() == '*' &&
+                       symbols.get(i + 2) instanceof RegisterSymbol rs && reg16s.contains(rs.name())) {
+                        // found
+                        if(assignedIndex) throw new IllegalArgumentException("Duplicate index in memory: " + rs);
+                        
+                        index = Register.valueOf(rs.name());
+                        scale = cs.value();
+                        assignedIndex = true;
+                        i += 2;
+                    } else {
+                        exprSymbols.add(cs);
+                        assignedOffset = true;
+                    }
+                    break;
+                    
+                case RegisterSymbol rs:
+                    // is it a valid register
+                    if(reg32s.contains(rs.name())) {
+                        // index or A:B base
+                        if(reg16s.contains(rs.name())) {
+                            // do we have enough symbols for scale or base
+                            if(symbols.size() >= i + 3) {
+                                // is it reg16*[1,2,4,8]
+                                if(symbols.get(i + 1) instanceof SpecialCharacterSymbol scs && scs.character() == '*' &&
+                                   symbols.get(i + 2) instanceof ConstantSymbol cs && scales.contains(cs.value())) {
+                                    // yes
+                                    if(assignedIndex)  throw new IllegalArgumentException("Duplicate index in memory: " + rs);
+                                    
+                                    index = Register.valueOf(rs.name());
+                                    scale = cs.value();
+                                    assignedIndex = true;
+                                    i += 2;
+                                } else {
+                                    // defer to other function
+                                    Register r = parseRegister(symbols, i);
+                                    
+                                    switch(r) {
+                                            // index
+                                        case A, B, C, D, I, J:
+                                            if(assignedIndex) throw new IllegalArgumentException("Duplicate index in memory: " + rs);
+                                        
+                                            index = r;
+                                            scale = 1;
+                                            assignedIndex = true;
+                                            break;
+                                        
+                                            // base
+                                        case DA, AB, BC, CD, JI, IJ:
+                                            i += 2;
+                                            
+                                        case BP, SP:
+                                            if(assignedBase) throw new IllegalArgumentException("Duplicate base in memory: " + rs);
+                                        
+                                            base = r;
+                                            assignedBase = true;
+                                            break;
+                                        
+                                            // invalid
+                                        default:
+                                            throw new IllegalArgumentException("Invalid register in memory: " + rs);
+                                    }
+                                }
+                            } else {
+                                // must be index
+                                if(assignedIndex) throw new IllegalArgumentException("Duplicate index in memory: " + rs);
+                                
+                                index = Register.valueOf(rs.name());
+                                scale = 1;
+                                assignedIndex = true;
+                            }
+                        } else { // base
+                            if(assignedBase) throw new IllegalArgumentException("Duplicate base in memory: " + rs);
+                            
+                            base = Register.valueOf(rs.name());
+                            assignedBase = true;
+                        }
+                    } else throw new IllegalArgumentException("Invalid register in memory: " + rs);
+                    break;
+                    
+                case SpecialCharacterSymbol scs:
+                    exprSymbols.add(scs);
+                    if(scs.character() != '+') assignedOffset = true;
+                    break;
+                
+                case Symbol s:
+                    // symbols without specific stuff get thrown in the offset expression
+                    exprSymbols.add(s);
+                    assignedOffset = true;
+            }
+        }
+        
+        // offset?
+        if(assignedOffset) {
+            // parse the rest
+            ResolvableLocationDescriptor offsetDesc = parseExpression(new ExpressionSymbol(exprSymbols));
+            
+            if(offsetDesc != null && offsetDesc.getType() == LocationType.IMMEDIATE) {
+                offset = offsetDesc.getImmediate();
+            } else {
+                throw new IllegalArgumentException("Invalid offset expression parse: " + offsetDesc);
+            }
+        }
+        
         
         return new ResolvableLocationDescriptor(LocationType.MEMORY, -1, new ResolvableMemory(base, index, scale, offset));
     }
@@ -1151,7 +1273,7 @@ public class Assembler {
     private static boolean hasFirstOperand(Operation op) {
         return switch(op) {
             case NOP, RET, IRET -> false;
-            default             -> true;
+            default -> true;
         };
     }
     
@@ -1165,9 +1287,9 @@ public class Assembler {
         return switch(op) {
             case PUSH, POP, NOT, NEG, INC, ICC, PINC, PICC,
                  DEC, DCC, PDEC, PDCC, JMP, JMPA, CALL, CALLA,
-                 INT, JCC  -> false;
+                 INT, JCC -> false;
                  
-            default             -> true;
+            default -> true;
         };
     }
 }

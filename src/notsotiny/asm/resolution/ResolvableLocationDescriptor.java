@@ -146,15 +146,12 @@ public class ResolvableLocationDescriptor implements Resolvable {
             default -> "";
         };
         
-        if(this.type == LocationType.NULL) {
-            return "";
-        } else if(this.type == LocationType.MEMORY) {
-            return s + this.memory.toString();
-        } else if(this.type == LocationType.IMMEDIATE) {
-            return s + this.immediate.toString();
-        } else {
-            return this.type.toString().substring(4); // remove "REG_"
-        }
+        return switch(this.type) {
+            case REGISTER   -> this.register.toString();
+            case IMMEDIATE  -> s + this.immediate.toString();
+            case MEMORY     -> s + this.memory.toString();
+            case NULL       -> "";
+        };
     }
     
     public int getSize() { return this.size; }

@@ -56,10 +56,16 @@ public class ResolvableMemory implements Resolvable {
         this.rOffset = offset;
         
         this.parent = null;
-        this.offset = -1;
-        this.resolved = false;
         
         this.rOffset.setParent(this);
+        
+        if(this.rOffset.isResolved()) {
+            this.resolved = true;
+            this.offset = this.rOffset.value();
+        } else {
+            this.resolved = false;
+            this.offset = -1;
+        }
     }
 
     @Override
@@ -80,6 +86,66 @@ public class ResolvableMemory implements Resolvable {
     @Override
     public void setParent(Resolvable r) {
         this.parent = r;
+    }
+    
+    @Override
+    public String toString() {
+        String sb = "", // base
+               si = "", // index
+               so = ""; // offset
+        
+        if(this.base != Register.NONE) {
+            sb = this.base.toString();
+            
+            if(this.index != Register.NONE) {
+                sb += " + ";
+                si = this.index.toString();
+                
+                if(this.resolved) {
+                    if(this.offset != 0) {
+                        si += " + ";
+                        so = Integer.toString(this.offset);
+                    }
+                } else {
+                    si += " + ";
+                    so = this.rOffset.toString();
+                }
+            } else {
+                if(this.resolved) {
+                    if(this.offset != 0) {
+                        sb += " + ";
+                        so = Integer.toString(this.offset);
+                    }
+                } else {
+                    sb += " + ";
+                    so = this.rOffset.toString();
+                }
+            }
+        } else {
+            if(this.index != Register.NONE) {
+                si = this.index.toString();
+                
+                if(this.resolved) {
+                    if(this.offset != 0) {
+                        si += " + ";
+                        so = Integer.toString(this.offset);
+                    }
+                } else {
+                    si += " + ";
+                    so = this.rOffset.toString();
+                }
+            } else {
+                if(this.resolved) {
+                    if(this.offset != 0) {
+                        so = Integer.toString(this.offset);
+                    }
+                } else {
+                    so = this.rOffset.toString();
+                }
+            }
+        }
+        
+        return "[base-" + sb + " index-" + si + " offset-" + so + "]";
     }
     
     public Register getBase() { return this.base; }
