@@ -384,9 +384,9 @@ public class NotSoTinySimulator {
         int c;
         
         if(desc.op.getType() == Operation.ADD || desc.op.getType() == Operation.ADC) { // add
-            c = add(readLocation(dst), b, dst.size(), includeCarry, false);
+            c = add(readLocation(dst), b, dst.size(), false, includeCarry);
         } else { // subtract
-            c = add(readLocation(dst), ~b, dst.size(), includeCarry, true);
+            c = add(readLocation(dst), b, dst.size(), true, includeCarry);
         }
         
         writeLocation(dst, c);
@@ -601,8 +601,7 @@ public class NotSoTinySimulator {
         };
         
         // subtract and discard
-        b = ~b + 1;
-        add(a, b, dest.size(), false, false);
+        add(a, b, dest.size(), true, false);
     }
     
     /**
@@ -1226,12 +1225,17 @@ public class NotSoTinySimulator {
      * @param a
      * @param b
      * @param size
+     * @param subtract determines if B is complemented and how CF is treated. if true: b, carry in, and carry out are complemented.
      * @param includeCarry true to use flags for cin
-     * @param defaultCarry value of cin when includeCarry is false
      * @return a + b
      */
-    private int add(int a, int b, int size, boolean includeCarry, boolean defaultCarry) {
-        int carryIn = includeCarry ? (this.reg_f & 0x01) : (defaultCarry ? 1 : 0);
+    private int add(int a, int b, int size, boolean subtract, boolean includeCarry) {
+        int carryIn = includeCarry ? (this.reg_f & 0x01) : 0;
+        
+        if(subtract) {
+            carryIn ^= 1;
+            b = ~b;
+        }
         
         int c = a + b + carryIn;
         
@@ -1264,7 +1268,7 @@ public class NotSoTinySimulator {
             carry = (d & 0x1_0000_0000l) != 0;
         }
         
-        this.reg_f = (short)((zero ? 0x08 : 0x00) | (overflow ? 0x04 : 0x00) | (sign ? 0x02 : 0x00) | (carry ? 0x01 : 0x00));
+        this.reg_f = (short)((zero ? 0x08 : 0x00) | (overflow ? 0x04 : 0x00) | (sign ? 0x02 : 0x00) | ((carry != subtract) ? 0x01 : 0x00));
         
         return c;
     }
