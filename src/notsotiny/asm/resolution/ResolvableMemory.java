@@ -145,7 +145,7 @@ public class ResolvableMemory implements Resolvable {
             }
         }
         
-        return "[base-" + sb + " index-" + si + " offset-" + so + "]";
+        return "[" + sb + si + so + "]";
     }
     
     public Register getBase() { return this.base; }

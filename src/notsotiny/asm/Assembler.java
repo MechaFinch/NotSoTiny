@@ -111,6 +111,7 @@ public class Assembler {
      * @throws IOException
      */
     public static List<RelocatableObject> assemble(File f) throws IOException {
+        System.out.println("Assembling from main file: " + f);
         ArrayList<RenameableRelocatableObject> objects = new ArrayList<>();
         ArrayList<String> files = new ArrayList<>(); // dependencies
         files.add(f.getAbsolutePath());
@@ -171,8 +172,8 @@ public class Assembler {
      * @throws IOException
      */
     private static RenameableRelocatableObject assembleObject(List<Symbol> symbols, List<String> includedFiles, File file) throws IOException {
-        int line = 0,       // line in file
-            address = 0;    // current address
+        System.out.println("Assembling file: " + file);
+        int line = 0; // line in file
         
         String workingDirectory = file.getAbsolutePath();
         int libNameIndex = workingDirectory.lastIndexOf("\\");
@@ -312,6 +313,8 @@ public class Assembler {
             ResolvableLocationDescriptor firstOperand = parseOperand(symbolQueue, true);
             Opcode opcode = null;
             
+            if(firstOperand == null) return null; // TODO
+            
             if(!hasSecondOperand(opr)) {
                 // 1 argument.
                 // PUSH, JMP, JCC, CALL, and INT are all source only while the others are destination only
@@ -337,7 +340,9 @@ public class Assembler {
                                 default -> Opcode.PUSH_RIM;
                             };
                             
-                            default     -> Opcode.PUSH_RIM;
+                            case IMMEDIATE  -> firstOperand.getSize() == 4 ? Opcode.PUSH_I32 : Opcode.PUSH_RIM;
+                            
+                            default         -> Opcode.PUSH_RIM;
                         };
                         break;
                     
@@ -1027,11 +1032,12 @@ public class Assembler {
             
                 // expression
             case ExpressionSymbol es:
-                return parseExpression(es);
+                return parseOperandExpression(es);
                 
                 // size prefix overrides operand size
             case SizeSymbol ss:
                 ResolvableLocationDescriptor rld = parseOperand(symbolQueue, canBeMemory);
+                if(rld == null) return null; // TODO
                 rld.setSize(convertSize(ss));
                 return rld;
                 
@@ -1198,12 +1204,10 @@ public class Assembler {
         // offset?
         if(assignedOffset) {
             // parse the rest
-            ResolvableLocationDescriptor offsetDesc = parseExpression(new ExpressionSymbol(exprSymbols));
+            offset = parseMemoryExpression(exprSymbols);
             
-            if(offsetDesc != null && offsetDesc.getType() == LocationType.IMMEDIATE) {
-                offset = offsetDesc.getImmediate();
-            } else {
-                throw new IllegalArgumentException("Invalid offset expression parse: " + offsetDesc);
+            if(offset == null) {
+                throw new IllegalArgumentException("Invalid offset expression parse: " + offset);
             }
         }
         
@@ -1253,13 +1257,26 @@ public class Assembler {
     }
     
     /**
-     * Parses an expression
+     * Parses an expression in the context of memory. Mainly creates a queue and passes things off
+     * to the {@link ConstantExpressionParser} class
+     * 
+     * @param expr
+     * @return
+     */
+    private static ResolvableValue parseMemoryExpression(List<Symbol> expr) {
+        System.out.println("Parsing memory expression: " + expr);
+        
+        return ConstantExpressionParser.parse(new LinkedList<Symbol>(expr));
+    }
+    
+    /**
+     * Parses an expression in the context of an operand
      * 
      * @param es
      * @return
      */
-    private static ResolvableLocationDescriptor parseExpression(ExpressionSymbol es) {
-        System.out.println("Parsing expression: " + es);
+    private static ResolvableLocationDescriptor parseOperandExpression(ExpressionSymbol es) {
+        System.out.println("Parsing operand expression: " + es);
         // TODO
         return null;
     }

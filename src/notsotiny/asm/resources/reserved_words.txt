@@ -127,7 +127,6 @@ ptr
 import
 %libname
 %define
-offset
 resb
 resw
 resd
@@ -139,4 +138,3 @@ dp
 as
 ::expressive::
 as
-offset

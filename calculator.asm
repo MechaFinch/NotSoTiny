@@ -60,12 +60,14 @@
 ; void main()
 ; main
 func_main:
+	MOV A, 3 * (23 - 2) + (83 / (28 * 2 * (15 + 95) - 23)) + 12 ; = 75
 	MOV A, 0x00		; acc
+	
 	
 .loop:
 	; printstr(msg_accumulator)
 	PUSH A
-	PUSH msg_accumulator
+	PUSH ptr msg_accumulator
 	CALL func_printstr
 	ADD SP, 4
 	POP A
@@ -81,19 +83,19 @@ func_main:
 	
 	; printstr(prompt_op)
 	PUSH A
-	PUSH prompt_op
+	PUSH ptr prompt_op
 	CALL func_printstr
 	ADD SP, 4
 	
 	; getstr(buffer, 5)
 	PUSH byte 5
-	PUSH buffer
+	PUSH ptr buffer
 	CALL func_getstr
 	ADD SP, 5
 	
 	; matches(buffer, symbol_clr)
-	PUSH symbol_clr
-	PUSH buffer
+	PUSH ptr symbol_clr
+	PUSH ptr buffer
 	CALL func_matches
 	ADD SP, 8
 	
@@ -106,8 +108,8 @@ func_main:
 	
 .next0:
 	; matches(buffer, symbol_end)
-	PUSH symbol_end
-	PUSH buffer
+	PUSH ptr symbol_end
+	PUSH ptr buffer
 	CALL func_matches
 	ADD SP, 8
 	
@@ -117,8 +119,8 @@ func_main:
 
 .next1:
 	; matches(buffer, symbol_add)
-	PUSH symbol_add
-	PUSH buffer
+	PUSH ptr symbol_add
+	PUSH ptr buffer
 	CALL func_matches
 	ADD SP, 8
 	
@@ -129,8 +131,8 @@ func_main:
 	
 .next2:
 	; matches(buffer, symbol_sub)
-	PUSH symbol_sub
-	PUSH buffer
+	PUSH ptr symbol_sub
+	PUSH ptr buffer
 	CALL func_matches
 	ADD SP, 8
 	
@@ -141,8 +143,8 @@ func_main:
 
 .next3:
 	; matches(buffer, symbol_mul)
-	PUSH symbol_mul
-	PUSH buffer
+	PUSH ptr symbol_mul
+	PUSH ptr buffer
 	CALL func_matches
 	ADD SP, 8
 	
@@ -154,7 +156,7 @@ func_main:
 .next4:
 	; unknown operation
 	; printstr(msg_unknown)
-	PUSH msg_unknown
+	PUSH ptr msg_unknown
 	CALL func_printstr
 	ADD SP, 4
 	POP A
@@ -162,9 +164,9 @@ func_main:
 
 	; sneaky jump table
 .switch_table:
-	offset byte .case0 -> .case0
-	offset byte .case0 -> .case1
-	offset byte .case0 -> .case2
+	db .case0 - .case0
+	db .case1 - .case0
+	db .case2 - .case0
 
 .readint:
 	; v = iomc.getint();

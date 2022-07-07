@@ -14,7 +14,11 @@ public enum Operator {
     ADD         ('+'),
     SUBTRACT    ('-'),
     MULTIPLY    ('*'),
-    DIVIDE      ('/');
+    DIVIDE      ('/'),
+    AND         ('&'),
+    OR          ('|'),
+    XOR         ('^'),
+    NOT         ('~');
     
     // character for conversion from a SpecialCharacter symbol
     private char c;
@@ -31,7 +35,15 @@ public enum Operator {
         this.c = c;
     }
     
-    public Operator convertSpecialCharacter(SpecialCharacterSymbol sc) {
+    /**
+     * Converts a SpecialCharacterSymbol to an operator
+     * 
+     * @param sc
+     * @return
+     */
+    public static Operator convertSpecialCharacter(SpecialCharacterSymbol sc) {
         return characterMap.get(sc.character());
     }
+    
+    public char character() { return this.c; }
 }

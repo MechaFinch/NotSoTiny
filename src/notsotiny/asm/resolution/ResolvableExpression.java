@@ -19,6 +19,8 @@ public class ResolvableExpression implements ResolvableValue {
 
     /**
      * Constructor
+     * Note that when using the NOT operator, the left value is not used by the {@link #value()}
+     * method but is still part of the resolved check. Use a constant zero or something
      * 
      * @param parent
      * @param left
@@ -34,6 +36,28 @@ public class ResolvableExpression implements ResolvableValue {
         
         this.left.setParent(this);
         this.right.setParent(this);
+    }
+    
+    /**
+     * Tells the expression to minimize itself
+     * Attempts to resolve each side, then applies the operator if successful. Sub-expressions are also minimized.
+     */
+    public ResolvableValue minimize() {
+        // minimize sides
+        if(this.left instanceof ResolvableExpression rel) {
+            this.left = rel.minimize();
+        }
+        
+        if(this.right instanceof ResolvableExpression rer) {
+            this.right = rer.minimize();
+        }
+        
+        // resolve if possible
+        if(this.left.isResolved() && this.right.isResolved()) {
+            return new ResolvableConstant(this.value());
+        } else {
+            return this;
+        }
     }
     
     @Override
@@ -61,12 +85,28 @@ public class ResolvableExpression implements ResolvableValue {
             case SUBTRACT   -> a - b;
             case MULTIPLY   -> a * b;
             case DIVIDE     -> a / b;
+            case AND        -> a & b;
+            case OR         -> a | b;
+            case XOR        -> a ^ b;
+            case NOT        -> ~b;
+            default -> throw new IllegalArgumentException("Unexpected value: " + this.operation); // auto generated
         };
     }
     
     @Override
     public void setParent(Resolvable r) {
         this.parent = r;
+    }
+    
+    @Override
+    public String toString() {
+        if(this.operation == Operator.NOT) { // not
+            return "~" + this.right;
+        } else if(this.operation == Operator.SUBTRACT && this.left.isResolved() && this.left.value() == 0) { // negate
+            return "-" + this.right;
+        } else { // normal 2 argument things
+            return "(" + this.left + " " + this.operation.character() + " " + this.right + ")";
+        }
     }
     
     public Resolvable getLeft() { return this.left; }
