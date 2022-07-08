@@ -8,7 +8,7 @@ package notsotiny.asm.resolution;
  */
 public class ResolvableConstant implements ResolvableValue {
     
-    private int val;
+    private long val;
     
     private boolean resolved;
     
@@ -21,7 +21,7 @@ public class ResolvableConstant implements ResolvableValue {
      * 
      * @param val
      */
-    public ResolvableConstant(int val) {
+    public ResolvableConstant(long val) {
         this.val = val;
         
         this.resolved = true;
@@ -53,7 +53,7 @@ public class ResolvableConstant implements ResolvableValue {
     }
     
     @Override
-    public int value() {
+    public long value() {
         return this.val;
     }
     
@@ -77,7 +77,7 @@ public class ResolvableConstant implements ResolvableValue {
     @Override
     public String toString() {
         if(this.resolved) {
-            return Integer.toString(this.val);
+            return Long.toString(this.val);
         } else {
             return this.name;
         }

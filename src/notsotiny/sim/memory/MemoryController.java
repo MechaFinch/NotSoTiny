@@ -13,7 +13,7 @@ public interface MemoryController {
      * @param address
      * @return
      */
-    public byte readByte(int address);
+    public byte readByte(long address);
     
     /**
      * Get 2 little-endian bytes from an address
@@ -21,7 +21,7 @@ public interface MemoryController {
      * @param address
      * @return
      */
-    public default short read2Bytes(int address) {
+    public default short read2Bytes(long address) {
         return (short)((this.readByte(address) & 0xFF) | (this.readByte(address + 1) << 8)); 
     }
     
@@ -31,7 +31,7 @@ public interface MemoryController {
      * @param address
      * @return
      */
-    public default int read3Bytes(int address) {
+    public default int read3Bytes(long address) {
         return (this.readByte(address) & 0xFF) | ((this.readByte(address + 1) & 0xFF) << 8) | ((this.readByte(address + 2) & 0xFF) << 16);
     }
     
@@ -41,7 +41,7 @@ public interface MemoryController {
      * @param address
      * @return
      */
-    public default int read4Bytes(int address) {
+    public default int read4Bytes(long address) {
         return (this.readByte(address) & 0xFF) | ((this.readByte(address + 1) & 0xFF) << 8) | ((this.readByte(address + 2) & 0xFF) << 16) | ((this.readByte(address + 3) & 0xFF) << 24);
     }
     
@@ -51,7 +51,7 @@ public interface MemoryController {
      * @param address
      * @param value
      */
-    public void writeByte(int address, byte value);
+    public void writeByte(long address, byte value);
     
     /**
      * Set 2 little-endian bytes at an address
@@ -59,7 +59,7 @@ public interface MemoryController {
      * @param address
      * @param value
      */
-    public default void write2Bytes(int address, short value) {
+    public default void write2Bytes(long address, short value) {
         this.writeByte(address + 0, (byte) value);
         this.writeByte(address + 1, (byte) (value >> 8));
     }
@@ -70,7 +70,7 @@ public interface MemoryController {
      * @param address
      * @param value
      */
-    public default void write3Bytes(int address, int value) {
+    public default void write3Bytes(long address, int value) {
         this.writeByte(address + 0, (byte) value);
         this.writeByte(address + 1, (byte) (value >> 8));
         this.writeByte(address + 2, (byte) (value >> 16));
@@ -82,7 +82,7 @@ public interface MemoryController {
      * @param address
      * @param value
      */
-    public default void write4Bytes(int address, int value) {
+    public default void write4Bytes(long address, int value) {
         this.writeByte(address + 0, (byte) value);
         this.writeByte(address + 1, (byte) (value >> 8));
         this.writeByte(address + 2, (byte) (value >> 16));

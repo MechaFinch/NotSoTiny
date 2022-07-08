@@ -54,7 +54,7 @@ public class Test {
         }
         */
         
-        List<RelocatableObject> objects = Assembler.assemble(new File("render_test.asm"));
+        List<RelocatableObject> objects = Assembler.assemble(new File("C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\snake\\snake.asm"));
         
         Relocator rel = new Relocator();
         objects.forEach(rel::add);

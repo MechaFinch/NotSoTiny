@@ -53,13 +53,6 @@ public class Instruction implements Component {
     }
     
     /**
-     * @return true if resolved
-     */
-    public boolean isResolved() {
-        return this.source.isResolved() && this.destination.isResolved();
-    }
-    
-    /**
      * Determines if this instruction has valid operands. 
      * 
      * @return
@@ -130,12 +123,12 @@ public class Instruction implements Component {
                  JMP_RIM, JMPA_RIM32, CALL_RIM, CALLA_RIM32,
                  INT_RIM, LEA_RIM, CMP_RIM, CMP_RIM_0,
                  JC_RIM, JNC_RIM, JS_RIM, JNS_RIM, JO_RIM, JNO_RIM, JZ_RIM, JNZ_RIM,
-                 JA_RIM, JBE_RIM, JG_RIM, JGE_RIM, JL_RIM, JLE_RIM -> getRIMWidth() + 1;
+                 JA_RIM, JBE_RIM, JG_RIM, JGE_RIM, JL_RIM, JLE_RIM -> getRIMWidth(false) + 1;
             
             /*
              * RIM + Immediate Instructions
              */
-            case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8 -> getRIMWidth() + 2;
+            case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8 -> getRIMWidth(true) + 2;
             
             /*
              * BIO w/ Offset Instructions
@@ -146,12 +139,27 @@ public class Instruction implements Component {
         };
     }
     
-    private int getRIMWidth() {
+    private int getRIMWidth(boolean overrideImmediate) {
         return -1;
     }
     
     private int getBIOWidth(Resolvable location) {
         return -1;
+    }
+    
+    @Override
+    public boolean isResolved() {
+        return this.source.isResolved() && this.destination.isResolved();
+    }
+    
+    @Override
+    public void resolve() {
+        // TODO Auto-generated method stub
+    }
+
+    @Override
+    public void setParent(Resolvable r) {
+        // Instructions don't have parents
     }
     
     @Override

@@ -15,12 +15,9 @@ public class ResolvableMemory implements Resolvable {
     
     private Resolvable parent;
     
-    private ResolvableValue rOffset;
+    private ResolvableValue offset;
     
-    private int offset,
-                scale;
-    
-    private boolean resolved;
+    private int scale;
     
     /**
      * Resolved constructor
@@ -34,11 +31,9 @@ public class ResolvableMemory implements Resolvable {
         this.base = base;
         this.index = index;
         this.scale = scale;
-        this.offset = offset;
+        this.offset = new ResolvableConstant(offset);
         
         this.parent = null;
-        this.rOffset = null;
-        this.resolved = true;
     }
     
     /**
@@ -53,34 +48,21 @@ public class ResolvableMemory implements Resolvable {
         this.base = base;
         this.index = index;
         this.scale = scale;
-        this.rOffset = offset;
+        this.offset = offset;
         
         this.parent = null;
         
-        this.rOffset.setParent(this);
-        
-        if(this.rOffset.isResolved()) {
-            this.resolved = true;
-            this.offset = this.rOffset.value();
-        } else {
-            this.resolved = false;
-            this.offset = -1;
-        }
+        this.offset.setParent(this);
     }
 
     @Override
     public boolean isResolved() {
-        return this.resolved;
+        return this.offset.isResolved();
     }
 
     @Override
     public void resolve() {
-        this.resolved = this.rOffset.isResolved();
-        
-        if(this.resolved) { 
-            this.offset = this.rOffset.value();
-            this.parent.resolve();
-        }
+        if(this.isResolved()) this.parent.resolve();
     }
     
     @Override
@@ -94,6 +76,8 @@ public class ResolvableMemory implements Resolvable {
                si = "", // index
                so = ""; // offset
         
+        boolean resolved = this.isResolved();
+        
         if(this.base != Register.NONE) {
             sb = this.base.toString();
             
@@ -101,46 +85,27 @@ public class ResolvableMemory implements Resolvable {
                 sb += " + ";
                 si = this.index.toString();
                 
-                if(this.resolved) {
-                    if(this.offset != 0) {
-                        si += " + ";
-                        so = Integer.toString(this.offset);
-                    }
-                } else {
+                if(!resolved || (resolved && this.offset.value() != 0)) {
                     si += " + ";
-                    so = this.rOffset.toString();
+                    so = this.offset.toString();
                 }
             } else {
-                if(this.resolved) {
-                    if(this.offset != 0) {
-                        sb += " + ";
-                        so = Integer.toString(this.offset);
-                    }
-                } else {
+                if(!resolved || (resolved && this.offset.value() != 0)) {
                     sb += " + ";
-                    so = this.rOffset.toString();
+                    so = this.offset.toString();
                 }
             }
         } else {
             if(this.index != Register.NONE) {
                 si = this.index.toString();
                 
-                if(this.resolved) {
-                    if(this.offset != 0) {
-                        si += " + ";
-                        so = Integer.toString(this.offset);
-                    }
-                } else {
+                if(!resolved || (resolved && this.offset.value() != 0)) {
                     si += " + ";
-                    so = this.rOffset.toString();
+                    so = this.offset.toString();
                 }
             } else {
-                if(this.resolved) {
-                    if(this.offset != 0) {
-                        so = Integer.toString(this.offset);
-                    }
-                } else {
-                    so = this.rOffset.toString();
+                if(!resolved || (resolved && this.offset.value() != 0)) {
+                    so = this.offset.toString();
                 }
             }
         }
@@ -151,7 +116,6 @@ public class ResolvableMemory implements Resolvable {
     public Register getBase() { return this.base; }
     public Register getIndex() { return this.index; }
     public int getScale() { return this.scale; }
-    public int getOffset() { return this.offset; }
-    public Resolvable getUnresolvedOffset() { return this.rOffset; }
+    public ResolvableValue getOffset() { return this.offset; }
     
 }

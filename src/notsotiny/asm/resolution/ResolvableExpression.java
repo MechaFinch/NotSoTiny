@@ -76,9 +76,9 @@ public class ResolvableExpression implements ResolvableValue {
      * @return left [operation] right
      */
     @Override
-    public int value() {
-        int a = this.left.value(),
-            b = this.right.value();
+    public long value() {
+        long a = this.left.value(),
+             b = this.right.value();
         
         return switch(this.operation) {
             case ADD        -> a + b;

@@ -37,9 +37,6 @@ func_calc_screen_offset:
 	PUSH BP
 	MOV BP, SP
 	
-	; test
-	MOV A, [.main + J:I - ((0x342 * 32) + func_gen_block_info) + 2 * D - 2]
-	
 	; D  = adr = (x / 8) + (y * SCREEN_WIDTH_BYTES)
 	; AH = shift_offset = x % 8
 	MOVZ A, byte [BP + 8]	; x

@@ -16,13 +16,13 @@ public class Halter implements MemoryController {
     public boolean halted() { return this.halted; }
 
     @Override
-    public byte readByte(int address) {
+    public byte readByte(long address) {
         this.halted = true;
         return 0;
     }
 
     @Override
-    public void writeByte(int address, byte value) {
+    public void writeByte(long address, byte value) {
         this.halted = true;
     }
 }

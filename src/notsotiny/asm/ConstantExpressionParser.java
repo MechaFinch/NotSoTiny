@@ -1,6 +1,7 @@
 package notsotiny.asm;
 
 import java.util.LinkedList;
+import java.util.List;
 
 import asmlib.lex.symbols.ConstantSymbol;
 import asmlib.lex.symbols.ExpressionSymbol;
@@ -44,11 +45,11 @@ public class ConstantExpressionParser {
      * value        -> Constant
      *              -> Name
      * 
-     * @param queue
+     * @param symbols
      * @return
      */
-    public static ResolvableValue parse(LinkedList<Symbol> queue) {
-        ResolvableValue rv = parseSubExpression(queue);
+    public static ResolvableValue parse(List<Symbol> symbols) {
+        ResolvableValue rv = parseSubExpression(new LinkedList<Symbol>(symbols));
         
         if(rv instanceof ResolvableExpression re) {
             return re.minimize();
@@ -130,6 +131,10 @@ public class ConstantExpressionParser {
         
         if(s instanceof SpecialCharacterSymbol scs) {
             Operator op = Operator.convertSpecialCharacter(scs);
+            
+            // check for dangling operators, just add 0 to do nothing
+            if(queue.peek() == null) return new ResolvableExpression(left, new ResolvableConstant(0), Operator.ADD);
+            
             ResolvableValue right = parseSubExpression(queue);
             
             ResolvableExpression re = new ResolvableExpression(left, right, op);

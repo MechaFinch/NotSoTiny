@@ -35,7 +35,7 @@ public class CharacterIOMC implements MemoryController {
     }
 
     @Override
-    public byte readByte(int address) {
+    public byte readByte(long address) {
         // read in
         try {
             if(address == 4) { // char
@@ -57,7 +57,7 @@ public class CharacterIOMC implements MemoryController {
         }
         
         // val reads
-        return switch(address) {
+        return switch((int) address) {
             case 0  -> (byte) val;
             case 1  -> (byte) (val >> 8);
             case 2  -> (byte) (val >> 16);
@@ -67,7 +67,7 @@ public class CharacterIOMC implements MemoryController {
     }
 
     @Override
-    public void writeByte(int address, byte value) {
+    public void writeByte(long address, byte value) {
         // write
         if(address == 4) { // char
             //System.out.println("IOMC Value: " + Integer.toHexString(this.val));
@@ -76,7 +76,7 @@ public class CharacterIOMC implements MemoryController {
             this.writer.print(this.val);
         } else {
             // val writes
-            this.val = switch(address) {
+            this.val = switch((int) address) {
                 case 0  -> (this.val & 0xFFFF_FF00) | (value & 0xFF);
                 case 1  -> (this.val & 0xFFFF_00FF) | ((value & 0xFF) << 8);
                 case 2  -> (this.val & 0xFF00_FFFF) | ((value & 0xFF) << 16);

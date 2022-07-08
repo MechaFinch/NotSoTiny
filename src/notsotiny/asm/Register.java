@@ -6,8 +6,19 @@ package notsotiny.asm;
  * @author Mechafinch
  */
 public enum Register {
-    DA, AB, BC, CD, JI, IJ, BP, SP,
-    A, B, C, D, I, J, F,
-    AH, AL, BH, BL, CH, CL, DH, DL,
-    NONE
+    DA(4), AB(4), BC(4), CD(4), JI(4), IJ(4), BP(4), SP(4),
+    A(2), B(2), C(2), D(2), I(2), J(2), F(2),
+    AH(1), AL(1), BH(1), BL(1), CH(1), CL(1), DH(1), DL(1),
+    NONE(0);
+    
+    private int size;
+    
+    private Register(int size) {
+        this.size = size;
+    }
+    
+    /**
+     * @return size in bytes
+     */
+    public int size() { return this.size; }
 }

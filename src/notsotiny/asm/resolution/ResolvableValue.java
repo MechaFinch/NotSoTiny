@@ -5,5 +5,5 @@ public interface ResolvableValue extends Resolvable {
     /**
      * @return The value
      */
-    public int value();
+    public long value();
 }

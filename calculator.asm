@@ -60,7 +60,6 @@
 ; void main()
 ; main
 func_main:
-	MOV A, 3 * (23 - 2) + (83 / (28 * 2 * (15 + 95) - 23)) + 12 ; = 75
 	MOV A, 0x00		; acc
 	
 	
@@ -299,13 +298,13 @@ func_halt:
 	MOV [HALTER_ADDRESS], A
 
 ; data
-msg_accumulator		db "Accumulator: ", 0x00
-msg_unknown			db "Unknown operation.\n", 0x00
-prompt_value		db "Value: ", 0x00
-prompt_op			db "Operation: ", 0x00
-symbol_add			db "+", 0x00
-symbol_sub			db "-", 0x00
-symbol_mul			db "*", 0x00
-symbol_clr			db "clr", 0x00
-symbol_end			db "end", 0x00
-buffer				resb 5
+msg_accumulator:	db "Accumulator: ", 0x00
+msg_unknown:		db "Unknown operation.\n", 0x00
+prompt_value:		db "Value: ", 0x00
+prompt_op:			db "Operation: ", 0x00
+symbol_add:			db "+", 0x00
+symbol_sub:			db "-", 0x00
+symbol_mul:			db "*", 0x00
+symbol_clr:			db "clr", 0x00
+symbol_end:			db "end", 0x00
+buffer:				resb 5

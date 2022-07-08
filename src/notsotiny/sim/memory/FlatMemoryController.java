@@ -14,13 +14,13 @@ public class FlatMemoryController implements MemoryController {
     }
     
     @Override
-    public byte readByte(int address) {
-        return mem[address];
+    public byte readByte(long address) {
+        return mem[(int) address];
     }
 
     @Override
-    public void writeByte(int address, byte value) {
-        mem[address] = value;
+    public void writeByte(long address, byte value) {
+        mem[(int) address] = value;
     }
     
 }

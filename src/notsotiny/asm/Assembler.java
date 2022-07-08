@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -28,13 +27,15 @@ import asmlib.lex.symbols.RegisterSymbol;
 import asmlib.lex.symbols.SeparatorSymbol;
 import asmlib.lex.symbols.SizeSymbol;
 import asmlib.lex.symbols.SpecialCharacterSymbol;
+import asmlib.lex.symbols.StringSymbol;
 import asmlib.lex.symbols.Symbol;
-import asmlib.lex.symbols.SymbolGroup;
 import asmlib.token.Tokenizer;
 import asmlib.util.relocation.RelocatableObject;
 import asmlib.util.relocation.RelocatableObject.Endianness;
 import notsotiny.asm.components.Component;
+import notsotiny.asm.components.InitializedData;
 import notsotiny.asm.components.Instruction;
+import notsotiny.asm.components.UninitializedData;
 import notsotiny.asm.resolution.ResolvableConstant;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor.LocationType;
@@ -217,6 +218,7 @@ public class Assembler {
         
         Map<String, Integer> labelIndexMap = new HashMap<>();   // label name -> allInstructions index. Points to the start of the Component at that address
         
+        boolean encounteredError = false;
         while(symbolQueue.size() > 0) {
             Symbol s = symbolQueue.poll();
             
@@ -232,7 +234,59 @@ public class Assembler {
             try {
                 switch(s) {
                     case DirectiveSymbol d:
-                        // TODO
+                        switch(d.name()) {
+                            // import another file
+                            case "%INCLUDE":
+                            case "IMPORT":
+                                String fileName = "",
+                                       libName = ""; // imported file's library name
+                                
+                                // we should have an Expression with <filename> as <name>
+                                if(symbolQueue.poll() instanceof ExpressionSymbol es) {
+                                    fileName = switch(es.symbols().get(0)) {
+                                        case NameSymbol ns      -> ns.name();
+                                        case StringSymbol ss    -> ss.value();
+                                        default -> throw new IllegalArgumentException("Invalid library description");
+                                    };
+                                    
+                                    // as
+                                    if(!(es.symbols().get(1) instanceof DirectiveSymbol ds && ds.name().equals("AS")))
+                                        throw new IllegalArgumentException("Invalid library description");
+                                    
+                                    // value
+                                    if(es.symbols().get(2) instanceof NameSymbol ns) {
+                                        libName = ns.name();
+                                    } else throw new IllegalArgumentException("Invalid library description");
+                                } else throw new IllegalArgumentException("Invalid library description");
+                                
+                                // working directory
+                                if(!new File(fileName).isAbsolute()) fileName = workingDirectory + fileName;
+                                
+                                // add library
+                                System.out.println("Added file " + fileName + " as " + libName);
+                                includedFiles.add(fileName);
+                                libraryNames.put(new File(fileName), libName);
+                                break;
+                                
+                            // set library name
+                            case "%LIBNAME":
+                                // expecting a name
+                                libraryName = switch(symbolQueue.poll()) {
+                                    case NameSymbol ns      -> ns.name();
+                                    case StringSymbol ss    -> ss.value();
+                                    default -> throw new IllegalArgumentException("Invalid library naem");
+                                };
+                                break;
+                            
+                            // code directives
+                            default:
+                                Component c = parseDirective(symbolQueue, d);
+                                
+                                System.out.println("Directive resulted in: " + c);
+                                if(c != null) {
+                                    allInstructions.add(c);
+                                } else encounteredError = true;
+                        }
                         break;
                         
                         // explicit label
@@ -249,13 +303,15 @@ public class Assembler {
                         break;
                     
                     case MnemonicSymbol m:
-                        // TODO
                         Instruction inst = parseInstruction(symbolQueue, m);
                         
                         if(inst == null) {
                             // placeholder
+                            System.out.println("PARSE INSTRUCTION RETURNED NULL");
+                            encounteredError = true;
                         } else if(!inst.hasValidOperands()) {
                             System.out.println("Illegal operands for instruction: " + inst + " on line " + line);
+                            encounteredError = true;
                         } else {
                             System.out.println("Parsed instruction: " + inst);
                             allInstructions.add(inst);
@@ -265,11 +321,13 @@ public class Assembler {
                         
                     default: // do nothing
                         System.out.println("Unknown construct start: " + s + " on line " + line);
+                        encounteredError = true;
                 }
             } catch(IndexOutOfBoundsException e) { // these let us avoid checking that needed symbols exist
                 throw new IllegalArgumentException("Missing symbol after " + s + " on line " + line);
             } catch(IllegalArgumentException e) { // add line info to parser errors
-                System.out.println(e.getMessage() + " on line " + line);
+                System.out.println("ILLEGAL ARGUMENT EXCEPTION: " + e.getMessage() + " on line " + line);
+                encounteredError = true;
             } catch(ClassCastException e) {
                 throw new IllegalArgumentException("Invalid symbol after " + s + " on line " + line);
             }
@@ -278,6 +336,10 @@ public class Assembler {
         System.out.println(allInstructions);
         System.out.println(unresolvedInstructions);
         System.out.println(labelIndexMap);
+        
+        if(encounteredError) {
+            throw new IllegalStateException("Encountered error(s)");
+        }
         
         // convert object code to array
         byte[] objectCodeArray = new byte[objectCode.size()];
@@ -313,7 +375,7 @@ public class Assembler {
             ResolvableLocationDescriptor firstOperand = parseOperand(symbolQueue, true);
             Opcode opcode = null;
             
-            if(firstOperand == null) return null; // TODO
+            if(firstOperand == null) return null;
             
             if(!hasSecondOperand(opr)) {
                 // 1 argument.
@@ -505,8 +567,6 @@ public class Assembler {
                     default                                     -> new Instruction(opcode, firstOperand, true);
                 };
             } else {
-                if(firstOperand == null) return null; // TODO TMP
-                
                 // we expect a separator, skip it if present
                 if(symbolQueue.peek() instanceof SeparatorSymbol) {
                     symbolQueue.poll();
@@ -516,7 +576,7 @@ public class Assembler {
                 boolean canBeMemory = (firstOperand.getType() != LocationType.MEMORY) && (firstOperand.getType() != LocationType.IMMEDIATE);
                 ResolvableLocationDescriptor secondOperand = parseOperand(symbolQueue, canBeMemory);
                 
-                if(secondOperand == null) return null; // TODO TMP
+                if(secondOperand == null) return null;
                 
                 // useful values
                 LocationType firstType = firstOperand.getType(),
@@ -549,7 +609,7 @@ public class Assembler {
                     
                     if(imm.isResolved()) {
                         // zero extend so we don't worry about sign
-                        int v = imm.value();
+                        long v = imm.value();
                         
                         if(v >= -128 && v <= 127) immediateSize = 1;
                         else if(v >= -32768 && v <= 32767) immediateSize = 2;
@@ -636,9 +696,9 @@ public class Assembler {
                             ResolvableMemory mem = secondOperand.getMemory();
                             
                             // base & index?
-                            if(mem.getBase() != Register.NONE) {
+                            if(mem.getBase() != Register.NONE || mem.getIndex() != Register.NONE) {
                                 // offset?
-                                if(mem.isResolved() && mem.getOffset() == 0) { // definitely not
+                                if(mem.isResolved() && mem.getOffset().value() == 0) { // definitely not
                                     opcode = switch(firstRegister) {
                                         case A  -> Opcode.MOV_A_BI;
                                         case B  -> Opcode.MOV_B_BI;
@@ -671,9 +731,9 @@ public class Assembler {
                             ResolvableMemory mem = firstOperand.getMemory();
                             
                             // base & index?
-                            if(mem.getBase() != Register.NONE) {
+                            if(mem.getBase() != Register.NONE || mem.getIndex() != Register.NONE) {
                                 // offset?
-                                if(mem.isResolved() && mem.getOffset() == 0) { // definitely not
+                                if(mem.isResolved() && mem.getOffset().value() == 0) { // definitely not
                                     opcode = switch(secondRegister) {
                                         case A  -> Opcode.MOV_BI_A;
                                         case B  -> Opcode.MOV_BI_B;
@@ -1014,8 +1074,22 @@ public class Assembler {
         
         // what we workin with
         switch(nextSymbol) {
-                // ez
+                // not actually so ez
             case RegisterSymbol rs:
+                Register r = Register.valueOf(rs.name());
+                
+                // handle r16:r16
+                if(r.size() == 2 && symbolQueue.peek() instanceof SpecialCharacterSymbol scs && scs.character() == ':') {
+                    symbolQueue.poll();
+                    
+                    if(symbolQueue.peek() instanceof RegisterSymbol rs2) {
+                        symbolQueue.poll();
+                        return new ResolvableLocationDescriptor(LocationType.REGISTER, Register.valueOf(rs.name() + rs2.name()));
+                    } else {
+                        throw new IllegalArgumentException("Invalid symbol while parsing operand: " + scs);
+                    }
+                }
+                
                 return new ResolvableLocationDescriptor(LocationType.REGISTER, Register.valueOf(rs.name()));
                 
                 // resolved constant
@@ -1037,12 +1111,11 @@ public class Assembler {
                 // size prefix overrides operand size
             case SizeSymbol ss:
                 ResolvableLocationDescriptor rld = parseOperand(symbolQueue, canBeMemory);
-                if(rld == null) return null; // TODO
+                if(rld == null) return null;
                 rld.setSize(convertSize(ss));
                 return rld;
                 
             case Symbol s:
-                //TODO
                 throw new IllegalArgumentException("Invalid symbol while parsing operand: " + s);
         }
     }
@@ -1100,7 +1173,7 @@ public class Assembler {
         ArrayList<Symbol> exprSymbols = new ArrayList<>();
         
         // simplify checks
-        Set<Integer> scales = Set.of(1, 2, 4, 8);
+        Set<Long> scales = Set.of(1l, 2l, 4l, 8l);
         Set<String> reg16s = Set.of("A", "B", "C", "D", "I", "J"),
                     reg32s = Set.of("A", "B", "C", "D", "I", "J", "BP", "SP");
         
@@ -1116,7 +1189,7 @@ public class Assembler {
                         if(assignedIndex) throw new IllegalArgumentException("Duplicate index in memory: " + rs);
                         
                         index = Register.valueOf(rs.name());
-                        scale = cs.value();
+                        scale = (int) cs.value();
                         assignedIndex = true;
                         i += 2;
                     } else {
@@ -1139,7 +1212,7 @@ public class Assembler {
                                     if(assignedIndex)  throw new IllegalArgumentException("Duplicate index in memory: " + rs);
                                     
                                     index = Register.valueOf(rs.name());
-                                    scale = cs.value();
+                                    scale = (int) cs.value();
                                     assignedIndex = true;
                                     i += 2;
                                 } else {
@@ -1277,8 +1350,8 @@ public class Assembler {
      */
     private static ResolvableLocationDescriptor parseOperandExpression(ExpressionSymbol es) {
         System.out.println("Parsing operand expression: " + es);
-        // TODO
-        return null;
+        // TODO i think there are non-constant cases for this?
+        return new ResolvableLocationDescriptor(LocationType.IMMEDIATE, -1, ConstantExpressionParser.parse(new LinkedList<Symbol>(es.symbols())));
     }
     
     /**
@@ -1308,5 +1381,125 @@ public class Assembler {
                  
             default -> true;
         };
+    }
+    
+    /**
+     * Parses a DirectiveSymbol
+     * 
+     * @param symbolQueue
+     * @param ds
+     * @return
+     */
+    private static Component parseDirective(LinkedList<Symbol> symbolQueue, DirectiveSymbol ds) {
+        // keywords ordered by reserved_words.txt
+        switch(ds.name()) {
+            // reserve bytes
+            case "RESB":
+                return reserveData(symbolQueue.poll(), 1);
+            
+            // reserve words
+            case "RESW":
+                return reserveData(symbolQueue.poll(), 2);
+            
+            // reserve doublewords/pointers
+            case "RESD":
+            case "RESP":
+                return reserveData(symbolQueue.poll(), 4);
+            
+            // define bytes
+            case "DB":
+                return defineData(symbolQueue, 1);
+            
+            // define words
+            case "DW":
+                return defineData(symbolQueue, 2);
+            
+            // define doublewords/pointers
+            case "DD":
+            case "DP":
+                return defineData(symbolQueue, 4);
+            
+            // %DEFINE is included here as definitions are handled by AssemblerLib
+            // AS is expressive and part of the import/include construct so shouldn't be passed
+            default:
+                throw new IllegalArgumentException("Invalid directive: " + ds);
+        }
+    }
+    
+    /**
+     * Defines a series of words of the given size
+     * 
+     * @param symbolQueue
+     * @param wordSize
+     * @return
+     */
+    private static Component defineData(LinkedList<Symbol> symbolQueue, int wordSize) {
+        List<ResolvableValue> data = new ArrayList<>();
+        
+        loop: // label because switch funni
+        while(true) {
+            switch(symbolQueue.peek()) {
+                case ConstantSymbol cs:
+                    data.add(new ResolvableConstant(cs.value()));
+                    break;
+                
+                case ExpressionSymbol es:
+                    data.add(ConstantExpressionParser.parse(es.symbols()));
+                    break;
+                
+                case NameSymbol ns:
+                    data.add(new ResolvableConstant(ns.name()));
+                    break;
+                
+                case SeparatorSymbol sep:
+                    break; // ignore
+                
+                case StringSymbol ss:
+                    String str = ss.value();
+                    int i = 0;
+                    
+                    while(i < str.length()) {
+                        int v = 0;
+                        for(int j = 0; j < wordSize; j++, i++) {
+                            char c = str.charAt(i);
+                            v = (v << 8) | (c & 0xFF);
+                        }
+                        
+                        data.add(new ResolvableConstant(v));
+                    }
+                    break;
+                
+                default: // anything unexpected just ends the definition
+                    break loop;
+            }
+            
+            symbolQueue.poll();
+        }
+        
+        return new InitializedData(data, wordSize);
+    }
+    
+    /**
+     * Tries to convert the given Symbol into a constant and returns an UninitializedData component
+     * with that many of the given word size
+     * 
+     * @param s
+     * @param wordSize
+     * @return
+     */
+    private static Component reserveData(Symbol s, int wordSize) {
+        switch(s) {
+            case ConstantSymbol cs:
+                return new UninitializedData(new ResolvableConstant(cs.value()), wordSize);
+            
+            case ExpressionSymbol es:
+                return new UninitializedData(ConstantExpressionParser.parse(es.symbols()), wordSize);
+            
+            case NameSymbol ns:
+                return new UninitializedData(new ResolvableConstant(ns.name()), wordSize);
+            
+            default:
+                throw new IllegalArgumentException("Invalid symbol for reservation: " + s);
+        }
     }
 }
