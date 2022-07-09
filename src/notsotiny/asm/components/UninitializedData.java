@@ -1,7 +1,6 @@
 package notsotiny.asm.components;
 
 import notsotiny.asm.resolution.Resolvable;
-import notsotiny.asm.resolution.ResolvableValue;
 
 /**
  * A Component representing some amount of uninitialized data.
@@ -10,9 +9,8 @@ import notsotiny.asm.resolution.ResolvableValue;
  */
 public class UninitializedData implements Component {
     
-    private ResolvableValue sizeWords;
-    
-    private int wordSize;
+    private int sizeWords,
+                wordSize;
     
     /**
      * Constructor
@@ -20,19 +18,19 @@ public class UninitializedData implements Component {
      * @param sizeWords
      * @param wordSize
      */
-    public UninitializedData(ResolvableValue sizeWords, int wordSize) {
+    public UninitializedData(int sizeWords, int wordSize) {
         this.sizeWords = sizeWords;
         this.wordSize = wordSize;
     }
 
     @Override
     public boolean isResolved() {
-        return this.sizeWords.isResolved();
+        return true;
     }
 
     @Override
     public void resolve() {
-        // TODO Auto-generated method stub
+        // not applicible
     }
 
     @Override
@@ -42,7 +40,7 @@ public class UninitializedData implements Component {
 
     @Override
     public int getSize() {
-        return (int) this.sizeWords.value() * this.wordSize;
+        return this.sizeWords * this.wordSize;
     }
     
     @Override
@@ -50,7 +48,7 @@ public class UninitializedData implements Component {
         return this.getSize() + " bytes of uninitialized data";
     }
     
-    public ResolvableValue getSizeWords() { return this.sizeWords; }
+    public int getSizeWords() { return this.sizeWords; }
     public int getWordSize() { return this.wordSize; }
     
 }

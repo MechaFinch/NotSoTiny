@@ -8,11 +8,14 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.MissingResourceException;
+import java.util.NavigableMap;
 import java.util.Set;
+import java.util.TreeMap;
 
 import asmlib.lex.Lexer;
 import asmlib.lex.symbols.ConstantSymbol;
@@ -37,6 +40,7 @@ import notsotiny.asm.components.InitializedData;
 import notsotiny.asm.components.Instruction;
 import notsotiny.asm.components.UninitializedData;
 import notsotiny.asm.resolution.ResolvableConstant;
+import notsotiny.asm.resolution.ResolvableExpression;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor.LocationType;
 import notsotiny.asm.resolution.ResolvableMemory;
@@ -190,12 +194,12 @@ public class Assembler {
                                  incomingReferenceWidths = new HashMap<>(),
                                  outgoingReferenceWidths = new HashMap<>();
         HashMap<String, List<Integer>> incomingReferences = new HashMap<>();
-        HashMap<File, String> libraryNames = new HashMap<>();
+        HashMap<File, String> libraryNamesMap = new HashMap<>();
         
         /*
          * Assembler Passes
-         * 1. Definitions pass          - Parse %define statements and apply them (handled by AssemblerLib)
-         * 2. Main parse pass           - Figure out what each instruction is, record labels.
+         * 1. Definitions pass          - Parse %define statements and apply them (handled by AssemblerLib) DONE
+         * 2. Main parse pass           - Figure out what each instruction is, record labels. DONE
          * 3. Jump distinction pass     - Jumps to internal references are relative, jumps to external references are absolute.
          * 4. Constant width pass       - Determine whether relative jumps can hit their targets and update accordingly. Continues until all jumps are stable. Applies to all relative constants
          * 5. Constant resolution pass  - Resolve constants to their final values
@@ -208,7 +212,8 @@ public class Assembler {
          */
         
         /*
-         * MAIN PARSE PASS
+         * MAIN PARSE
+         * Parse symbol queue to get instructions, labels, initialized data, and unintialized data
          */
         
         // symbols to parse
@@ -265,7 +270,7 @@ public class Assembler {
                                 // add library
                                 System.out.println("Added file " + fileName + " as " + libName);
                                 includedFiles.add(fileName);
-                                libraryNames.put(new File(fileName), libName);
+                                libraryNamesMap.put(new File(fileName), libName);
                                 break;
                                 
                             // set library name
@@ -285,6 +290,7 @@ public class Assembler {
                                 System.out.println("Directive resulted in: " + c);
                                 if(c != null) {
                                     allInstructions.add(c);
+                                    if(!c.isResolved()) unresolvedInstructions.add(c);
                                 } else encounteredError = true;
                         }
                         break;
@@ -309,13 +315,10 @@ public class Assembler {
                             // placeholder
                             System.out.println("PARSE INSTRUCTION RETURNED NULL");
                             encounteredError = true;
-                        } else if(!inst.hasValidOperands()) {
-                            System.out.println("Illegal operands for instruction: " + inst + " on line " + line);
-                            encounteredError = true;
                         } else {
                             System.out.println("Parsed instruction: " + inst);
                             allInstructions.add(inst);
-                            //if(!inst.isResolved()) unresolvedInstructions.add(inst);
+                            if(!inst.isResolved()) unresolvedInstructions.add(inst);
                         }
                         break;
                         
@@ -333,6 +336,7 @@ public class Assembler {
             }
         }
         
+        System.out.println("\n-- MAIN PARSE RESULTS --");
         System.out.println(allInstructions);
         System.out.println(unresolvedInstructions);
         System.out.println(labelIndexMap);
@@ -341,6 +345,63 @@ public class Assembler {
             throw new IllegalStateException("Encountered error(s)");
         }
         
+        /*
+         * CONSTANT RESOLUTION
+         */
+        
+        NavigableMap<String, Integer> labelAddressMap = new TreeMap<>();        // label -> address
+        NavigableMap<Integer, Integer> instructionAddressMap = new TreeMap<>(); // index in allInstructions -> address
+        Set<String> libNames = new HashSet<>(libraryNamesMap.values());
+        
+        // build initial address map
+        for(int i = 0, addr = 0; i < allInstructions.size(); i++) {
+            instructionAddressMap.put(i, addr);
+            
+            Component c = allInstructions.get(i);
+            
+            // check for invalid library references
+            // we can't do math on a value we cannot access by definition
+            if(!c.isResolved()) {
+                switch(c) {
+                    case Instruction inst:
+                        ResolvableLocationDescriptor source = inst.getSourceDescriptor(),
+                                                     dest = inst.getDestinationDescriptor();
+                        
+                        if(!source.isResolved()) {
+                            
+                        }
+                        
+                        if(!dest.isResolved()) {
+                            
+                        }
+                        break;
+                    
+                    case InitializedData init:
+                        for(ResolvableValue rv : init.getUnresolvedData()) {
+                            if(rv instanceof ResolvableExpression rei) {
+                                checkExpressionValidity(rei, labelIndexMap);
+                            }
+                        }
+                        break;
+                    
+                    default: // not possible
+                }
+            }
+            
+            // getSize is set up to give the worst-case immediate width isn't overridden
+            addr += c.getSize();
+        }
+        
+        // update labels as well
+        for(String lbl : labelIndexMap.keySet()) {
+            int i = labelIndexMap.get(lbl);
+            labelAddressMap.put(lbl, instructionAddressMap.get(i));
+        }
+        
+        System.out.println("\n-- CONSTANT RESOLUTION FIRST PASS RESULTS --");
+        System.out.println(labelAddressMap);
+        
+        
         // convert object code to array
         byte[] objectCodeArray = new byte[objectCode.size()];
         
@@ -348,7 +409,7 @@ public class Assembler {
             objectCodeArray[i] = objectCode.get(i);
         }
         
-        return new RenameableRelocatableObject(Endianness.LITTLE, libraryName, 2, incomingReferences, outgoingReferences, incomingReferenceWidths, outgoingReferenceWidths, objectCodeArray, false, libraryNames);
+        return new RenameableRelocatableObject(Endianness.LITTLE, libraryName, 2, incomingReferences, outgoingReferences, incomingReferenceWidths, outgoingReferenceWidths, objectCodeArray, false, libraryNamesMap);
     }
 
     /**
@@ -1490,16 +1551,75 @@ public class Assembler {
     private static Component reserveData(Symbol s, int wordSize) {
         switch(s) {
             case ConstantSymbol cs:
-                return new UninitializedData(new ResolvableConstant(cs.value()), wordSize);
+                return new UninitializedData((int) cs.value(), wordSize);
             
             case ExpressionSymbol es:
-                return new UninitializedData(ConstantExpressionParser.parse(es.symbols()), wordSize);
-            
-            case NameSymbol ns:
-                return new UninitializedData(new ResolvableConstant(ns.name()), wordSize);
+                ResolvableValue val = ConstantExpressionParser.parse(es.symbols());
+                if(!val.isResolved()) throw new IllegalArgumentException("Reservations cannot be unresolved");
+                return new UninitializedData((int) val.value(), wordSize);
             
             default:
                 throw new IllegalArgumentException("Invalid symbol for reservation: " + s);
         }
+    }
+    
+    /**
+     * Checks an expression for invalid labels
+     * 
+     * @param rei
+     * @param labelIndexMap
+     */
+    private static void checkExpressionValidity(ResolvableExpression rei, Map<String, Integer> labelIndexMap) {
+        ResolvableExpression re = (ResolvableExpression) rei.copy();
+        List<ResolvableConstant> unresolvedValues = getUnresolvedConstants(re);
+        
+        for(ResolvableConstant rc : unresolvedValues) {
+            String n = rc.getName();
+            
+            if(!labelIndexMap.containsKey(n)) {
+                throw new IllegalArgumentException("Unknown or external label " + n + " in expression " + re);
+            }
+        }
+    }
+    
+    /**
+     * Collects and returns all unresolved constants from an expression
+     * 
+     * @param re
+     * @return
+     */
+    private static List<ResolvableConstant> getUnresolvedConstants(ResolvableExpression expr) {
+        ResolvableValue left = expr.getLeft(),
+                        right = expr.getRight();
+        
+        List<ResolvableConstant> consts = new LinkedList<>();
+        
+        switch(left) {
+            case ResolvableConstant rc:
+                if(!rc.isResolved()) consts.add(rc);
+                break;
+            
+            case ResolvableExpression re:
+                consts.addAll(getUnresolvedConstants(re));
+                break;
+            
+            default:
+                throw new IllegalArgumentException("Invalid ResolvableValue: " + left);
+        }
+        
+        switch(right) {
+            case ResolvableConstant rc:
+                if(!rc.isResolved()) consts.add(rc);
+                break;
+            
+            case ResolvableExpression re:
+                consts.addAll(getUnresolvedConstants(re));
+                break;
+            
+            default:
+                throw new IllegalArgumentException("Invalid ResolvableValue: " + right);
+        }
+        
+        return consts;
     }
 }

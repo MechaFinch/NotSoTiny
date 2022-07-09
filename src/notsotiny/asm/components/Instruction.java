@@ -1,7 +1,11 @@
 package notsotiny.asm.components;
 
+import notsotiny.asm.Register;
 import notsotiny.asm.resolution.Resolvable;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor;
+import notsotiny.asm.resolution.ResolvableLocationDescriptor.LocationType;
+import notsotiny.asm.resolution.ResolvableMemory;
+import notsotiny.asm.resolution.ResolvableValue;
 import notsotiny.sim.ops.Opcode;
 
 /**
@@ -11,11 +15,14 @@ import notsotiny.sim.ops.Opcode;
  */
 public class Instruction implements Component {
     
-    public Opcode op;
+    private Opcode op;
     
-    public ResolvableLocationDescriptor destination, source;
+    private ResolvableLocationDescriptor destination, source;
     
-    private int width = -1;
+    private int cachedWidth = -1,
+                immediateWidth = -1;
+    
+    boolean overrideImmediateWidth = false;
     
     /**
      * Create an instruction with source and destination
@@ -52,22 +59,12 @@ public class Instruction implements Component {
         this(op, ResolvableLocationDescriptor.NONE, ResolvableLocationDescriptor.NONE);
     }
     
-    /**
-     * Determines if this instruction has valid operands. 
-     * 
-     * @return
-     */
-    public boolean hasValidOperands() {
-        // TODO
-        return true;
-    }
-    
     @Override
     public int getSize() {
-        if(this.width != -1) return this.width;
+        if(this.cachedWidth != -1) return this.cachedWidth;
         
         // thank u assign & use value construction
-        return this.width = switch(op) {
+        return this.cachedWidth = switch(this.op) {
             /*
              * Single byte instructions
              */
@@ -121,14 +118,15 @@ public class Instruction implements Component {
                  AND_RIM, OR_RIM, XOR_RIM, NOT_RIM, NEG_RIM,
                  SHL_RIM, SHR_RIM, SAR_RIM, ROL_RIM, ROR_RIM, RCL_RIM, RCR_RIM,
                  JMP_RIM, JMPA_RIM32, CALL_RIM, CALLA_RIM32,
-                 INT_RIM, LEA_RIM, CMP_RIM, CMP_RIM_0,
+                 INT_RIM, LEA_RIM, CMP_RIM,
                  JC_RIM, JNC_RIM, JS_RIM, JNS_RIM, JO_RIM, JNO_RIM, JZ_RIM, JNZ_RIM,
-                 JA_RIM, JBE_RIM, JG_RIM, JGE_RIM, JL_RIM, JLE_RIM -> getRIMWidth(false) + 1;
+                 JA_RIM, JBE_RIM, JG_RIM, JGE_RIM, JL_RIM, JLE_RIM -> getRIMWidth(false, -1) + 1;
             
             /*
              * RIM + Immediate Instructions
              */
-            case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8 -> getRIMWidth(true) + 2;
+            case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8 -> getRIMWidth(true, 1) + 1;
+            case CMP_RIM_0 -> getRIMWidth(true, 0) + 1;
             
             /*
              * BIO w/ Offset Instructions
@@ -139,12 +137,142 @@ public class Instruction implements Component {
         };
     }
     
-    private int getRIMWidth(boolean overrideImmediate) {
-        return -1;
+    /**
+     * Determines RIM width
+     * 
+     * @param overrideImmediate
+     * @param immediateSize
+     * @return
+     */
+    private int getRIMWidth(boolean overrideImmediate, int immediateSize) {
+        switch(this.source.getType()) {
+            case IMMEDIATE:
+                switch(this.destination.getType()) {
+                    case REGISTER:
+                        // REG, IMM
+                        // immediate is the size of the register unless this is MOVS/MOVZ
+                        if(this.op == Opcode.MOVS_RIM || this.op == Opcode.MOVZ_RIM) return (this.source.getSize() / 2) + 1;
+                        else return this.source.getSize() + 1;
+                        
+                    case NULL:
+                        // figure out size from immediate
+                        if(overrideImmediate) return immediateSize + 1;
+                        else if(this.overrideImmediateWidth) return this.immediateWidth + 1;
+                        else {
+                            ResolvableValue immrv = this.source.getImmediate();
+                            if(!immrv.isResolved()) {
+                                // unresolved? assume largest
+                                if(this.op == Opcode.JMPA_RIM32 || this.op == Opcode.CALLA_RIM32) return 5;
+                                else return 3;
+                            } else {
+                                // resolved? use smallest
+                                long imm = immrv.value();
+                                
+                                if(imm >= -128 && imm <= 127) { // 1 byte
+                                    return 2;
+                                } else if(imm >= -32768 && imm <= 32767) { // 2 byte
+                                    return 3;
+                                } else if(imm >= -8388608 && imm <= 8388607) { // 3 byte
+                                    return 4;
+                                } else { // 4 byte
+                                    return 5;
+                                }
+                            }
+                        }
+                    
+                    case MEMORY:
+                        switch(this.op) {
+                            // only these can do memory-immediate
+                            case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8, CMP_RIM_0:
+                                return getBIOWidth(this.destination) + 1 + immediateSize;
+                            
+                            default:
+                        }
+                        
+                    default:
+                        throw new IllegalArgumentException("Invalid RIM destination for immediate: " + this.destination);
+                }
+                
+            case MEMORY:
+                switch(this.destination.getType()) {
+                    case NULL:
+                    case REGISTER:
+                        return getBIOWidth(this.source) + 1;
+                        
+                    default:
+                        throw new IllegalArgumentException("Invalid RIM destination for memory: " + this.destination);
+                }
+                
+            case REGISTER:
+                switch(this.destination.getType()) {
+                    case MEMORY:
+                        return getBIOWidth(this.destination) + 1;
+                        
+                    case NULL:
+                    case REGISTER:
+                        return 1;
+                        
+                    default:
+                        throw new IllegalArgumentException("Invalid RIM destination for register: " + this.destination);
+                }
+            
+            case NULL:
+                switch(this.destination.getType()) {
+                    case MEMORY:
+                        return getBIOWidth(this.destination) + 1; 
+                        
+                    case REGISTER:
+                        return 1;
+                        
+                    default:
+                        throw new IllegalArgumentException("Invalid RIM destination for destination-only: " + this.destination);
+                }
+                
+            default:
+                throw new IllegalArgumentException("Invalid RIM source: " + this.source + "(" + this + ")");
+        }
     }
     
-    private int getBIOWidth(Resolvable location) {
-        return -1;
+    /**
+     * Determines BIO width
+     * 
+     * @param location
+     * @return
+     */
+    private int getBIOWidth(ResolvableLocationDescriptor location) {
+        if(location.getType() != LocationType.MEMORY) throw new IllegalArgumentException("Cannot calculate BIO width for non-memory location " + this);
+        ResolvableMemory rm = location.getMemory();
+        Register index = rm.getIndex();
+        ResolvableValue offset = rm.getOffset();
+        
+        // immediate?
+        if(!offset.isResolved()) {
+            // assume 32 bit unless overridden
+            if(this.overrideImmediateWidth) {
+                return 1 + this.immediateWidth;
+            } else {
+                return 5;
+            }
+        } else if(offset.value() != 0) {
+            long off = offset.value();
+            
+            // variable width if no index
+            if(index == Register.NONE) {
+                if(off >= -128 && off <= 127) { // 1 byte
+                    return 2;
+                } else if(off >= -32768 && off <= 32767) { // 2 byte
+                    return 3;
+                } else if(off >= -8388608 && off <= 8388607) { // 3 byte
+                    return 4;
+                } else { // 4 byte
+                    return 5;
+                }
+            } else { // 4 byte offset otherwise
+                return 5;
+            }
+        }
+        
+        return 1;
     }
     
     @Override
@@ -180,4 +308,20 @@ public class Instruction implements Component {
         
         return str;
     }
+    
+    /**
+     * Sets the value to override immediate width with. Set to zero for a value of 0 (affects BIO offsets only)
+     * @param w
+     */
+    public void setImmediateWidth(int w) { this.immediateWidth = w; }
+    
+    /**
+     * Sets whether or not to override immediate width in size calculation
+     * @param o
+     */
+    public void setOverrideImmediateWidth(boolean o) { this.overrideImmediateWidth = o; }
+    
+    public ResolvableLocationDescriptor getSourceDescriptor() { return this.source; }
+    public ResolvableLocationDescriptor getDestinationDescriptor() { return this.destination; }
+    public Opcode getOpcode() { return this.op; }
 }

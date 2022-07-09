@@ -58,6 +58,15 @@ public class ResolvableConstant implements ResolvableValue {
     }
     
     @Override
+    public ResolvableValue copy() {
+        if(this.resolved) {
+            return new ResolvableConstant(this.val);
+        } else {
+            return new ResolvableConstant(this.name);
+        }
+    }
+    
+    @Override
     public void setParent(Resolvable r) {
         this.parent = r;
     }

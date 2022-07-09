@@ -94,6 +94,11 @@ public class ResolvableExpression implements ResolvableValue {
     }
     
     @Override
+    public ResolvableValue copy() {
+        return new ResolvableExpression(this.left.copy(), this.right.copy(), this.operation);
+    }
+    
+    @Override
     public void setParent(Resolvable r) {
         this.parent = r;
     }
@@ -109,7 +114,7 @@ public class ResolvableExpression implements ResolvableValue {
         }
     }
     
-    public Resolvable getLeft() { return this.left; }
-    public Resolvable getRight() { return this.right; }
+    public ResolvableValue getLeft() { return this.left; }
+    public ResolvableValue getRight() { return this.right; }
     public Operator getOperation() { return this.operation; }
 }
