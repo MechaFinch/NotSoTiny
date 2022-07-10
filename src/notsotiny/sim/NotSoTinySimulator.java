@@ -57,6 +57,10 @@ public class NotSoTinySimulator {
      * opcodes off to operation-specific methods. All for organization.
      */
     public void step() {
+        
+        // TODO
+        // memory manager may be slow. consider an instruction cache
+        
         InstructionDescriptor desc = new InstructionDescriptor();
         desc.op = Opcode.fromOp(this.memory.readByte(this.reg_ip++));
         

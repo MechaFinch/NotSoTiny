@@ -1,5 +1,7 @@
 package notsotiny.asm.components;
 
+import java.util.List;
+
 import notsotiny.asm.resolution.Resolvable;
 
 /**
@@ -15,4 +17,9 @@ public interface Component extends Resolvable {
      * @return
      */
     public int getSize();
+    
+    /**
+     * @return machine/object code. Unresolved values are zeroed.
+     */
+    public List<Byte> getObjectCode();
 }

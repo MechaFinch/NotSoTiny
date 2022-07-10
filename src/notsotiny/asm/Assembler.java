@@ -73,16 +73,20 @@ public class Assembler {
      * @throws IOException 
      */
     public static void main(String[] args) throws IOException {
-        if(args.length != 3 && args.length != 1) {
-            System.out.println("Usage: Assembler <input file> [<executable file> <executable entry point>]");
+        if(args.length < 1 || args.length > 4) {
+            System.out.println("Usage: Assembler [-o] <input file> [<executable file> <executable entry point>]");
+            System.out.println("Flags:");
+            System.out.println("\t-o\tOptimize instruction width. If enabled, immediate widths are minimized. This restricts some expressions.");
             System.exit(0);
         }
         
+        boolean optimize = args[0].equals("-o"); 
+        
         // from the VeryTinyAssembler
-        List<RelocatableObject> objects = assemble(new File(args[0]));
+        List<RelocatableObject> objects = assemble(new File(args[optimize ? 1 : 0]), optimize);
         
         // write object files
-        String directory = new File(args[0]).getAbsolutePath();
+        String directory = new File(args[optimize ? 1 : 0]).getAbsolutePath();
         directory = directory.substring(0, directory.lastIndexOf("\\")) + "\\";
         
         List<String> execContents = new ArrayList<>();
@@ -97,10 +101,10 @@ public class Assembler {
         }
         
         // exec file
-        if(args.length == 3) {
-            try(PrintWriter execWriter = new PrintWriter(directory + args[1])) {
+        if(args.length == (optimize ? 4 : 3)) {
+            try(PrintWriter execWriter = new PrintWriter(directory + args[optimize ? 2 : 1])) {
                 // entry point
-                execWriter.println("#entry " + args[2]);
+                execWriter.println("#entry " + args[optimize ? 3 : 2]);
                 
                 // object files
                 execContents.forEach(execWriter::println);
@@ -115,7 +119,7 @@ public class Assembler {
      * @return
      * @throws IOException
      */
-    public static List<RelocatableObject> assemble(File f) throws IOException {
+    public static List<RelocatableObject> assemble(File f, boolean optimizeInstructionWidth) throws IOException {
         System.out.println("Assembling from main file: " + f);
         ArrayList<RenameableRelocatableObject> objects = new ArrayList<>();
         ArrayList<String> files = new ArrayList<>(); // dependencies
@@ -148,7 +152,7 @@ public class Assembler {
                     symbols = lexer.lex(Tokenizer.tokenize(br.lines().toList()));
                 }
                 
-                obj = assembleObject(symbols, files, file);
+                obj = assembleObject(symbols, files, file, optimizeInstructionWidth);
             }
             
             libraryMap.put(obj.getName(), file);
@@ -176,10 +180,11 @@ public class Assembler {
      * @return
      * @throws IOException
      */
-    private static RenameableRelocatableObject assembleObject(List<Symbol> symbols, List<String> includedFiles, File file) throws IOException {
+    private static RenameableRelocatableObject assembleObject(List<Symbol> symbols, List<String> includedFiles, File file, boolean optimizeInstructionWidth) throws IOException {
         System.out.println("Assembling file: " + file);
         int line = 0; // line in file
         
+        // these variables are from the verytiny implementation
         String workingDirectory = file.getAbsolutePath();
         int libNameIndex = workingDirectory.lastIndexOf("\\");
         
@@ -340,6 +345,7 @@ public class Assembler {
         System.out.println(allInstructions);
         System.out.println(unresolvedInstructions);
         System.out.println(labelIndexMap);
+        System.out.println();
         
         if(encounteredError) {
             throw new IllegalStateException("Encountered error(s)");
@@ -354,7 +360,8 @@ public class Assembler {
         Set<String> libNames = new HashSet<>(libraryNamesMap.values());
         
         // build initial address map
-        for(int i = 0, addr = 0; i < allInstructions.size(); i++) {
+        int addr = 0;
+        for(int i = 0; i < allInstructions.size(); i++) {
             instructionAddressMap.put(i, addr);
             
             Component c = allInstructions.get(i);
@@ -367,12 +374,37 @@ public class Assembler {
                         ResolvableLocationDescriptor source = inst.getSourceDescriptor(),
                                                      dest = inst.getDestinationDescriptor();
                         
+                        // check source
                         if(!source.isResolved()) {
+                            ResolvableValue rv = switch(source.getType()) {
+                                case IMMEDIATE  -> source.getImmediate();
+                                case MEMORY     -> source.getMemory().getOffset();
+                                default         -> null; // shouldn't happen
+                            };
                             
+                            if(rv instanceof ResolvableExpression re) checkExpressionValidity(re, labelIndexMap);
+                            else if(rv instanceof ResolvableConstant rc && isLibraryReference(rc.getName(), libNames)) {
+                                // make sure jumps to libraries are absolute
+                                Operation opType = inst.getOpcode().getType();
+                                
+                                if(opType == Operation.JCC) throw new IllegalArgumentException("Cannot make conditional jump absolute: " + inst);
+                                else if(opType == Operation.JMP) { // convert to JMPA 
+                                    inst.setOpcode(Opcode.JMPA_I32);
+                                } else if(opType == Operation.CALL) { // convert to CALLA
+                                    inst.setOpcode(Opcode.CALLA_I32);
+                                }
+                            }
                         }
                         
+                        // check destination
                         if(!dest.isResolved()) {
+                            ResolvableValue rv = switch(dest.getType()) {
+                                case IMMEDIATE  -> dest.getImmediate();
+                                case MEMORY     -> dest.getMemory().getOffset();
+                                default         -> null; // shouldn't happen
+                            };
                             
+                            if(rv instanceof ResolvableExpression re) checkExpressionValidity(re, labelIndexMap);
                         }
                         break;
                     
@@ -392,6 +424,9 @@ public class Assembler {
             addr += c.getSize();
         }
         
+        // for trailing label
+        instructionAddressMap.put(allInstructions.size(), addr);
+        
         // update labels as well
         for(String lbl : labelIndexMap.keySet()) {
             int i = labelIndexMap.get(lbl);
@@ -400,7 +435,91 @@ public class Assembler {
         
         System.out.println("\n-- CONSTANT RESOLUTION FIRST PASS RESULTS --");
         System.out.println(labelAddressMap);
+        System.out.println();
         
+        // attempt to minimize parameter sizes (if enabled)
+        if(optimizeInstructionWidth) {
+            // TODO
+        }
+        
+        // resolve everything
+        addr = 0;
+        for(int i = 0; i < allInstructions.size(); i++) {
+            Component c = allInstructions.get(i);
+            
+            if(!c.isResolved()) {
+                System.out.print("Resolving: " + c);
+                
+                switch(c) {
+                    case Instruction inst:
+                        ResolvableLocationDescriptor source = inst.getSourceDescriptor(),
+                                                     dest = inst.getDestinationDescriptor();
+                        
+                        // resolve source
+                        if(!source.isResolved()) {
+                            switch(source.getType()) {
+                                case IMMEDIATE:
+                                    // jumps are relative
+                                    Operation type = inst.getOpcode().getType();
+                                    boolean relative = false;
+                                    if(type == Operation.JMP || type == Operation.JCC || type == Operation.CALL) relative = true;
+                                    
+                                    resolveValue(source.getImmediate(), labelAddressMap, relative, addr + c.getSize());
+                                    
+                                    if(relative && !source.isResolved()) throw new IllegalArgumentException("Could not resolve relative value: " + source);
+                                    break;
+                                    
+                                case MEMORY:
+                                    resolveValue(source.getMemory().getOffset(), labelAddressMap, false, 0);
+                                    break;
+                                    
+                                default:
+                            }
+                        }
+                        
+                        // resolve destination
+                        if(!dest.isResolved()) {
+                            switch(dest.getType()) {
+                                case IMMEDIATE:
+                                    resolveValue(dest.getImmediate(), labelAddressMap, false, 0);
+                                    break;
+                                    
+                                case MEMORY:
+                                    resolveValue(dest.getMemory().getOffset(), labelAddressMap, false, 0);
+                                    break;
+                                    
+                                default:
+                            }
+                        }
+                        break;
+                        
+                    case InitializedData init:
+                        for(ResolvableValue rv : init.getUnresolvedData()) {
+                            resolveValue(rv, labelAddressMap, false, 0);
+                        }
+                        break;
+                    
+                    default:
+                }
+                
+                System.out.println(" resolved to " + c);
+                
+                if(!c.isResolved()) {
+                    throw new IllegalStateException("Unable to resolve component: " + c); // TODO references aaaaaaaaaa
+                }
+            }
+            
+            addr += c.getSize();
+        }
+        
+        System.out.println("\n-- CONSTANT RESOLUTION FINAL PASS RESULTS --");
+        System.out.println(allInstructions);
+        System.out.println();
+        
+        // collect object code
+        for(int i = 0; i < allInstructions.size(); i++) {
+            objectCode.addAll(allInstructions.get(i).getObjectCode());
+        }
         
         // convert object code to array
         byte[] objectCodeArray = new byte[objectCode.size()];
@@ -1573,6 +1692,7 @@ public class Assembler {
         ResolvableExpression re = (ResolvableExpression) rei.copy();
         List<ResolvableConstant> unresolvedValues = getUnresolvedConstants(re);
         
+        // check that all labels are internal
         for(ResolvableConstant rc : unresolvedValues) {
             String n = rc.getName();
             
@@ -1580,6 +1700,75 @@ public class Assembler {
                 throw new IllegalArgumentException("Unknown or external label " + n + " in expression " + re);
             }
         }
+        
+        // check that all label math is offsets
+        List<ResolvableExpression> sums = getUnresolvedSums(re);
+        
+        for(ResolvableExpression ex : sums) {
+            // since this is a sum, it can be arranged in any order
+            // as long as the number of positive labels is equal to the number of negative labels, it is valid
+            int c = countLabelSigns(ex);
+            
+            if(c != 0) throw new IllegalArgumentException("Unresolved expression cannot be made into offset: sub-expression " + ex + " of " + rei);
+        }
+    }
+    
+    /**
+     * Counts the signs of references. positive = +1 negative = -1;
+     * @param expr
+     * @return
+     */
+    private static int countLabelSigns(ResolvableExpression expr) {
+        ResolvableValue left = expr.getLeft(),
+                        right = expr.getRight();
+        int count = 0;
+        
+        // right side
+        if(right instanceof ResolvableConstant rcr && !rcr.isResolved()) count++;
+        else if(right instanceof ResolvableExpression rer) count += countLabelSigns(rer);
+        
+        // if the operator is SUBTRACT, invert right side count
+        if(expr.getOperation() == Operator.SUBTRACT) count = -count;
+        
+        // left side 
+        if(left instanceof ResolvableConstant rcl && !rcl.isResolved()) count++;
+        else if(left instanceof ResolvableExpression rel) count += countLabelSigns(rel);
+        
+        return count;
+    }
+    
+    /**
+     * Determines whethere a reference is to a library
+     * 
+     * @param ref
+     * @param libNames
+     * @return
+     */
+    private static boolean isLibraryReference(String ref, Set<String> libNames) {
+        for(String lib : libNames) {
+            if(ref.startsWith(lib + ".")) return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Doing math on absolute labels isn't possible with relocation, but you can do math on offsets.
+     * This method extracts sub-expressions which only add or subtract and contain unresolved labels
+     * 
+     * @param expr
+     * @return
+     */
+    private static List<ResolvableExpression> getUnresolvedSums(ResolvableExpression expr) {
+        if(expr.isSum()) return List.of(expr);
+        List<ResolvableExpression> exps = new LinkedList<>();
+        
+        if(expr.isResolved()) return exps;
+        
+        if(expr.getLeft() instanceof ResolvableExpression rel) exps.addAll(getUnresolvedSums(rel));
+        if(expr.getRight() instanceof ResolvableExpression rer) exps.addAll(getUnresolvedSums(rer));
+        
+        return exps;
     }
     
     /**
@@ -1621,5 +1810,37 @@ public class Assembler {
         }
         
         return consts;
+    }
+    
+    /**
+     * Resolves the value of a ResolvableValue
+     * 
+     * @param rv
+     * @param labelAddressMap
+     */
+    private static void resolveValue(ResolvableValue rv, Map<String, Integer> labelAddressMap, boolean relative, int address) {
+        try {
+            switch(rv) {
+                case ResolvableExpression re:
+                    ResolvableValue left = re.getLeft(),
+                                    right = re.getRight();
+                    
+                    if(!left.isResolved()) resolveValue(left, labelAddressMap, relative, address);
+                    if(!right.isResolved()) resolveValue(right, labelAddressMap, relative, address);
+                    break;
+                    
+                case ResolvableConstant rc:
+                    if(relative) {
+                        rc.setValue(labelAddressMap.get(rc.getName()) - address);
+                    } else {
+                        rc.setValue(labelAddressMap.get(rc.getName()));
+                    }
+                    break;
+                
+                default:
+            }
+        } catch(NullPointerException e) {
+            // the label was not found, ignore
+        }
     }
 }

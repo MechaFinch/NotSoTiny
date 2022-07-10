@@ -129,7 +129,7 @@ public class ResolvableLocationDescriptor implements Resolvable {
     @Override
     public void resolve() {
         // pass it on
-        this.parent.resolve();
+        if(this.parent != null) this.parent.resolve();
     }
     
     @Override

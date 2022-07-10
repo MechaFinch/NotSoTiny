@@ -60,14 +60,26 @@ public class ResolvableExpression implements ResolvableValue {
         }
     }
     
+    /**
+     * @return true if the only operators in this expression and all sub-expressions are ADD or SUBTRACT
+     */
+    public boolean isSum() {
+        if(this.operation != Operator.ADD && this.operation != Operator.SUBTRACT) return false;
+        
+        boolean l = !(this.left instanceof ResolvableExpression rel && !rel.isSum()),
+                r = !(this.right instanceof ResolvableExpression rer && !rer.isSum());
+        
+        return l && r;
+    }
+    
     @Override
     public boolean isResolved() {
-        return left.isResolved() && right.isResolved();
+        return this.left.isResolved() && this.right.isResolved();
     }
 
     @Override
     public void resolve() {
-        if(this.isResolved()) parent.resolve();
+        if(this.isResolved() && this.parent != null) this.parent.resolve();
     }
     
     /**

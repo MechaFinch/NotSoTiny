@@ -57,7 +57,7 @@ public class Test {
         //String filename = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\snake\\snake.asm";
         String filename = "calculator.asm";
         
-        List<RelocatableObject> objects = Assembler.assemble(new File(filename));
+        List<RelocatableObject> objects = Assembler.assemble(new File(filename), false);
         
         Relocator rel = new Relocator();
         objects.forEach(rel::add);

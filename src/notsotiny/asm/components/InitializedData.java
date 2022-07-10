@@ -1,7 +1,9 @@
 package notsotiny.asm.components;
 
+import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import notsotiny.asm.resolution.Resolvable;
 import notsotiny.asm.resolution.ResolvableValue;
@@ -33,6 +35,43 @@ public class InitializedData implements Component {
      */
     public List<ResolvableValue> getUnresolvedData() {
         return this.data.stream().filter(rv -> !rv.isResolved()).collect(Collectors.toList());
+    }
+    
+    @Override
+    public List<Byte> getObjectCode() {
+        // it sure would be nice if the streams api wasn't a fucking useless piece of shit
+        List<Byte> code = new LinkedList<>();
+        
+        for(int i = 0; i < this.data.size(); i++) {
+            ResolvableValue rv = this.data.get(i);
+            long v = rv.isResolved() ? rv.value() : 0;
+            
+            switch(this.wordSize) {
+                case 1:
+                    code.add((byte)(v & 0xFF));
+                    break;
+                
+                case 2:
+                    code.add((byte)(v & 0xFF));
+                    code.add((byte)((v >> 8) & 0xFF));
+                    break;
+                
+                case 3:
+                    code.add((byte)(v & 0xFF));
+                    code.add((byte)((v >> 8) & 0xFF));
+                    code.add((byte)((v >> 16) & 0xFF));
+                    break;
+                
+                case 4:
+                    code.add((byte)(v & 0xFF));
+                    code.add((byte)((v >> 8) & 0xFF));
+                    code.add((byte)((v >> 16) & 0xFF));
+                    code.add((byte)((v >> 24) & 0xFF));
+                    break;
+            }
+        }
+        
+        return code;
     }
 
     @Override

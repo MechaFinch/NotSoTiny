@@ -1,5 +1,8 @@
 package notsotiny.asm.components;
 
+import java.util.LinkedList;
+import java.util.List;
+
 import notsotiny.asm.resolution.Resolvable;
 
 /**
@@ -21,6 +24,15 @@ public class UninitializedData implements Component {
     public UninitializedData(int sizeWords, int wordSize) {
         this.sizeWords = sizeWords;
         this.wordSize = wordSize;
+    }
+    
+    @Override
+    public List<Byte> getObjectCode() {
+        List<Byte> data = new LinkedList<>();
+        
+        for(int i = 0; i < (this.sizeWords * this.wordSize); i++) data.add((byte) 0);
+        
+        return data;
     }
 
     @Override
