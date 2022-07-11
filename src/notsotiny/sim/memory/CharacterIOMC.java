@@ -40,7 +40,7 @@ public class CharacterIOMC implements MemoryController {
         try {
             if(address == 4) { // char
                 while((this.val = this.reader.read()) == 13);
-                System.out.println("read value: " + this.val);
+                //System.out.println("read value: " + this.val);
             } else if(address == 5) { // int
                 String s = "";
                 int c = '_';
@@ -57,13 +57,16 @@ public class CharacterIOMC implements MemoryController {
         }
         
         // val reads
-        return switch((int) address) {
+        byte ret = switch((int) address) {
             case 0  -> (byte) val;
             case 1  -> (byte) (val >> 8);
             case 2  -> (byte) (val >> 16);
             case 3  -> (byte) (val >> 24);
             default -> 0;
         };
+        
+        //System.out.printf("Program read: %02X\n", ret);
+        return ret;
     }
 
     @Override
@@ -71,7 +74,7 @@ public class CharacterIOMC implements MemoryController {
         // write
         if(address == 4) { // char
             //System.out.println("IOMC Value: " + Integer.toHexString(this.val));
-            this.writer.print((char) this.val);
+            this.writer.print((char) (this.val & 0xFF));
         } else if(address == 5) { // int
             this.writer.print(this.val);
         } else {

@@ -14,6 +14,8 @@ public class Halter implements MemoryController {
     }
     
     public boolean halted() { return this.halted; }
+    
+    public void clear() { this.halted = false; }
 
     @Override
     public byte readByte(long address) {

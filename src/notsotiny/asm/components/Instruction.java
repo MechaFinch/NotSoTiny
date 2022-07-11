@@ -244,11 +244,9 @@ public class Instruction implements Component {
                     break;
                 
                 default:
-                    // if we've just an immediate, assume 16 bit?
+                    // if we've just an immediate, assume 16 bit. inferring properly breaks unoptimized asm
                     if(includeSource && sourceType == LocationType.IMMEDIATE) {
-                        ResolvableValue rv = this.source.getImmediate();
-                        
-                        sourceSize = rv.isResolved() ? getValueWidth(rv.value(), false, false) : 2;
+                        sourceSize = 2; 
                     } else {
                         throw new IllegalArgumentException("Cannot infer operand sizes: " + this);
                     }
@@ -275,10 +273,16 @@ public class Instruction implements Component {
             }
         }
         
+        // correct inferred immediate size
+        if(includeDestination && includeSource && sourceType == LocationType.IMMEDIATE) {
+            if(wideDestination && !wideSource) sourceSize = destSize / 2;
+            else sourceSize = destSize;
+        }
+        
         // size bit
         // this turns out simpler than i thought lol
         if(includeSource) {
-            if(sourceSize == 1) rim |= 0b10_000_000;
+            if(sourceSize == 1 || (wideSource && sourceSize == 2)) rim |= 0b10_000_000;
         } else {
             if(destSize == 1) rim |= 0b10_000_000;
         }
@@ -328,7 +332,7 @@ public class Instruction implements Component {
         }
         
         // rim
-        if((rim & 0b01_000_000) != 0) { // register-register
+        if((rim & 0b01_000_000) == 0) { // register-register
             rim |= switch(this.source.getRegister()) {
                 case AL, A, DA  -> 0b00_000_000;
                 case BL, B, AB  -> 0b00_000_001;
@@ -364,7 +368,7 @@ public class Instruction implements Component {
         
         // immediate
         if(includeSource && sourceType == LocationType.IMMEDIATE) {
-            data.addAll(getImmediateData(this.source.getImmediate(), this.source.getSize()));
+            data.addAll(getImmediateData(this.source.getImmediate(), sourceSize));
         }
         
         return data;
@@ -381,7 +385,7 @@ public class Instruction implements Component {
         List<Byte> data = new LinkedList<>();
         byte bio = 0;
         
-        boolean hasIndex = rm.getIndex() == Register.NONE;
+        boolean hasIndex = rm.getIndex() != Register.NONE;
         
         // index
         bio |= switch(rm.getIndex()) {
@@ -421,6 +425,7 @@ public class Instruction implements Component {
             long offset = rm.getOffset().value();
             
             offsetSize = getValueWidth(offset, true, true);
+            bio |= ((offsetSize - 1) & 0b11) << 6;
         }
         
         data.add(bio);
@@ -466,6 +471,9 @@ public class Instruction implements Component {
                 data.add((byte)((val >> 16) & 0xFF));
                 data.add((byte)((val >> 24) & 0xFF));
                 break;
+            
+            default:
+                throw new IllegalArgumentException("Invalid immediate length: " + size + " in " + this);
         }
         
         return data;

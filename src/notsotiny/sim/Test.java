@@ -82,8 +82,9 @@ public class Test {
         sim.setRegSP(0x0800);
         
         try {
+            runFast(sim, mem, 1_000_000, halter);
+            halter.clear();
             runStepped(sim, mem, 1024, halter);
-            //runFast(sim, mem, 2048, halter);
         } catch(Exception e) {
             e.printStackTrace();
         }
@@ -96,10 +97,13 @@ public class Test {
         for(int i = 0; i < maxInstructions; i++) {
             sim.step();
             
-            if(halter.halted()) break;
+            if(halter.halted()) {
+                System.out.println("halted");
+                break;
+            }
             
             try {
-                Thread.sleep(1000 / 10);
+                Thread.sleep(1);
             } catch(Exception e) {}
         }
     }

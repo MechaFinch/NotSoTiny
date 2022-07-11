@@ -446,6 +446,7 @@ public class Assembler {
         addr = 0;
         for(int i = 0; i < allInstructions.size(); i++) {
             Component c = allInstructions.get(i);
+            int len = c.getSize();
             
             if(!c.isResolved()) {
                 System.out.print("Resolving: " + c);
@@ -469,7 +470,7 @@ public class Assembler {
                                     if(relative && !source.isResolved()) throw new IllegalArgumentException("Could not resolve relative value: " + source);
                                     
                                     // infer size if not done already
-                                    if(source.isResolved() && source.getSize() == -1) source.setSize(getValueWidth(source.getImmediate().value(), false));
+                                    if(source.isResolved() && source.getSize() == -1) source.setSize(getValueWidth(source.getImmediate().value(), false, false));
                                     break;
                                     
                                 case MEMORY:
@@ -514,7 +515,11 @@ public class Assembler {
                 }
             }
             
-            addr += c.getSize();
+            int s = c.getSize();
+            
+            if(s != len) throw new IllegalArgumentException("Length changed after resolution: " + len + " -> " + s);
+            
+            addr += s;
         }
         
         System.out.println("\n-- CONSTANT RESOLUTION FINAL PASS RESULTS --");
@@ -1887,9 +1892,9 @@ public class Assembler {
      * @param three true if 3 is allowed
      * @return
      */
-    private static int getValueWidth(long v, boolean three) {
+    private static int getValueWidth(long v, boolean one, boolean three) {
         if(v >= -128 && v <= 127) { // 1 byte
-            return 1;
+            return one ? 1 : 2;
         } else if(v >= -32768 && v <= 32767) { // 2 byte
             return 2;
         } else if(v >= -8388608 && v <= 8388607) { // 3 byte

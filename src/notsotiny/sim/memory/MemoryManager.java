@@ -81,6 +81,8 @@ public class MemoryManager implements MemoryController {
 
     @Override
     public byte readByte(long address) {
+        //System.out.printf("reading 1 byte: %08X\n", address);
+        
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
         
@@ -89,6 +91,8 @@ public class MemoryManager implements MemoryController {
     
     @Override
     public short read2Bytes(long address) {
+        //System.out.printf("reading 2 bytes: %08X\n", address);
+        
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
         
@@ -97,6 +101,8 @@ public class MemoryManager implements MemoryController {
     
     @Override
     public int read3Bytes(long address) {
+        //System.out.printf("reading 3 bytes: %08X\n", address);
+        
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
         
@@ -105,6 +111,8 @@ public class MemoryManager implements MemoryController {
     
     @Override
     public int read4Bytes(long address) {
+        //System.out.printf("reading 4 bytes: %08X\n", address);
+        
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
         
@@ -113,6 +121,8 @@ public class MemoryManager implements MemoryController {
 
     @Override
     public void writeByte(long address, byte value) {
+        //System.out.printf("writing 1 byte: %08X\n", address);
+        
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
         
@@ -121,6 +131,8 @@ public class MemoryManager implements MemoryController {
     
     @Override
     public void write2Bytes(long address, short value) {
+        //System.out.printf("writing 2 bytes: %08X\n", address);
+        
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
         
@@ -129,6 +141,8 @@ public class MemoryManager implements MemoryController {
     
     @Override
     public void write3Bytes(long address, int value) {
+        //System.out.printf("writing 3 bytes: %08X\n", address);
+        
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
         
@@ -137,6 +151,8 @@ public class MemoryManager implements MemoryController {
     
     @Override
     public void write4Bytes(long address, int value) {
+        //System.out.printf("writing 4 bytes: %08X\n", address);
+        
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
         

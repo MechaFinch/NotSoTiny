@@ -36,6 +36,7 @@
 ;				continue;
 ;			}
 ;
+;			printstr(prompt_value);
 ;			int v = iomc.getint();
 ;
 ;			switch(operation) {
@@ -168,6 +169,15 @@ func_main:
 	db .case2 - .case0
 
 .readint:
+	; printstr(prompt_value)
+	PUSH A
+	PUSH ptr prompt_value
+	CALL func_printstr
+	ADD SP, 4
+	POP A
+
+	;MOV [HALTER_ADDRESS], AL
+
 	; v = iomc.getint();
 	MOV BL, [IOMC_ADDRESS + 5]
 	MOV B, [IOMC_ADDRESS + 0]
@@ -263,6 +273,10 @@ func_getstr:
 	CMP AH, 0x0A
 	JNE .loop
 	
+	; terminator
+	MOV A, 0x00
+	MOV [B:C], AL
+	
 .end:
 	POP BP
 	RET
@@ -276,6 +290,7 @@ func_printstr:
 	
 	; get argument
 	MOVW J:I, [SP + 8]
+	;01 63 3F 08
 	MOVZ B:C, IOMC_ADDRESS
 	
 .loop:
@@ -284,7 +299,7 @@ func_printstr:
 	ICC J
 	MOV [B:C + 0], AL	; buffer
 	MOV [B:C + 4], AL	; write buffer
-	CMP A, 0x00			; zero terminated
+	CMP AL, 0x00		; zero terminated
 	JNE .loop
 
 .end:
@@ -299,12 +314,12 @@ func_halt:
 
 ; data
 msg_accumulator:	db "Accumulator: ", 0x00
-msg_unknown:		db "Unknown operation.\n", 0x00
+msg_unknown:		db "Unknown operation.", 0x0A, 0x00
 prompt_value:		db "Value: ", 0x00
 prompt_op:			db "Operation: ", 0x00
-symbol_add:			db "+", 0x00
-symbol_sub:			db "-", 0x00
-symbol_mul:			db "*", 0x00
-symbol_clr:			db "clr", 0x00
-symbol_end:			db "end", 0x00
+symbol_add:			db "+", 0x0A, 0x00
+symbol_sub:			db "-", 0x0A, 0x00
+symbol_mul:			db "*", 0x0A, 0x00
+symbol_clr:			db "clr", 0x0A, 0x00
+symbol_end:			db "end", 0x0A, 0x00
 buffer:				resb 5

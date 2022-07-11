@@ -874,7 +874,7 @@ public class NotSoTinySimulator {
             case MOV_D_O:
                 desc.hasImmediateAddress = true;
                 desc.immediateWidth = 4;
-                src = this.memory.read4Bytes(this.reg_ip);
+                src = this.memory.read2Bytes(this.memory.read4Bytes(this.reg_ip));
                 break;
             
             // BIO w/o offset
