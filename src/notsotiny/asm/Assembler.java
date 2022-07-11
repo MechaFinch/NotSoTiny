@@ -467,6 +467,9 @@ public class Assembler {
                                     resolveValue(source.getImmediate(), labelAddressMap, relative, addr + c.getSize());
                                     
                                     if(relative && !source.isResolved()) throw new IllegalArgumentException("Could not resolve relative value: " + source);
+                                    
+                                    // infer size if not done already
+                                    if(source.isResolved() && source.getSize() == -1) source.setSize(getValueWidth(source.getImmediate().value(), false));
                                     break;
                                     
                                 case MEMORY:
@@ -480,9 +483,11 @@ public class Assembler {
                         // resolve destination
                         if(!dest.isResolved()) {
                             switch(dest.getType()) {
+                                /* this shouldn't be possible idk why i wrote it
                                 case IMMEDIATE:
                                     resolveValue(dest.getImmediate(), labelAddressMap, false, 0);
-                                    break;
+                                    if(dest.isResolved() && dest.getSize() == -1) dest.setSize(getValueWidth(dest.getImmediate().value(), false));
+                                    break; */
                                     
                                 case MEMORY:
                                     resolveValue(dest.getMemory().getOffset(), labelAddressMap, false, 0);
@@ -518,7 +523,14 @@ public class Assembler {
         
         // collect object code
         for(int i = 0; i < allInstructions.size(); i++) {
-            objectCode.addAll(allInstructions.get(i).getObjectCode());
+            Component c = allInstructions.get(i);
+            List<Byte> objCode = c.getObjectCode();
+            
+            System.out.printf("Encoded %-48s %04X: ", c, objectCode.size());
+            objCode.forEach(b -> System.out.printf("%02X ", b));
+            System.out.println();
+            
+            objectCode.addAll(objCode);
         }
         
         // convert object code to array
@@ -540,6 +552,11 @@ public class Assembler {
     private static Instruction parseInstruction(LinkedList<Symbol> symbolQueue, MnemonicSymbol m) {
         // convert to Operation for argument count
         Operation opr = Operation.fromMnemonic(m.name());
+        
+        int packedSize = 0;
+        
+        if(m.name().endsWith("4")) packedSize = 1;
+        else if(m.name().endsWith("8")) packedSize = 2;
         
         // how many arguments does this mnemonic have
         if(!hasFirstOperand(opr)) {
@@ -713,18 +730,22 @@ public class Assembler {
                         // packed rim
                     case PINC:
                         opcode = Opcode.PINC_RIMP;
+                        firstOperand.setSize(packedSize);
                         break;
                         
                     case PICC:
                         opcode = Opcode.PICC_RIMP;
+                        firstOperand.setSize(packedSize);
                         break;
                         
                     case PDEC:
                         opcode = Opcode.PDEC_RIMP;
+                        firstOperand.setSize(packedSize);
                         break;
                         
                     case PDCC:
                         opcode = Opcode.PDCC_RIMP;
+                        firstOperand.setSize(packedSize);
                         break;
                     
                         // rim + F
@@ -1231,6 +1252,21 @@ public class Assembler {
                         
                         if(oprn.startsWith("P")) { // packed
                             opcode = Opcode.valueOf(oprn + "_RIMP");
+                            secondOperand.setSize(packedSize);
+                            
+                            if(firstOperand.getType() == LocationType.REGISTER) {
+                                switch(firstOperand.getRegister()) {
+                                    case A, B, C, D, DA, AB, BC, CD: break;
+                                    default: throw new IllegalArgumentException("Invalid packed register: " + firstOperand);
+                                }
+                            }
+                            
+                            if(secondOperand.getType() == LocationType.REGISTER) {
+                                switch(secondOperand.getRegister()) {
+                                    case A, B, C, D, DA, AB, BC, CD: break;
+                                    default: throw new IllegalArgumentException("Invalid packed register: " + secondOperand);
+                                }
+                            }
                         } else { // not packed
                             opcode = Opcode.valueOf(oprn + "_RIM");
                         }
@@ -1842,5 +1878,33 @@ public class Assembler {
         } catch(NullPointerException e) {
             // the label was not found, ignore
         }
+    }
+    
+    /**
+     * Gets the width of a value in bytes
+     * 
+     * @param v
+     * @param three true if 3 is allowed
+     * @return
+     */
+    private static int getValueWidth(long v, boolean three) {
+        if(v >= -128 && v <= 127) { // 1 byte
+            return 1;
+        } else if(v >= -32768 && v <= 32767) { // 2 byte
+            return 2;
+        } else if(v >= -8388608 && v <= 8388607) { // 3 byte
+            return three ? 3 : 4;
+        } else { // 4 byte
+            return 4;
+        }
+    }
+    
+    /**
+     * Converts an Instruction to use immediate shortcuts if applicable
+     * 
+     * @param inst
+     */
+    private static void applyImmediateShortcuts(Instruction inst) {
+        // TODO
     }
 }

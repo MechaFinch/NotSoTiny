@@ -98,7 +98,7 @@ public class ResolvableLocationDescriptor implements Resolvable {
             case DA, AB, BC, CD, JI, IJ, BP, SP -> 4;
             case A, B, C, D, I, J, F            -> 2;
             case AH, AL, BH, BL, CH, CL, DH, DL -> 1;
-            default -> 0;
+            default -> -1;
         };
     }
     
@@ -114,7 +114,7 @@ public class ResolvableLocationDescriptor implements Resolvable {
         this.immediate = null;
         this.memory = null;
         this.register = Register.NONE;
-        this.size = 0;
+        this.size = -1;
     }
 
     @Override

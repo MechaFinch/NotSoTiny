@@ -110,6 +110,23 @@ public class Instruction implements Component {
                 data.addAll(getImmediateData(this.destination.getMemory().getOffset(), 4));
                 break;
             
+            // BIO only
+            case MOV_A_BI, MOV_B_BI, MOV_C_BI, MOV_D_BI:
+                data.addAll(getBIOData(this.source.getMemory(), false));
+                break;
+            
+            case MOV_BI_A, MOV_BI_B, MOV_BI_C, MOV_BI_D:
+                data.addAll(getBIOData(this.destination.getMemory(), false));
+                break;
+            
+            case MOV_A_BIO, MOV_B_BIO, MOV_C_BIO, MOV_D_BIO:
+                data.addAll(getBIOData(this.source.getMemory(), true));
+                break;
+                
+            case MOV_BIO_A, MOV_BIO_B, MOV_BIO_C, MOV_BIO_D:
+                data.addAll(getBIOData(this.destination.getMemory(), true));
+                break;
+            
             // RIM special cases
             // RIM + 8 bit immediate
             case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8:
@@ -176,17 +193,244 @@ public class Instruction implements Component {
      * @return
      */
     private List<Byte> getRIMData(boolean includeDestination, boolean includeSource, boolean packed, boolean wideDestination, boolean wideSource) {
-        return null; // TODO
+        List<Byte> data = new LinkedList<>();
+        byte rim = 0;
+        
+        LocationType sourceType = this.source.getType(),
+                     destType = this.destination.getType();
+        
+        // validate operand types
+        if(includeDestination) {
+            switch(destType) {
+                case MEMORY:
+                    if(includeSource) {
+                        if(sourceType != LocationType.REGISTER) throw new IllegalArgumentException("Invalid RIM source for memory: " + this.source);
+                    }
+                    break;
+                    
+                case REGISTER:
+                    if(includeSource) {
+                        if(sourceType == LocationType.NULL) throw new IllegalArgumentException("Invalid RIM source: " + this.source);
+                    }
+                    break;
+                    
+                default:
+                    throw new IllegalArgumentException("Invalid RIM destination: " + this.destination);
+            }
+        } else if(includeSource) {
+            if(sourceType == LocationType.NULL) throw new IllegalArgumentException("Invalid RIM source: " + this.source);
+        }
+        
+        // determine operand sizes
+        int sourceSize = includeSource ? this.source.getSize() : -1,
+            destSize = includeDestination ? this.destination.getSize() : -1;
+        
+        if(sourceSize == -1 && destSize == -1) {
+            // this is only valid in special cases
+            switch(this.op) {
+                // source only 32 bit
+                case JMPA_RIM32, CALLA_RIM32:
+                    sourceSize = 4;
+                    break;
+                
+                // destination only 16 bit
+                case AND_RIM_F, OR_RIM_F, XOR_RIM_F, MOV_RIM_F:
+                    destSize = 2;
+                    break;
+                
+                // source only 16 bit
+                case AND_F_RIM, OR_F_RIM, XOR_F_RIM, MOV_F_RIM, INT_RIM:
+                    sourceSize = 2;
+                    break;
+                
+                default:
+                    // if we've just an immediate, assume 16 bit?
+                    if(includeSource && sourceType == LocationType.IMMEDIATE) {
+                        ResolvableValue rv = this.source.getImmediate();
+                        
+                        sourceSize = rv.isResolved() ? getValueWidth(rv.value(), false, false) : 2;
+                    } else {
+                        throw new IllegalArgumentException("Cannot infer operand sizes: " + this);
+                    }
+            }
+        }
+        
+        if(includeSource && sourceSize == -1) {
+            // dest size is known. do we copy or halve it?
+            if(wideDestination && !wideSource) { // halve
+                if(destSize == 1) throw new IllegalArgumentException("Destination too small: " + this);
+                
+                sourceSize = destSize / 2;
+            } else { // copy
+                sourceSize = destSize;
+            }
+        } else if(includeDestination && destSize == -1) {
+            // source size is known. do we copy or double it?
+            if(wideDestination && !wideSource) {
+                if(sourceSize == 4) throw new IllegalArgumentException("Source too large: " + this);
+                
+                destSize = sourceSize * 2;
+            } else {
+                destSize = sourceSize;
+            }
+        }
+        
+        // size bit
+        // this turns out simpler than i thought lol
+        if(includeSource) {
+            if(sourceSize == 1) rim |= 0b10_000_000;
+        } else {
+            if(destSize == 1) rim |= 0b10_000_000;
+        }
+        
+        // type bit
+        if(includeSource && includeDestination) {
+            // 0 for register-register
+            if(sourceType != LocationType.REGISTER || destType != LocationType.REGISTER) {
+                rim |= 0b01_000_000;
+            }
+        } else if(includeSource) {
+            // source only. 0 for register
+            if(sourceType != LocationType.REGISTER) rim |= 0b01_000_000;
+        } else {
+            // destination only. 0 for register dest
+            if(destType != LocationType.REGISTER) rim |= 0b01_000_000;
+        }
+        
+        List<Byte> bioData = null;
+        
+        // reg
+        // this is the destination register unless dest is memory
+        if(includeDestination && destType == LocationType.REGISTER) {
+            rim |= switch(this.destination.getRegister()) {
+                case AL, A, DA  -> 0b00_000_000;
+                case BL, B, AB  -> 0b00_001_000;
+                case CL, C, BC  -> 0b00_010_000;
+                case DL, D, CD  -> 0b00_011_000;
+                case AH, I, JI  -> 0b00_100_000;
+                case BH, J, IJ  -> 0b00_101_000;
+                case CH, BP     -> 0b00_110_000;
+                case DH, SP     -> 0b00_111_000;
+                default         -> 0; // handled earlier
+            };
+        } else if(includeSource && sourceType == LocationType.REGISTER) {
+            rim |= switch(this.source.getRegister()) {
+                case AL, A, DA  -> 0b00_000_000;
+                case BL, B, AB  -> 0b00_001_000;
+                case CL, C, BC  -> 0b00_010_000;
+                case DL, D, CD  -> 0b00_011_000;
+                case AH, I, JI  -> 0b00_100_000;
+                case BH, J, IJ  -> 0b00_101_000;
+                case CH, BP     -> 0b00_110_000;
+                case DH, SP     -> 0b00_111_000;
+                default         -> 0; // handled earlier
+            };
+        }
+        
+        // rim
+        if((rim & 0b01_000_000) != 0) { // register-register
+            rim |= switch(this.source.getRegister()) {
+                case AL, A, DA  -> 0b00_000_000;
+                case BL, B, AB  -> 0b00_000_001;
+                case CL, C, BC  -> 0b00_000_010;
+                case DL, D, CD  -> 0b00_000_011;
+                case AH, I, JI  -> 0b00_000_100;
+                case BH, J, IJ  -> 0b00_000_101;
+                case CH, BP     -> 0b00_000_110;
+                case DH, SP     -> 0b00_000_111;
+                default         -> 0; // handled earlier
+            };
+        //} else if(includeSource && sourceType == LocationType.IMMEDIATE) { // do nothing
+            
+        } else if((includeSource && sourceType == LocationType.MEMORY) || (includeDestination && destType == LocationType.MEMORY)) {
+            // bio nonsense
+            boolean src = (includeSource && sourceType == LocationType.MEMORY);
+            ResolvableMemory rm = src ? this.source.getMemory() : this.destination.getMemory();
+            ResolvableValue offs = rm.getOffset();
+            
+            boolean includeOffset = !offs.isResolved() || offs.value() != 0;
+            
+            if(rm.getBase() != Register.NONE || rm.getIndex() != Register.NONE) {
+                rim |= includeOffset ? (src ? 0b00_000_011 : 0b00_000_111) : (src ? 0b00_000_010 : 0b00_000_110);
+                bioData = getBIOData(rm, includeOffset);
+            } else {
+                rim |= src ? 0b00_000_001 : 0b00_000_101;
+                bioData = getImmediateData(offs, 4);
+            }
+        }
+        
+        data.add(rim);
+        if(bioData != null) data.addAll(bioData);
+        
+        // immediate
+        if(includeSource && sourceType == LocationType.IMMEDIATE) {
+            data.addAll(getImmediateData(this.source.getImmediate(), this.source.getSize()));
+        }
+        
+        return data;
     }
     
     /**
-     * Constucts BIO bytes
+     * Constucts BIO bytes.
      * 
      * @param rm
+     * @param includeOffset
      * @return
      */
-    private List<Byte> getBIOData(ResolvableMemory rm) {
-        return null; // TODO
+    private List<Byte> getBIOData(ResolvableMemory rm, boolean includeOffset) {
+        List<Byte> data = new LinkedList<>();
+        byte bio = 0;
+        
+        boolean hasIndex = rm.getIndex() == Register.NONE;
+        
+        // index
+        bio |= switch(rm.getIndex()) {
+            case A      -> 0b000;
+            case B      -> 0b001;
+            case C      -> 0b010;
+            case D      -> 0b011;
+            case I      -> 0b100;
+            case J      -> 0b101;
+            case BP     -> 0b110;
+            case NONE   -> 0b111;
+            default -> throw new IllegalArgumentException("Invalid index: " + rm.getIndex());
+        };
+        
+        // check
+        if(hasIndex && rm.getBase() == Register.NONE) throw new IllegalArgumentException("Must have at least one register for BIO: " + rm); 
+        
+        // base
+        bio |= switch(rm.getBase()) {
+            case DA         -> 0b000_000;
+            case AB         -> 0b001_000;
+            case BC         -> 0b010_000;
+            case CD         -> 0b011_000;
+            case JI         -> 0b100_000;
+            case IJ         -> 0b101_000;
+            case BP         -> 0b110_000;
+            case SP, NONE   -> 0b111_000;
+            default         -> throw new IllegalArgumentException("Invalid base: " + rm.getBase());
+        };
+        
+        int offsetSize = 4;
+        
+        // scale
+        if(hasIndex) { // scale scales the index
+            bio |= (rm.getScale() & 0b11) << 6;
+        } else if(includeOffset && rm.getOffset().isResolved()) { // scale scales the offset
+            long offset = rm.getOffset().value();
+            
+            offsetSize = getValueWidth(offset, true, true);
+        }
+        
+        data.add(bio);
+        
+        // offset
+        if(includeOffset) {
+            data.addAll(getImmediateData(rm.getOffset(), offsetSize));
+        }
+        
+        return data;
     }
     
     /**
@@ -229,218 +473,32 @@ public class Instruction implements Component {
     
     @Override
     public int getSize() {
-        //if(this.cachedWidth != -1) return this.cachedWidth; // TODO
-        
-        // thank u assign & use value construction
-        return this.cachedWidth = switch(this.op) {
-            /*
-             * Single byte instructions
-             */
-            case NOP, XCHG_AH_AL, XCHG_BH_BL, XCHG_CH_CL, XCHG_DH_DL,
-                 MOV_A_B, MOV_A_C, MOV_A_D, MOV_B_A, MOV_B_C, MOV_B_D,
-                 MOV_C_A, MOV_C_B, MOV_C_D, MOV_D_A, MOV_D_B, MOV_D_C,
-                 MOV_AL_BL, MOV_AL_CL, MOV_AL_DL, MOV_BL_AL, MOV_BL_CL, MOV_BL_DL,
-                 MOV_CL_AL, MOV_CL_BL, MOV_CL_DL, MOV_DL_AL, MOV_DL_BL, MOV_DL_CL,
-                 XCHG_A_B, XCHG_A_C, XCHG_A_D, XCHG_B_C, XCHG_B_D, XCHG_C_D,
-                 XCHG_AL_BL, XCHG_AL_CL, XCHG_AL_DL, XCHG_BL_CL, XCHG_BL_DL, XCHG_CL_DL,
-                 PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_BP, PUSH_SP, PUSH_F,
-                 POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_BP, POP_SP, POP_F,
-                 NOT_F, INC_I, INC_J, ICC_I, ICC_J, DEC_I, DEC_J, DCC_I, DCC_J,
-                 RET, IRET -> 1;
-            
-            /*
-             * Fixed Immediate Instructions
-             */
-            case MOV_A_I8, MOV_B_I8, MOV_C_I8, MOV_D_I8,
-                 MOV_A_BI, MOV_B_BI, MOV_C_BI, MOV_D_BI,
-                 MOV_BI_A, MOV_BI_B, MOV_BI_C, MOV_BI_D,
-                 ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8,
-                 ADC_A_I8, ADC_B_I8, ADC_C_I8, ADC_D_I8,
-                 SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8,
-                 SBB_A_I8, SBB_B_I8, SBB_C_I8, SBB_D_I8,
-                 JMP_I8, JC_I8, JNC_I8, JS_I8, JNS_I8, JO_I8, JNO_I8, JZ_I8, JNZ_I8,
-                 JA_I8, JBE_I8, JG_I8, JGE_I8, JL_I8, JLE_I8 -> 2;
-                 
-            case MOV_I_I16, MOV_J_I16, MOV_A_I16, MOV_B_I16, MOV_C_I16, MOV_D_I16,
-                 ADD_A_I16, ADD_B_I16, ADD_C_I16, ADD_D_I16,
-                 ADC_A_I16, ADC_B_I16, ADC_C_I16, ADC_D_I16,
-                 SUB_A_I16, SUB_B_I16, SUB_C_I16, SUB_D_I16,
-                 SBB_A_I16, SBB_B_I16, SBB_C_I16, SBB_D_I16,
-                 JMP_I16, CALL_I16, INT_I16 -> 3;
-                 
-            case MOV_SP_I32, MOV_BP_I32,
-                 MOV_A_O, MOV_B_O, MOV_C_O, MOV_D_O, MOV_O_A, MOV_O_B, MOV_O_C, MOV_O_D,
-                 PUSH_I32, JMP_I32, JMPA_I32, CALLA_I32 -> 5;
-            
-            /*
-             * RIM Instructions
-             */
-            case MOVW_RIM, MOVS_RIM, MOVZ_RIM, MOV_RIM, XCHG_RIM, 
-                 PUSH_RIM, POP_RIM,
-                 AND_F_RIM, AND_RIM_F, OR_F_RIM, OR_RIM_F, XOR_F_RIM, XOR_RIM_F, MOV_F_RIM, MOV_RIM_F,
-                 ADD_RIM, ADC_RIM, PADD_RIMP, PADC_RIMP,
-                 SUB_RIM, SBB_RIM, PSUB_RIMP, PSBB_RIMP,
-                 INC_RIM, ICC_RIM, PINC_RIMP, PICC_RIMP, DEC_RIM, DCC_RIM, PDEC_RIMP, PDCC_RIMP,
-                 MUL_RIM, MULH_RIM, MULSH_RIM, PMUL_RIMP, PMULH_RIMP, PMULSH_RIMP,
-                 DIV_RIM, DIVS_RIM, DIVM_RIM, DIVMS_RIM, PDIV_RIMP, PDIVS_RIMP, PDIVM_RIMP, PDIVMS_RIMP,
-                 AND_RIM, OR_RIM, XOR_RIM, NOT_RIM, NEG_RIM,
-                 SHL_RIM, SHR_RIM, SAR_RIM, ROL_RIM, ROR_RIM, RCL_RIM, RCR_RIM,
-                 JMP_RIM, JMPA_RIM32, CALL_RIM, CALLA_RIM32,
-                 INT_RIM, LEA_RIM, CMP_RIM,
-                 JC_RIM, JNC_RIM, JS_RIM, JNS_RIM, JO_RIM, JNO_RIM, JZ_RIM, JNZ_RIM,
-                 JA_RIM, JBE_RIM, JG_RIM, JGE_RIM, JL_RIM, JLE_RIM -> getRIMWidth(false, -1) + 1;
-            
-            /*
-             * RIM + Immediate Instructions
-             */
-            case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8 -> getRIMWidth(true, 1) + 1;
-            case CMP_RIM_0 -> getRIMWidth(true, 0) + 1;
-            
-            /*
-             * BIO w/ Offset Instructions
-             */
-            case MOV_A_BIO, MOV_B_BIO, MOV_C_BIO, MOV_D_BIO -> getBIOWidth(source) + 1;
-            
-            case MOV_BIO_A, MOV_BIO_B, MOV_BIO_C, MOV_BIO_D -> getBIOWidth(destination) + 1;
-        };
+        // slower but guaranteed to work
+        return getObjectCode().size();
     }
     
     /**
-     * Determines RIM width
+     * Gets the width of a value in bytes
      * 
-     * @param overrideImmediate
-     * @param immediateSize
+     * @param v
+     * @param three true if 3 is allowed
      * @return
      */
-    private int getRIMWidth(boolean overrideImmediate, int immediateSize) {
-        switch(this.source.getType()) {
-            case IMMEDIATE:
-                switch(this.destination.getType()) {
-                    case REGISTER:
-                        // REG, IMM
-                        // immediate is the size of the register unless this is MOVS/MOVZ
-                        if(this.op == Opcode.MOVS_RIM || this.op == Opcode.MOVZ_RIM) return (this.source.getSize() / 2) + 1;
-                        else return this.source.getSize() + 1;
-                        
-                    case NULL:
-                        // figure out size from immediate
-                        if(overrideImmediate) return immediateSize + 1;
-                        else if(this.overrideImmediateWidth) return this.immediateWidth + 1;
-                        else {
-                            ResolvableValue immrv = this.source.getImmediate();
-                            if(!immrv.isResolved()) {
-                                // unresolved? assume largest
-                                if(this.op == Opcode.JMPA_RIM32 || this.op == Opcode.CALLA_RIM32) return 5;
-                                else return 3;
-                            } else {
-                                // resolved? use smallest
-                                long imm = immrv.value();
-                                
-                                if(imm >= -128 && imm <= 127) { // 1 byte
-                                    return 2;
-                                } else if(imm >= -32768 && imm <= 32767) { // 2 byte
-                                    return 3;
-                                } else if(imm >= -8388608 && imm <= 8388607) { // 3 byte
-                                    return 4;
-                                } else { // 4 byte
-                                    return 5;
-                                }
-                            }
-                        }
-                    
-                    case MEMORY:
-                        switch(this.op) {
-                            // only these can do memory-immediate
-                            case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8, CMP_RIM_0:
-                                return getBIOWidth(this.destination) + 1 + immediateSize;
-                            
-                            default:
-                        }
-                        
-                    default:
-                        throw new IllegalArgumentException("Invalid RIM destination for immediate: " + this.destination);
-                }
-                
-            case MEMORY:
-                switch(this.destination.getType()) {
-                    case NULL:
-                    case REGISTER:
-                        return getBIOWidth(this.source) + 1;
-                        
-                    default:
-                        throw new IllegalArgumentException("Invalid RIM destination for memory: " + this.destination);
-                }
-                
-            case REGISTER:
-                switch(this.destination.getType()) {
-                    case MEMORY:
-                        return getBIOWidth(this.destination) + 1;
-                        
-                    case NULL:
-                    case REGISTER:
-                        return 1;
-                        
-                    default:
-                        throw new IllegalArgumentException("Invalid RIM destination for register: " + this.destination);
-                }
+    private int getValueWidth(long v, boolean three, boolean four) {
+        if(v >= -128 && v <= 127) { // 1 byte
+            return 1;
+        } else if(v >= -32768 && v <= 32767) { // 2 byte
+            return 2;
+        } else if(v >= -8388608 && v <= 8388607) { // 3 byte
+            if(three) return 3;
+            if(four) return 4;
             
-            case NULL:
-                switch(this.destination.getType()) {
-                    case MEMORY:
-                        return getBIOWidth(this.destination) + 1; 
-                        
-                    case REGISTER:
-                        return 1;
-                        
-                    default:
-                        throw new IllegalArgumentException("Invalid RIM destination for destination-only: " + this.destination);
-                }
-                
-            default:
-                throw new IllegalArgumentException("Invalid RIM source: " + this.source + "(" + this + ")");
-        }
-    }
-    
-    /**
-     * Determines BIO width
-     * 
-     * @param location
-     * @return
-     */
-    private int getBIOWidth(ResolvableLocationDescriptor location) {
-        if(location.getType() != LocationType.MEMORY) throw new IllegalArgumentException("Cannot calculate BIO width for non-memory location " + this);
-        ResolvableMemory rm = location.getMemory();
-        Register index = rm.getIndex();
-        ResolvableValue offset = rm.getOffset();
-        
-        // immediate?
-        if(!offset.isResolved()) {
-            // assume 32 bit unless overridden
-            if(this.overrideImmediateWidth) {
-                return 1 + this.immediateWidth;
-            } else {
-                return 5;
-            }
-        } else if(offset.value() != 0) {
-            long off = offset.value();
+            throw new IllegalArgumentException("value too large for 2 bytes: " + v);
+        } else { // 4 byte
+            if(four) return 4;
             
-            // variable width if no index
-            if(index == Register.NONE) {
-                if(off >= -128 && off <= 127) { // 1 byte
-                    return 2;
-                } else if(off >= -32768 && off <= 32767) { // 2 byte
-                    return 3;
-                } else if(off >= -8388608 && off <= 8388607) { // 3 byte
-                    return 4;
-                } else { // 4 byte
-                    return 5;
-                }
-            } else { // 4 byte offset otherwise
-                return 5;
-            }
+            throw new IllegalArgumentException("value too large for 2 bytes: " + v);
         }
-        
-        return 1;
     }
     
     /**
