@@ -161,7 +161,46 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void run2Logic(InstructionDescriptor desc) {
-        // TODO
+        // operands
+        LocationDescriptor dst = switch(desc.op) {
+            case AND_F_RIM, OR_F_RIM, XOR_F_RIM -> LocationDescriptor.REGISTER_F;
+            default                             -> getNormalRIMDestinationDescriptor(desc);
+        };
+        
+        int b = switch(desc.op) {
+            case AND_RIM_F, OR_RIM_F, XOR_RIM_F -> this.reg_f;
+            default                             -> getNormalRIMSource(desc);
+        };
+        
+        // operation
+        int c = switch(desc.op.getType()) {
+            case AND    -> readLocation(dst) & b;
+            case OR     -> readLocation(dst) | b;
+            case XOR    -> readLocation(dst) ^ b;
+            default -> 0;
+        };
+        
+        // flags
+        switch(desc.op) {
+            case AND_F_RIM, AND_RIM_F, OR_F_RIM, OR_RIM_F, XOR_F_RIM, XOR_RIM_F:
+                break;
+            
+            default:
+                boolean zero = c == 0,
+                        overflow = false,
+                        sign = switch(dst.size()) {
+                            case 1  -> (c & 0x80) != 0;
+                            case 2  -> (c & 0x8000) != 0;
+                            case 4  -> (c & 0x8000_0000) != 0;
+                            default -> false;
+                        },
+                        carry = false;
+                        
+                this.reg_f = (short)((zero ? 0x08 : 0x00) | (overflow ? 0x04 : 0x00) | (sign ? 0x02 : 0x00) | (carry ? 0x01 : 0x00));
+        }
+        
+        // write
+        writeLocation(dst, c);
     }
     
     /**
@@ -170,7 +209,27 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void run1Logic(InstructionDescriptor desc) {
-        // TODO
+        if(desc.op == Opcode.NOT_F) {
+            this.reg_f = (short)(~this.reg_f);
+        } else {
+            LocationDescriptor dst = getNormalRIMDestinationDescriptor(desc);
+            int v = ~readLocation(dst);
+            
+            // flags
+            boolean zero = v == 0,
+                    overflow = false,
+                    sign = switch(dst.size()) {
+                        case 1  -> (v & 0x80) != 0;
+                        case 2  -> (v & 0x8000) != 0;
+                        case 4  -> (v & 0x8000_0000) != 0;
+                        default -> false;
+                    },
+                    carry = false;
+                    
+            this.reg_f = (short)((zero ? 0x08 : 0x00) | (overflow ? 0x04 : 0x00) | (sign ? 0x02 : 0x00) | (carry ? 0x01 : 0x00));
+            
+            writeLocation(dst, v);
+        }
     }
     
     /**
@@ -179,7 +238,96 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runRotateLogic(InstructionDescriptor desc) {
-        // TODO
+        LocationDescriptor dst = getNormalRIMDestinationDescriptor(desc);
+        
+        int a = readLocation(dst),
+            b = getNormalRIMSource(desc),
+            c = 0;
+        
+        boolean carry = (this.reg_f & 0x01) != 0;
+        
+        // agh
+        switch(desc.op) {
+            case SHL_RIM:
+                carry = ((switch(dst.size()) {
+                    case 1  -> 0x80;
+                    case 2  -> 0x8000;
+                    case 4  -> 0x8000_000;
+                    default -> 0;
+                } >>> (b - 1)) & a) != 0;
+                
+                c = a << b;
+                break;
+            
+            case SHR_RIM:
+                carry = ((1 << (b - 1)) & a) != 0;
+                
+                c = a >>> b;
+                break;
+                
+            case SAR_RIM:
+                carry = ((1 << (b - 1)) & a) != 0;
+                
+                c = a >> b;
+                break;
+                
+            case ROL_RIM:
+            case RCL_RIM:
+                long al = a;
+                int rot = 0;
+                for(int i = 0; i < b; i++) {
+                    // use previous carry for RCL
+                    if(desc.op == Opcode.RCL_RIM) rot = carry ? 1 : 0;
+                    
+                    al <<= 1;
+                    carry = (switch(dst.size()) {
+                        case 1  -> 0x100l;
+                        case 2  -> 0x1_0000l;
+                        case 3  -> 0x1_0000_0000l;
+                        default -> 0l;
+                    } & al) != 0;
+                    
+                    // use current carry for ROL
+                    if(desc.op == Opcode.ROL_RIM) rot = carry ? 1 : 0;
+                    
+                    al |= rot;
+                }
+                break;
+                
+            case ROR_RIM:
+            case RCR_RIM:
+                al = a;
+                rot = 0;
+                for(int i = 0; i < b; i++) {
+                    // use previous carry for RCR
+                    if(desc.op == Opcode.RCR_RIM) rot = carry ? 1 : 0;
+                    
+                    carry = (al & 1) != 0;
+                    al >>>= 1;
+                    
+                    // use current carry for ROR
+                    if(desc.op == Opcode.ROR_RIM) rot = carry ? 1 : 0;
+                    
+                    al |= rot;
+                }
+                break;
+            
+            default:
+        }
+        
+        // flags
+        boolean zero = c == 0,
+                overflow = false,
+                sign = switch(dst.size()) {
+                    case 1  -> (c & 0x80) != 0;
+                    case 2  -> (c & 0x8000) != 0;
+                    case 4  -> (c & 0x8000_0000) != 0;
+                    default -> false;
+                };
+                
+        this.reg_f = (short)((zero ? 0x08 : 0x00) | (overflow ? 0x04 : 0x00) | (sign ? 0x02 : 0x00) | (carry ? 0x01 : 0x00));
+        
+        writeLocation(dst, c);
     }
     
     /**
@@ -238,7 +386,11 @@ public class NotSoTinySimulator {
         
         int c = multiply(a, b, thinDst.size(), high, signed);
         
-        putWideRIMDestination(thinDst, c);
+        if(high) {
+            putWideRIMDestination(thinDst, c);
+        } else {
+            writeLocation(thinDst, c);
+        }
     }
     
     /**
@@ -256,7 +408,28 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runDIV(InstructionDescriptor desc) {
-        // TODO
+        LocationDescriptor thinDst = getNormalRIMDestinationDescriptor(desc);
+        
+        boolean mod = desc.op == Opcode.DIVM_RIM || desc.op == Opcode.DIVMS_RIM,
+                signed = desc.op == Opcode.DIVS_RIM || desc.op == Opcode.DIVMS_RIM;
+        
+        int a = readLocation(thinDst),
+            b = mod ? getWideRIMSource(desc) : getNormalRIMSource(desc);
+        
+        // {quot, rem}
+        int[] res = divide(a, b, thinDst.size(), mod, signed); 
+        
+        int c = switch(thinDst.size()) {
+            case 1  -> mod ? (((res[1] & 0xFF) << 8) | (res[0] & 0xFF)) : res[0]; 
+            case 2  -> mod ? (((res[1] & 0xFFFF) << 16) | (res[0] & 0xFFFF)) : res[0];
+            default -> res[0];
+        };
+        
+        if(mod) {
+            putWideRIMDestination(thinDst, c);
+        } else {
+            writeLocation(thinDst, c);
+        }
     }
     
     /**
@@ -325,7 +498,7 @@ public class NotSoTinySimulator {
         // unconditional or condition met
         if(desc.op.getType() == Operation.INC || desc.op.getType() == Operation.DEC || (this.reg_f & 0x01) != 0) {
             boolean inc = desc.op.getType() == Operation.INC || desc.op.getType() == Operation.ICC;
-            int v = add(readLocation(dst), inc ? 1 : -1, dst.size(), false, false);
+            int v = add(readLocation(dst), 1, dst.size(), !inc, false);
             
             writeLocation(dst, v);
         }
@@ -649,10 +822,10 @@ public class NotSoTinySimulator {
             case JNZ_I8, JNZ_RIM    -> (this.reg_f & 0x08) == 0;    // not zero - zero clear
             case JA_I8, JA_RIM      -> (this.reg_f & 0x09) == 0;    // above - carry clear and zero clear 
             case JBE_I8, JBE_RIM    -> (this.reg_f & 0x09) != 0;    // below equal - carry set or zero set
-            case JG_I8, JG_RIM      -> ((this.reg_f & 0x08) == 0) && (((this.reg_f & 0x04) >> 1) == (this.reg_f & 0x02));   // greater - zero clear and sign = overflow
-            case JGE_I8, JGE_RIM    -> (((this.reg_f & 0x04) >> 1) == (this.reg_f & 0x02));                                 // greater equal - sign = overflow
-            case JL_I8, JL_RIM      -> (((this.reg_f & 0x04) >> 1) != (this.reg_f & 0x02));                                 // less - sign != overflow
-            case JLE_I8, JLE_RIM    -> ((this.reg_f & 0x08) != 0) || (((this.reg_f & 0x04) >> 1) != (this.reg_f & 0x02));   // less equal - zero set or sign != overflow
+            case JG_I8, JG_RIM      -> ((this.reg_f & 0x08) == 0) && (((this.reg_f & 0x04) >>> 1) == (this.reg_f & 0x02));   // greater - zero clear and sign = overflow
+            case JGE_I8, JGE_RIM    -> (((this.reg_f & 0x04) >>> 1) == (this.reg_f & 0x02));                                 // greater equal - sign = overflow
+            case JL_I8, JL_RIM      -> (((this.reg_f & 0x04) >>> 1) != (this.reg_f & 0x02));                                 // less - sign != overflow
+            case JLE_I8, JLE_RIM    -> ((this.reg_f & 0x08) != 0) || (((this.reg_f & 0x04) >>> 1) != (this.reg_f & 0x02));   // less equal - zero set or sign != overflow
             default                 -> false;
         };
         
@@ -1241,7 +1414,15 @@ public class NotSoTinySimulator {
             b = ~b;
         }
         
-        int c = a + b + carryIn;
+        // stop sign extending goddammit
+        long sizeMask = switch(size) {
+            case 1  -> 0xFFl;
+            case 2  -> 0xFFFFl;
+            case 4  -> 0xFFFF_FFFFl;
+            default -> 0l;
+        };
+        
+        long c = (((long) a) & sizeMask) + (((long) b) & sizeMask) + carryIn;
         
         boolean zero = false,
                 overflow = false,
@@ -1259,22 +1440,19 @@ public class NotSoTinySimulator {
             zero = (c & 0xFFFF) == 0;
             overflow = ((a & 0x8000) == (b & 0x8000)) ? ((a & 0x8000) != (c & 0x8000)) : false;
             sign = (c & 0x8000) != 0;
-            carry = (c & 0x10000) != 0;
+            carry = (c & 0x1_0000) != 0;
             
             c &= 0xFFFF;
         } else { // 32 bit
             zero = c == 0;
-            overflow = ((a & 0x8000_0000) == (b & 0x8000_0000)) ? ((a & 0x8000_0000) != (c & 0x8000_0000)) : false;
-            sign = (c & 0x8000_0000) != 0;
-            
-            // we need that carry bit xd
-            long d = ((long) a) + ((long) b) + ((long) carryIn);
-            carry = (d & 0x1_0000_0000l) != 0;
+            overflow = ((a & 0x8000_0000l) == (b & 0x8000_0000l)) ? ((a & 0x8000_0000l) != (c & 0x8000_0000l)) : false;
+            sign = (c & 0x8000_0000l) != 0;
+            carry = (c & 0x1_0000_0000l) != 0;
         }
         
         this.reg_f = (short)((zero ? 0x08 : 0x00) | (overflow ? 0x04 : 0x00) | (sign ? 0x02 : 0x00) | ((carry != subtract) ? 0x01 : 0x00));
         
-        return c;
+        return (int) c;
     }
     
     /**
@@ -1368,38 +1546,78 @@ public class NotSoTinySimulator {
      * 
      * @param a
      * @param b
+     * @param high
      * @param signed
      * @param bytes
      * @return a * b {lower, upper}
      */
-    private int[] multiplyPacked(int a, int b, boolean signed, boolean bytes) {
+    private int[] multiplyPacked(int a, int b, boolean high, boolean signed, boolean bytes) {
         //TODO
         return new int[] {-1, -1};
     }
     
     /**
-     * Divides two numbers and sets flags accordingly
+     * Divides & modulos two numbers and sets flags accordingly
      * 
      * @param a
      * @param b
+     * @param size
+     * @param mod
      * @param signed
      * @return a / b {quotient, remainder}
      */
-    private int divide(int a, int b, boolean signed) {
-        //TODO
-        return -1;
+    private int[] divide(int a, int b, int size, boolean mod, boolean signed) {
+        long quot,
+             rem;
+        
+        // calculate
+        if(signed) {
+            quot = ((long) a) / ((long) b);
+            rem = ((long) a) % ((long) b);
+        } else {
+            quot = (((long) a) & 0xFFFF_FFFFl) / (((long) b) & 0xFFFF_FFFFl);
+            rem = (((long) a) & 0xFFFF_FFFFl) % (((long) b) & 0xFFFF_FFFFl);
+        }
+        
+        boolean zero = false,
+                overflow = false,
+                sign = false,
+                carry = false;
+        
+        // flags
+        if(size == 1) {
+            zero = (quot & 0xFF) == 0 && (mod ? (rem & 0xFF) == 0 : true);
+            sign = (quot & 0x80) != 0;
+            overflow = quot > 127 || quot < -128;
+            carry = quot > 256;
+        } else if(size == 2) {
+            zero = (quot & 0xFFFF) == 0 && (mod ? (rem & 0xFFFF) == 0 : true);
+            sign = (quot & 0x8000) != 0;
+            overflow = quot > 32767 || quot < -32768;
+            carry = quot > 65536;
+        } else {
+            zero = (quot & 0xFFFF_FFFF) == 0 && (mod ? (rem & 0xFFFF_FFFF) == 0 : true);
+            sign = (quot & 0x8000_0000) != 0;
+            overflow = quot > 2147483647l || quot < -2147483648l;
+            carry = quot > 4294967295l;
+        }
+        
+        this.reg_f = (short)((zero ? 0x08 : 0x00) | (overflow ? 0x04 : 0x00) | (sign ? 0x02 : 0x00) | (carry ? 0x01 : 0x00));
+        
+        return new int[] {(int) quot, (int) rem};
     }
     
     /**
-     * Divides packed numbers and sets flags accordingly
+     * Divides & modulos packed numbers and sets flags accordingly
      * 
      * @param a
      * @param b
+     * @param mod
      * @param signed
      * @param bytes
      * @return a / b {quotient, remainder}
      */
-    private int[] dividePacked(int a, int b, boolean signed, boolean bytes) {
+    private int[] dividePacked(int a, int b, boolean mod, boolean signed, boolean bytes) {
         //TODO
         return new int[] {-1, -1};
     }
@@ -1422,7 +1640,7 @@ public class NotSoTinySimulator {
             
             // register destination
             if(size) { // 16 bit
-                return switch((rim & 0x38) >> 3) {
+                return switch((rim & 0x38) >>> 3) {
                     case 0  -> LocationDescriptor.REGISTER_A;
                     case 1  -> LocationDescriptor.REGISTER_B;
                     case 2  -> LocationDescriptor.REGISTER_C;
@@ -1434,7 +1652,7 @@ public class NotSoTinySimulator {
                     default -> null;
                 };
             } else { // 8 bit
-                return switch((rim & 0x38) >> 3) {
+                return switch((rim & 0x38) >>> 3) {
                     case 0  -> LocationDescriptor.REGISTER_AL;
                     case 1  -> LocationDescriptor.REGISTER_BL;
                     case 2  -> LocationDescriptor.REGISTER_CL;
@@ -1494,7 +1712,7 @@ public class NotSoTinySimulator {
                 switch(desc.type()) {
                     case REG_A:
                         if(desc.address() == 0) { // AL
-                            this.reg_a = (short)((this.reg_a & 0xFF00) | ((byte) val));
+                            this.reg_a = (short)((this.reg_a & 0xFF00) | (val & 0xFF));
                         } else { // AH
                             this.reg_a = (short)(((val << 8) & 0xFF00) | (this.reg_a & 0xFF));
                         }
@@ -1502,7 +1720,7 @@ public class NotSoTinySimulator {
                         
                     case REG_B:
                         if(desc.address() == 0) { // BL
-                            this.reg_b = (short)((this.reg_b & 0xFF00) | ((byte) val));
+                            this.reg_b = (short)((this.reg_b & 0xFF00) | (val & 0xFF));
                         } else { // BH
                             this.reg_b = (short)(((val << 8) & 0xFF00) | (this.reg_b & 0xFF));
                         }
@@ -1510,7 +1728,7 @@ public class NotSoTinySimulator {
                         
                     case REG_C:
                         if(desc.address() == 0) { // CL
-                            this.reg_c = (short)((this.reg_c & 0xFF00) | ((byte) val));
+                            this.reg_c = (short)((this.reg_c & 0xFF00) | (val & 0xFF));
                         } else { // CH
                             this.reg_c = (short)(((val << 8) & 0xFF00) | (this.reg_c & 0xFF));
                         }
@@ -1518,7 +1736,7 @@ public class NotSoTinySimulator {
                         
                     case REG_D:
                         if(desc.address() == 0) { // DL
-                            this.reg_d = (short)((this.reg_d & 0xFF00) | ((byte) val));
+                            this.reg_d = (short)((this.reg_d & 0xFF00) | (val & 0xFF));
                         } else { // DH
                             this.reg_d = (short)(((val << 8) & 0xFF00) | (this.reg_d & 0xFF));
                         }
@@ -1553,6 +1771,10 @@ public class NotSoTinySimulator {
                         this.reg_j = (short) val;
                         break;
                     
+                    case REG_F:
+                        this.reg_f = (short) val;
+                        break;
+                        
                     default:
                         throw new IllegalArgumentException("Invalid location descriptor: " + desc);
                 }
@@ -1560,32 +1782,32 @@ public class NotSoTinySimulator {
                 switch(desc.type()) {
                     case REG_A: // DA
                         this.reg_a = (short) val;
-                        this.reg_d = (short) (val >> 16);
+                        this.reg_d = (short) (val >>> 16);
                         break;
                     
                     case REG_B: // AB
                         this.reg_b = (short) val;
-                        this.reg_a = (short) (val >> 16);
+                        this.reg_a = (short) (val >>> 16);
                         break;
                         
                     case REG_C: // BC
                         this.reg_c = (short) val;
-                        this.reg_b = (short) (val >> 16);
+                        this.reg_b = (short) (val >>> 16);
                         break;
                     
                     case REG_D: // CD
                         this.reg_d = (short) val;
-                        this.reg_c = (short) (val >> 16);
+                        this.reg_c = (short) (val >>> 16);
                         break;
                         
                     case REG_I: // JI
                         this.reg_i = (short) val;
-                        this.reg_j = (short) (val >> 16);
+                        this.reg_j = (short) (val >>> 16);
                         break;
                     
                     case REG_J: // IJ
                         this.reg_j = (short) val;
-                        this.reg_i = (short) (val >> 16);
+                        this.reg_i = (short) (val >>> 16);
                         break;
                     
                     case REG_BP:
@@ -1680,7 +1902,7 @@ public class NotSoTinySimulator {
             if((rim & 0x40) == 0) { // reg source
                 src = rim & 0x07;
             } else { // mem destination
-                src = (rim & 0x38) >> 3;
+                src = (rim & 0x38) >>> 3;
             }
             
             //System.out.println(String.format("register source %s", src));
@@ -1794,6 +2016,7 @@ public class NotSoTinySimulator {
                 case REG_J  -> this.reg_j;
                 case REG_BP -> this.reg_bp;
                 case REG_SP -> this.reg_sp;
+                case REG_F  -> this.reg_f;
                 default     -> 0;
             };
             
@@ -1924,7 +2147,7 @@ public class NotSoTinySimulator {
         desc.hasBIOByte = true;
         
         byte bio = this.memory.readByte(this.reg_ip + (hasRIM ? 1 : 0)),
-             scale = (byte)(bio >> 6),
+             scale = (byte)((bio >>> 6) & 0x03),
              offsetSize = 4;
         
         boolean hasIndex = (bio & 0x07) != 0x07;
@@ -1956,7 +2179,7 @@ public class NotSoTinySimulator {
         //System.out.println(String.format("addr from index: %08X", addr));
         
         // base
-        addr += switch((bio & 0x38) >> 3) {
+        addr += switch((bio & 0x38) >>> 3) {
             case 0  -> (this.reg_d << 16) | (this.reg_a & 0xFFFF); // D:A
             case 1  -> (this.reg_a << 16) | (this.reg_b & 0xFFFF); // A:B
             case 2  -> (this.reg_b << 16) | (this.reg_c & 0xFFFF); // B:C
@@ -1975,13 +2198,13 @@ public class NotSoTinySimulator {
             desc.hasImmediateAddress = true;
             desc.immediateWidth = offsetSize;
             
-            int imm = 0;
-            
-            for(int i = 0; i < offsetSize; i++) {
-                imm |= (this.memory.readByte(this.reg_ip + 2 + i) & 0xFF) << (i * 8);
-            }
-            
-            addr += imm;
+            addr += switch(offsetSize) {
+                case 1  -> this.memory.readByte(this.reg_ip + (hasRIM ? 2 : 1));
+                case 2  -> this.memory.read2Bytes(this.reg_ip + (hasRIM ? 2 : 1));
+                case 3  -> this.memory.read3Bytes(this.reg_ip + (hasRIM ? 2 : 1));
+                case 4  -> this.memory.read4Bytes(this.reg_ip + (hasRIM ? 2 : 1));
+                default -> 0;
+            };
         }
         
         //System.out.println(String.format("final address: %08X", addr));

@@ -1690,6 +1690,7 @@ public class Assembler {
                     }
                     break;
                 
+                case null:
                 default: // anything unexpected just ends the definition
                     break loop;
             }

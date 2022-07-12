@@ -176,11 +176,11 @@ public class Disassembler {
         boolean size = (rim & 0x80) == 0;
         
         int srcCode = rim & 0x07,
-            dstCode = (rim & 0x38) >> 3;
+            dstCode = (rim & 0x38) >>> 3;
         
         // register source
         if((rim & 0x40) == 0 || (rim & 0x04) != 0) {
-            int src = ((rim & 0x04) == 0) ? srcCode : dstCode;
+            int src = ((rim & 0x40) == 0) ? srcCode : dstCode;
             
             // register register
             source = switch(src) {
@@ -210,7 +210,7 @@ public class Disassembler {
         
         // register destination
         if((rim & 0x40) == 0 || (rim & 0x04) == 0) {
-            destination = switch((rim & 0x38) >> 3) {
+            destination = switch((rim & 0x38) >>> 3) {
                 case 0  -> wideDestination ? "D:A" : (size ? "A" : "AL");
                 case 1  -> wideDestination ? "A:B" : (size ? "B" : "BL");
                 case 2  -> wideDestination ? "B:C" : (size ? "C" : "CL");
@@ -257,9 +257,9 @@ public class Disassembler {
         
         byte bio = memory[address + 2];
         
-        int base = (bio & 0x38) >> 3,
+        int base = (bio & 0x38) >>> 3,
             index = bio & 0x07,
-            scale = bio >> 6;
+            scale = (bio >>> 6) & 0x03;
             
         boolean hasIndex = index != 7,
                 hasBase = (base != 7) || !hasIndex;
@@ -294,7 +294,10 @@ public class Disassembler {
                 default -> "INVALID";
             };
             
-            if(scale != 0) source += " * " + (1 << scale) + ")";
+            if(scale != 0) {
+                System.out.println(scale);
+                source += " * " + (1 << scale) + ")";
+            }
         }
         
         if(hasOffset) { // has offset
@@ -532,7 +535,7 @@ public class Disassembler {
                     byte bio = memory[address + 2];
                     
                     if((bio & 0x07) == 0x07) {
-                        yield (bio >> 6) + 3;
+                        yield (bio >>> 6) + 3;
                     } else {
                         yield 6;
                     }
@@ -572,7 +575,7 @@ public class Disassembler {
                             byte bio = memory[address + 2];
                             
                             if((bio & 0x07) == 0x07) {
-                                yield (bio >> 6) + 3;
+                                yield (bio >>> 6) + 3;
                             } else {
                                 yield 6;
                             }
@@ -601,7 +604,7 @@ public class Disassembler {
                             byte bio = memory[address + 2];
                             
                             if((bio & 0x07) == 0x07) {
-                                yield (bio >> 6) + 4;
+                                yield (bio >>> 6) + 4;
                             } else {
                                 yield 7;
                             }

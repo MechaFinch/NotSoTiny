@@ -156,7 +156,7 @@ public class Instruction implements Component {
             
             // destination only
             case POP_RIM, AND_RIM_F, OR_RIM_F, XOR_RIM_F, MOV_RIM_F, INC_RIM, ICC_RIM, DEC_RIM, DCC_RIM,
-                 NOT_RIM, NEG_RIM, CMP_RIM, CMP_RIM_0:
+                 NOT_RIM, NEG_RIM, CMP_RIM_0:
                 data.addAll(getRIMData(true, false, false, false, false));
                 break;
             
@@ -401,7 +401,7 @@ public class Instruction implements Component {
         };
         
         // check
-        if(hasIndex && rm.getBase() == Register.NONE) throw new IllegalArgumentException("Must have at least one register for BIO: " + rm); 
+        if(!hasIndex && rm.getBase() == Register.NONE) throw new IllegalArgumentException("Must have at least one register for BIO: " + rm); 
         
         // base
         bio |= switch(rm.getBase()) {
@@ -420,7 +420,13 @@ public class Instruction implements Component {
         
         // scale
         if(hasIndex) { // scale scales the index
-            bio |= (rm.getScale() & 0b11) << 6;
+            bio |= switch(rm.getScale()) {
+                case 1  -> 0b00_000_000;
+                case 2  -> 0b01_000_000;
+                case 4  -> 0b10_000_000;
+                case 8  -> 0b11_000_000;
+                default -> throw new IllegalArgumentException("Invalid scale: " + rm.getScale());
+            };
         } else if(includeOffset && rm.getOffset().isResolved()) { // scale scales the offset
             long offset = rm.getOffset().value();
             

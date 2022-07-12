@@ -16,6 +16,8 @@ public class MemoryManager implements MemoryController {
     
     private HashMap<Long, Long> endAddresses; // maps starting address to ending address
     
+    private static final boolean DEBUG = false;
+    
     /**
      * Create an empty MemoryManager
      */
@@ -34,6 +36,9 @@ public class MemoryManager implements MemoryController {
      * @throws IllegalArgumentException if the specified range overlaps with an existing segment
      */
     public void registerSegment(MemoryController mc, long start, long size) {
+        start &= 0xFFFF_FFFF; // stop sign extending plz
+        size &= 0xFFFF_FFFF;
+        
         // check for overlap
         if(this.segmentControllers.size() != 0) {
             long closestSegmentStart = this.startAddresses.floor(start + size - 1),
@@ -56,6 +61,7 @@ public class MemoryManager implements MemoryController {
      * @param address Start address of the segment to remove
      */
     public void removeSegment(long address) {
+        address &= 0xFFFF_FFFF;
         this.startAddresses.remove(address);
         this.endAddresses.remove(address);
         this.segmentControllers.remove(address);
@@ -70,10 +76,11 @@ public class MemoryManager implements MemoryController {
      * @throws NullPointerException if no segments have been registered
      */
     private long getSegment(long address) {
+        address &= 0xFFFF_FFFFl;
         Long start = this.startAddresses.floor(address);
         
         if(start == null || this.endAddresses.get(start) < address) {
-            throw new IndexOutOfBoundsException(String.format("Attempted to access non-registered address: %04X", address));
+            throw new IndexOutOfBoundsException(String.format("Attempted to access non-registered address: %08X", address));
         }
         
         return start; 
@@ -81,7 +88,8 @@ public class MemoryManager implements MemoryController {
 
     @Override
     public byte readByte(long address) {
-        //System.out.printf("reading 1 byte: %08X\n", address);
+        address &= 0xFFFF_FFFFl;
+        if(DEBUG) System.out.printf("reading 1 byte: %08X\n", address);
         
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
@@ -91,7 +99,8 @@ public class MemoryManager implements MemoryController {
     
     @Override
     public short read2Bytes(long address) {
-        //System.out.printf("reading 2 bytes: %08X\n", address);
+        address &= 0xFFFF_FFFFl;
+        if(DEBUG) System.out.printf("reading 2 bytes: %08X\n", address);
         
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
@@ -101,7 +110,8 @@ public class MemoryManager implements MemoryController {
     
     @Override
     public int read3Bytes(long address) {
-        //System.out.printf("reading 3 bytes: %08X\n", address);
+        address &= 0xFFFF_FFFFl;
+        if(DEBUG) System.out.printf("reading 3 bytes: %08X\n", address);
         
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
@@ -111,7 +121,8 @@ public class MemoryManager implements MemoryController {
     
     @Override
     public int read4Bytes(long address) {
-        //System.out.printf("reading 4 bytes: %08X\n", address);
+        address &= 0xFFFF_FFFFl;
+        if(DEBUG) System.out.printf("reading 4 bytes: %08X\n", address);
         
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
@@ -121,7 +132,8 @@ public class MemoryManager implements MemoryController {
 
     @Override
     public void writeByte(long address, byte value) {
-        //System.out.printf("writing 1 byte: %08X\n", address);
+        address &= 0xFFFF_FFFFl;
+        if(DEBUG) System.out.printf("writing 1 byte: %08X\n", address);
         
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
@@ -131,7 +143,8 @@ public class MemoryManager implements MemoryController {
     
     @Override
     public void write2Bytes(long address, short value) {
-        //System.out.printf("writing 2 bytes: %08X\n", address);
+        address &= 0xFFFF_FFFFl;
+        if(DEBUG) System.out.printf("writing 2 bytes: %08X\n", address);
         
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
@@ -141,7 +154,8 @@ public class MemoryManager implements MemoryController {
     
     @Override
     public void write3Bytes(long address, int value) {
-        //System.out.printf("writing 3 bytes: %08X\n", address);
+        address &= 0xFFFF_FFFFl;
+        if(DEBUG) System.out.printf("writing 3 bytes: %08X\n", address);
         
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);
@@ -151,7 +165,8 @@ public class MemoryManager implements MemoryController {
     
     @Override
     public void write4Bytes(long address, int value) {
-        //System.out.printf("writing 4 bytes: %08X\n", address);
+        address &= 0xFFFF_FFFFl;
+        if(DEBUG) System.out.printf("writing 4 bytes: %08X\n", address);
         
         long seg = getSegment(address);
         MemoryController sc = this.segmentControllers.get(seg);

@@ -23,7 +23,7 @@ import notsotiny.sim.memory.MemoryManager;
 public class Test {
     
     public static void main(String[] args) throws IOException {
-        byte[] mem = new byte[0x0800];
+        byte[] mem = new byte[0x1000];
         
         /*
         try(BufferedReader br = new BufferedReader(new FileReader(new File("wtf.txt")))) {
@@ -55,7 +55,8 @@ public class Test {
         */
         
         //String filename = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\snake\\snake.asm";
-        String filename = "calculator.asm";
+        //String filename = "calculator.asm";
+        String filename = "primes_mincraf.asm";
         
         List<RelocatableObject> objects = Assembler.assemble(new File(filename), false);
         
@@ -74,17 +75,18 @@ public class Test {
         MemoryManager mmu = new MemoryManager();
         mmu.registerSegment(new FlatMemoryController(mem), 0, mem.length);
         mmu.registerSegment(new CharacterIOMC(System.in, System.out), 0x8000, 16);
+        //mmu.registerSegment(new FlatMemoryController(new byte[16]), 0x8000, 16);
         mmu.registerSegment(halter, 0x0000_FFFE, 2);
         
         int entry = 0;
         
         NotSoTinySimulator sim = new NotSoTinySimulator(mmu, entry);
-        sim.setRegSP(0x0800);
+        sim.setRegSP(0x1000);
         
         try {
-            runFast(sim, mem, 1_000_000, halter);
-            halter.clear();
-            runStepped(sim, mem, 1024, halter);
+            runFast(sim, mem, 100_000_000, halter);
+            //halter.clear();
+            //runStepped(sim, mem, 1024, halter);
         } catch(Exception e) {
             e.printStackTrace();
         }
@@ -94,18 +96,32 @@ public class Test {
     }
     
     public static void runFast(NotSoTinySimulator sim, byte[] mem, int maxInstructions, Halter halter) throws IOException {
+        int executed = 0;
+        long startTime = System.nanoTime();
+        
         for(int i = 0; i < maxInstructions; i++) {
             sim.step();
+            executed++;
             
             if(halter.halted()) {
                 System.out.println("halted");
                 break;
             }
             
+            /*
             try {
                 Thread.sleep(1);
             } catch(Exception e) {}
+            */
         }
+        
+        long time = System.nanoTime() - startTime;
+        double e = executed, t = time;
+        
+        double khz = e / (t / 1_000_000);
+        
+        System.out.println("Executed " + executed + " instructions in " + (time / 1_000_000) + "ms");
+        System.out.printf("Average %.3f khz\n", khz);
     }
     
     public static void runStepped(NotSoTinySimulator sim, byte[] mem, int maxInstructions, Halter halter) throws IOException {
@@ -129,7 +145,7 @@ public class Test {
     }
     
     public static void printState(NotSoTinySimulator sim, byte[] mem, Disassembler dis) {
-        for(int j = 0x07F0; j < 0x0800; j += 2) {
+        for(int j = 0x0FE0; j < 0x1000; j += 2) {
             System.out.println(String.format("%08X: %02X%02X", j, mem[j + 1], mem[j]));
         }
         

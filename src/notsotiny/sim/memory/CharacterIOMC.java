@@ -45,7 +45,7 @@ public class CharacterIOMC implements MemoryController {
                 String s = "";
                 int c = '_';
                 
-                while(!Character.isWhitespace(c) && c != -1) {
+                while(c != 10 && c != -1) {
                     c = this.reader.read();
                     s += (char) c;
                 }

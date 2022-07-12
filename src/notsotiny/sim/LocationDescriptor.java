@@ -31,7 +31,8 @@ public record LocationDescriptor(LocationType type, int size, int address) {
                                            REGISTER_J = new LocationDescriptor(LocationType.REG_J, 2, 0),
                                            REGISTER_IJ = new LocationDescriptor(LocationType.REG_J, 4, 0),
                                            REGISTER_BP = new LocationDescriptor(LocationType.REG_BP, 4, 0),
-                                           REGISTER_SP = new LocationDescriptor(LocationType.REG_SP, 4, 0);
+                                           REGISTER_SP = new LocationDescriptor(LocationType.REG_SP, 4, 0),
+                                           REGISTER_F = new LocationDescriptor(LocationType.REG_F, 2, 0);
     
     public enum LocationType {
         REG_A,
@@ -42,6 +43,7 @@ public record LocationDescriptor(LocationType type, int size, int address) {
         REG_J,
         REG_BP,
         REG_SP,
-        MEMORY
+        MEMORY,
+        REG_F
     }
 }
