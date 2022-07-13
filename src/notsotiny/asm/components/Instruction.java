@@ -22,7 +22,7 @@ public class Instruction implements Component {
     
     private ResolvableLocationDescriptor destination, source;
     
-    private int cachedWidth = -1,
+    private int cachedImmediateOffset = -1,
                 immediateWidth = -1;
     
     boolean overrideImmediateWidth = false;
@@ -64,6 +64,7 @@ public class Instruction implements Component {
     
     @Override
     public List<Byte> getObjectCode() {
+        this.cachedImmediateOffset = -1;
         List<Byte> data = new LinkedList<>();
         data.add(this.op.getOp());
         
@@ -85,6 +86,7 @@ public class Instruction implements Component {
                  ADC_B_I8, ADC_C_I8, ADC_D_I8, SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SBB_A_I8, SBB_B_I8,
                  SBB_C_I8, SBB_D_I8, JMP_I8, INT_I8, JC_I8, JNC_I8, JS_I8, JNS_I8, JO_I8, JNO_I8, JZ_I8,
                  JNZ_I8, JA_I8, JBE_I8, JG_I8, JGE_I8, JL_I8, JLE_I8:
+                this.cachedImmediateOffset = 1;
                 data.addAll(getImmediateData(this.source.getImmediate(), 1));
                 break;
             
@@ -92,20 +94,24 @@ public class Instruction implements Component {
             case MOV_I_I16, MOV_J_I16, MOV_A_I16, MOV_B_I16, MOV_C_I16, MOV_D_I16, ADD_A_I16, ADD_B_I16,
                  ADD_C_I16, ADD_D_I16, ADC_A_I16, ADC_B_I16, ADC_C_I16, ADC_D_I16, SUB_A_I16, SUB_B_I16,
                  SUB_C_I16, SUB_D_I16, SBB_A_I16, SBB_B_I16, SBB_C_I16, SBB_D_I16, JMP_I16, CALL_I16:
+                this.cachedImmediateOffset = 1;
                 data.addAll(getImmediateData(this.source.getImmediate(), 2));
                 break;
             
             // 32 bit immediate only
             case MOV_SP_I32, MOV_BP_I32, PUSH_I32, JMP_I32, JMPA_I32, CALLA_I32:
+                this.cachedImmediateOffset = 1;
                 data.addAll(getImmediateData(this.source.getImmediate(), 4));
                 break;
             
             // 32 bit immediate from memory
             case MOV_A_O, MOV_B_O, MOV_C_O, MOV_D_O:
+                this.cachedImmediateOffset = 1;
                 data.addAll(getImmediateData(this.source.getMemory().getOffset(), 4));
                 break;
             
             case MOV_O_A, MOV_O_B, MOV_O_C, MOV_O_D:
+                this.cachedImmediateOffset = 1;
                 data.addAll(getImmediateData(this.destination.getMemory().getOffset(), 4));
                 break;
             
@@ -130,6 +136,7 @@ public class Instruction implements Component {
             // RIM + 8 bit immediate
             case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8:
                 data.addAll(getRIMData(true, false, false, false, false));
+                this.cachedImmediateOffset = data.size();
                 data.addAll(getImmediateData(this.source.getImmediate(), 1));
                 break;
                  
@@ -365,8 +372,11 @@ public class Instruction implements Component {
         data.add(rim);
         if(bioData != null) data.addAll(bioData);
         
+        if(this.cachedImmediateOffset != -1) this.cachedImmediateOffset++; // presumably set by BIO, factor RIM byte
+        
         // immediate
         if(includeSource && sourceType == LocationType.IMMEDIATE) {
+            this.cachedImmediateOffset = data.size();
             data.addAll(getImmediateData(this.source.getImmediate(), sourceSize));
         }
         
@@ -437,6 +447,7 @@ public class Instruction implements Component {
         
         // offset
         if(includeOffset) {
+            this.cachedImmediateOffset = 2;
             data.addAll(getImmediateData(rm.getOffset(), offsetSize));
         }
         
@@ -498,6 +509,14 @@ public class Instruction implements Component {
      * @return
      */
     private int getValueWidth(long v, boolean three, boolean four) {
+        if(this.immediateWidth != -1) {
+            if((!three && this.immediateWidth == 3) || (!four && this.immediateWidth == 4)) {
+                throw new IllegalArgumentException("invalid immediate width override: " + this.immediateWidth + " in " + this);
+            }
+            
+            return this.immediateWidth;
+        }
+        
         if(v >= -128 && v <= 127) { // 1 byte
             return 1;
         } else if(v >= -32768 && v <= 32767) { // 2 byte
@@ -518,7 +537,11 @@ public class Instruction implements Component {
      * @return The location of the immediate relative to the start of the instruction. Will be at least 1
      */
     public int getImmediateOffset() {
-        return -1; // TODO
+        if(this.cachedImmediateOffset != -1) return this.cachedImmediateOffset;
+        
+        getObjectCode();
+        
+        return this.cachedImmediateOffset;
     }
     
     @Override
@@ -528,7 +551,6 @@ public class Instruction implements Component {
     
     @Override
     public void resolve() {
-        // TODO Auto-generated method stub
     }
 
     @Override

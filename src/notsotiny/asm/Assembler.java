@@ -16,6 +16,7 @@ import java.util.MissingResourceException;
 import java.util.NavigableMap;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.logging.Logger;
 
 import asmlib.lex.Lexer;
 import asmlib.lex.symbols.ConstantSymbol;
@@ -34,6 +35,7 @@ import asmlib.lex.symbols.StringSymbol;
 import asmlib.lex.symbols.Symbol;
 import asmlib.token.Tokenizer;
 import asmlib.util.relocation.RelocatableObject;
+import asmlib.util.relocation.Relocator;
 import asmlib.util.relocation.RelocatableObject.Endianness;
 import notsotiny.asm.components.Component;
 import notsotiny.asm.components.InitializedData;
@@ -55,6 +57,8 @@ import asmlib.util.relocation.RenameableRelocatableObject;
  * @author Mechafinch
  */
 public class Assembler {
+    
+    private static Logger LOG = Logger.getLogger(Assembler.class.getName());
     
     private static Lexer lexer;
     
@@ -120,7 +124,8 @@ public class Assembler {
      * @throws IOException
      */
     public static List<RelocatableObject> assemble(File f, boolean optimizeInstructionWidth) throws IOException {
-        System.out.println("Assembling from main file: " + f);
+        LOG.info("Assembling from main file: " + f);
+        
         ArrayList<RenameableRelocatableObject> objects = new ArrayList<>();
         ArrayList<String> files = new ArrayList<>(); // dependencies
         files.add(f.getAbsolutePath());
@@ -181,7 +186,8 @@ public class Assembler {
      * @throws IOException
      */
     private static RenameableRelocatableObject assembleObject(List<Symbol> symbols, List<String> includedFiles, File file, boolean optimizeInstructionWidth) throws IOException {
-        System.out.println("Assembling file: " + file);
+        LOG.fine("Assembling file: " + file);
+        
         int line = 0; // line in file
         
         // these variables are from the verytiny implementation
@@ -238,7 +244,7 @@ public class Assembler {
                 continue;
             }
             
-            System.out.println("Processing symbol: " + s);
+            LOG.finest("Processing symbol: " + s);
             
             // parse
             try {
@@ -273,7 +279,7 @@ public class Assembler {
                                 if(!new File(fileName).isAbsolute()) fileName = workingDirectory + fileName;
                                 
                                 // add library
-                                System.out.println("Added file " + fileName + " as " + libName);
+                                LOG.finer("Added file " + fileName + " as " + libName);
                                 includedFiles.add(fileName);
                                 libraryNamesMap.put(new File(fileName), libName);
                                 break;
@@ -292,7 +298,8 @@ public class Assembler {
                             default:
                                 Component c = parseDirective(symbolQueue, d);
                                 
-                                System.out.println("Directive resulted in: " + c);
+                                LOG.finer("Directive resulted in: " + c);
+                                
                                 if(c != null) {
                                     allInstructions.add(c);
                                     if(!c.isResolved()) unresolvedInstructions.add(c);
@@ -304,13 +311,13 @@ public class Assembler {
                         // add it to the map
                     case LabelSymbol l:
                         labelIndexMap.put(l.name(), allInstructions.size());
-                        System.out.println("Added label " + l.name() + " at index " + allInstructions.size());
+                        LOG.finer("Added label " + l.name() + " at index " + allInstructions.size());
                         break;
                         
                         // implicit label
                     case NameSymbol n:
                         labelIndexMap.put(n.name(), allInstructions.size());
-                        System.out.println("Added label " + n.name() + " at index " + allInstructions.size());
+                        LOG.finer("Added label " + n.name() + " at index " + allInstructions.size());
                         break;
                     
                     case MnemonicSymbol m:
@@ -318,34 +325,33 @@ public class Assembler {
                         
                         if(inst == null) {
                             // placeholder
-                            System.out.println("PARSE INSTRUCTION RETURNED NULL");
+                            LOG.warning("PARSE INSTRUCTION RETURNED NULL");
                             encounteredError = true;
                         } else {
-                            System.out.println("Parsed instruction: " + inst);
+                            LOG.finer("Parsed instruction: " + inst);
                             allInstructions.add(inst);
                             if(!inst.isResolved()) unresolvedInstructions.add(inst);
                         }
                         break;
                         
                     default: // do nothing
-                        System.out.println("Unknown construct start: " + s + " on line " + line);
+                        LOG.warning("Unknown construct start: " + s + " on line " + line);
                         encounteredError = true;
                 }
             } catch(IndexOutOfBoundsException e) { // these let us avoid checking that needed symbols exist
                 throw new IllegalArgumentException("Missing symbol after " + s + " on line " + line);
             } catch(IllegalArgumentException e) { // add line info to parser errors
-                System.out.println("ILLEGAL ARGUMENT EXCEPTION: " + e.getMessage() + " on line " + line);
+                LOG.warning("ILLEGAL ARGUMENT EXCEPTION: " + e.getMessage() + " on line " + line);
                 encounteredError = true;
             } catch(ClassCastException e) {
                 throw new IllegalArgumentException("Invalid symbol after " + s + " on line " + line);
             }
         }
         
-        System.out.println("\n-- MAIN PARSE RESULTS --");
-        System.out.println(allInstructions);
-        System.out.println(unresolvedInstructions);
-        System.out.println(labelIndexMap);
-        System.out.println();
+        LOG.fine("-- MAIN PARSE RESULTS --");
+        LOG.fine(allInstructions.toString());
+        LOG.fine(unresolvedInstructions.toString());
+        LOG.fine(labelIndexMap.toString());
         
         if(encounteredError) {
             throw new IllegalStateException("Encountered error(s)");
@@ -433,9 +439,8 @@ public class Assembler {
             labelAddressMap.put(lbl, instructionAddressMap.get(i));
         }
         
-        System.out.println("\n-- CONSTANT RESOLUTION FIRST PASS RESULTS --");
-        System.out.println(labelAddressMap);
-        System.out.println();
+        LOG.fine("-- CONSTANT RESOLUTION FIRST PASS RESULTS --");
+        LOG.fine(labelAddressMap.toString());
         
         // attempt to minimize parameter sizes (if enabled)
         if(optimizeInstructionWidth) {
@@ -449,7 +454,8 @@ public class Assembler {
             int len = c.getSize();
             
             if(!c.isResolved()) {
-                System.out.print("Resolving: " + c);
+                String before = c.toString();
+                boolean relocated = false;
                 
                 switch(c) {
                     case Instruction inst:
@@ -465,7 +471,7 @@ public class Assembler {
                                     boolean relative = false;
                                     if(type == Operation.JMP || type == Operation.JCC || type == Operation.CALL) relative = true;
                                     
-                                    resolveValue(source.getImmediate(), labelAddressMap, relative, addr + c.getSize());
+                                    relocated |= resolveValue(source.getImmediate(), labelAddressMap, libNames, incomingReferences, libraryName, addr + (relative ? c.getSize() : inst.getImmediateOffset()), relative, false);
                                     
                                     if(relative && !source.isResolved()) throw new IllegalArgumentException("Could not resolve relative value: " + source);
                                     
@@ -474,7 +480,7 @@ public class Assembler {
                                     break;
                                     
                                 case MEMORY:
-                                    resolveValue(source.getMemory().getOffset(), labelAddressMap, false, 0);
+                                    relocated |= resolveValue(source.getMemory().getOffset(), labelAddressMap, libNames, incomingReferences, libraryName, addr + inst.getImmediateOffset(), false, false);
                                     break;
                                     
                                 default:
@@ -491,7 +497,7 @@ public class Assembler {
                                     break; */
                                     
                                 case MEMORY:
-                                    resolveValue(dest.getMemory().getOffset(), labelAddressMap, false, 0);
+                                    relocated |= resolveValue(dest.getMemory().getOffset(), labelAddressMap, libNames, incomingReferences, libraryName, addr + inst.getImmediateOffset(), false, false);
                                     break;
                                     
                                 default:
@@ -501,17 +507,19 @@ public class Assembler {
                         
                     case InitializedData init:
                         for(ResolvableValue rv : init.getUnresolvedData()) {
-                            resolveValue(rv, labelAddressMap, false, 0);
+                            relocated = resolveValue(rv, labelAddressMap, libNames, incomingReferences, libraryName, addr, false, false);
+                            
+                            if(init.getWordSize() != 4) relocated = false;
                         }
                         break;
                     
                     default:
                 }
                 
-                System.out.println(" resolved to " + c);
+                LOG.finer(before + " resolved to " + c);
                 
-                if(!c.isResolved()) {
-                    throw new IllegalStateException("Unable to resolve component: " + c); // TODO references aaaaaaaaaa
+                if(!c.isResolved() && !relocated) {
+                    throw new IllegalStateException("Unable to resolve component: " + c);
                 }
             }
             
@@ -522,18 +530,18 @@ public class Assembler {
             addr += s;
         }
         
-        System.out.println("\n-- CONSTANT RESOLUTION FINAL PASS RESULTS --");
-        System.out.println(allInstructions);
-        System.out.println();
+        LOG.fine("-- CONSTANT RESOLUTION FINAL PASS RESULTS --");
+        LOG.fine(allInstructions.toString());
         
         // collect object code
         for(int i = 0; i < allInstructions.size(); i++) {
             Component c = allInstructions.get(i);
             List<Byte> objCode = c.getObjectCode();
             
-            System.out.printf("Encoded %-48s %04X: ", c, objectCode.size());
-            objCode.forEach(b -> System.out.printf("%02X ", b));
-            System.out.println();
+            StringBuilder sb = new StringBuilder(String.format("Encoded %-48s %04X: ", c, objectCode.size()));
+            objCode.forEach(b -> sb.append(String.format("%02X ", b)));
+            
+            LOG.finest(sb.toString());
             
             objectCode.addAll(objCode);
         }
@@ -544,6 +552,22 @@ public class Assembler {
         for(int i = 0; i < objectCodeArray.length; i++) {
             objectCodeArray[i] = objectCode.get(i);
         }
+        
+        // leftover relocation stuff
+        for(String lbl : labelAddressMap.keySet()) {
+            int address = labelAddressMap.get(lbl);
+            
+            outgoingReferences.put(lbl, address);
+            outgoingReferenceWidths.put(lbl, 4);
+        }
+        
+        for(String ref : incomingReferences.keySet()) {
+            incomingReferenceWidths.put(ref, 4);
+        }
+        
+        LOG.fine("-- FINAL RELOCATION INFO --");
+        LOG.fine("OUTGOING REFERENCES: " + outgoingReferences);
+        LOG.fine("INCOMING REFERENCES: " + incomingReferences);
         
         return new RenameableRelocatableObject(Endianness.LITTLE, libraryName, 2, incomingReferences, outgoingReferences, incomingReferenceWidths, outgoingReferenceWidths, objectCodeArray, false, libraryNamesMap);
     }
@@ -1291,7 +1315,7 @@ public class Assembler {
      */
     private static ResolvableLocationDescriptor parseOperand(LinkedList<Symbol> symbolQueue, boolean canBeMemory) {
         Symbol nextSymbol = symbolQueue.poll();
-        System.out.println("Parsing operand with symbol: " + nextSymbol);
+        LOG.finest("Parsing operand with symbol: " + nextSymbol);
         
         // what we workin with
         switch(nextSymbol) {
@@ -1363,7 +1387,7 @@ public class Assembler {
      * @return
      */
     private static ResolvableLocationDescriptor parseMemory(MemorySymbol ms) {
-        System.out.println("Parsing memory: " + ms);
+        LOG.finest("Parsing memory: " + ms);
         
         /*
          * Memory
@@ -1558,7 +1582,7 @@ public class Assembler {
      * @return
      */
     private static ResolvableValue parseMemoryExpression(List<Symbol> expr) {
-        System.out.println("Parsing memory expression: " + expr);
+        LOG.finest("Parsing memory expression: " + expr);
         
         return ConstantExpressionParser.parse(new LinkedList<Symbol>(expr));
     }
@@ -1570,7 +1594,7 @@ public class Assembler {
      * @return
      */
     private static ResolvableLocationDescriptor parseOperandExpression(ExpressionSymbol es) {
-        System.out.println("Parsing operand expression: " + es);
+        LOG.finest("Parsing operand expression: " + es);
         // TODO i think there are non-constant cases for this?
         return new ResolvableLocationDescriptor(LocationType.IMMEDIATE, -1, ConstantExpressionParser.parse(new LinkedList<Symbol>(es.symbols())));
     }
@@ -1859,23 +1883,50 @@ public class Assembler {
      * 
      * @param rv
      * @param labelAddressMap
+     * @param libraries
+     * @param incomingReferences
+     * @param relative
+     * @param address
+     * @return true if the value resulted in a relocation entry
      */
-    private static void resolveValue(ResolvableValue rv, Map<String, Integer> labelAddressMap, boolean relative, int address) {
+    private static boolean resolveValue(ResolvableValue rv, Map<String, Integer> labelAddressMap, Set<String> libraries, HashMap<String, List<Integer>> incomingReferences, String fileName, int address, boolean relative, boolean inExpression) {
+        boolean relocated = false;
+        
         try {
             switch(rv) {
                 case ResolvableExpression re:
                     ResolvableValue left = re.getLeft(),
                                     right = re.getRight();
                     
-                    if(!left.isResolved()) resolveValue(left, labelAddressMap, relative, address);
-                    if(!right.isResolved()) resolveValue(right, labelAddressMap, relative, address);
+                    if(!left.isResolved()) resolveValue(left, labelAddressMap, libraries, incomingReferences, fileName, address, false, true);
+                    if(!right.isResolved()) resolveValue(right, labelAddressMap, libraries, incomingReferences, fileName, address, false, true);
                     break;
                     
                 case ResolvableConstant rc:
-                    if(relative) {
-                        rc.setValue(labelAddressMap.get(rc.getName()) - address);
+                    String name = rc.getName();
+                    
+                    if(!inExpression && !relative) {
+                        if(!isLibraryReference(name, libraries)) {
+                            name = fileName + "." + name;
+                        }
+                        
+                        // if we're not in an expression and it's not relative, it'll change when relocated
+                        // also could be an external reference
+                        if(incomingReferences.containsKey(name)) {
+                            incomingReferences.get(name).add(address);
+                        } else {
+                            List<Integer> refs = new LinkedList<>();
+                            refs.add(address);
+                            incomingReferences.put(name, refs);
+                        }
+                        
+                        relocated = true;
+                    } else if(relative) {
+                        // relatives are relative
+                        rc.setValue(labelAddressMap.get(name) - address);
                     } else {
-                        rc.setValue(labelAddressMap.get(rc.getName()));
+                        // use the value if we do math on it
+                        rc.setValue(labelAddressMap.get(name));
                     }
                     break;
                 
@@ -1884,6 +1935,8 @@ public class Assembler {
         } catch(NullPointerException e) {
             // the label was not found, ignore
         }
+        
+        return relocated;
     }
     
     /**

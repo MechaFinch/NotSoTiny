@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.List;
 
+import asmlib.util.relocation.ExecLoader;
 import asmlib.util.relocation.RelocatableObject;
 import asmlib.util.relocation.Relocator;
 import notsotiny.asm.Assembler;
@@ -54,45 +55,35 @@ public class Test {
         }
         */
         
-        //String filename = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\snake\\snake.asm";
+        String filename = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\snake\\snake.asm";
         //String filename = "calculator.asm";
-        String filename = "primes_mincraf.asm";
+        //String filename = "primes_mincraf.asm";
         
         List<RelocatableObject> objects = Assembler.assemble(new File(filename), false);
         
         Relocator rel = new Relocator();
         objects.forEach(rel::add);
         
-        
-        byte[] prog = rel.relocate(1024);
-        
-        for(int i = 0; i < prog.length; i++) {
-            mem[i + 1024] = prog[i];
-        }
-        
-        // entry vector
-        mem[0] = 0;
-        mem[1] = 4;
-        mem[3] = 0;
-        mem[4] = 0;
+        int entry = ExecLoader.loadRelocator(rel, "snake.main", mem, 1024);
         
         Halter halter = new Halter();
         
         MemoryManager mmu = new MemoryManager();
         mmu.registerSegment(new FlatMemoryController(mem), 0, mem.length);
-        //mmu.registerSegment(new CharacterIOMC(System.in, System.out), 0x8000, 16);
-        mmu.registerSegment(new FlatMemoryController(new byte[16]), 0x8000, 16);
+        mmu.registerSegment(new CharacterIOMC(System.in, System.out), 0x8000, 16);
+        //mmu.registerSegment(new FlatMemoryController(new byte[16]), 0x8000, 16);
         mmu.registerSegment(halter, 0x0000_FFFE, 2);
         
-        int entry = 1024;
+        // entry vector
+        mmu.write4Bytes(0, entry);
         
         NotSoTinySimulator sim = new NotSoTinySimulator(mmu);
         sim.setRegSP(0x1000);
         
         try {
-            runFast(sim, mem, 100_000_000, halter);
-            halter.clear();
-            //runStepped(sim, mem, 1024, halter);
+            //runFast(sim, mem, 100_000_000, halter);
+            //halter.clear();
+            runStepped(sim, mem, 1024, halter);
         } catch(Exception e) {
             e.printStackTrace();
         }
