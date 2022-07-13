@@ -255,7 +255,7 @@ public enum Opcode {
     
     RET         (0xD6, Operation.RET),
     IRET        (0xD7, Operation.IRET),
-    INT_I16     (0xD8, Operation.INT),
+    INT_I8      (0xD8, Operation.INT),
     INT_RIM     (0xD9, Operation.INT),
     
     LEA_RIM     (0xDA, Operation.LEA),

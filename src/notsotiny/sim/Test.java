@@ -64,28 +64,34 @@ public class Test {
         objects.forEach(rel::add);
         
         
-        byte[] prog = rel.relocate(0);
+        byte[] prog = rel.relocate(1024);
         
         for(int i = 0; i < prog.length; i++) {
-            mem[i] = prog[i];
+            mem[i + 1024] = prog[i];
         }
+        
+        // entry vector
+        mem[0] = 0;
+        mem[1] = 4;
+        mem[3] = 0;
+        mem[4] = 0;
         
         Halter halter = new Halter();
         
         MemoryManager mmu = new MemoryManager();
         mmu.registerSegment(new FlatMemoryController(mem), 0, mem.length);
-        mmu.registerSegment(new CharacterIOMC(System.in, System.out), 0x8000, 16);
-        //mmu.registerSegment(new FlatMemoryController(new byte[16]), 0x8000, 16);
+        //mmu.registerSegment(new CharacterIOMC(System.in, System.out), 0x8000, 16);
+        mmu.registerSegment(new FlatMemoryController(new byte[16]), 0x8000, 16);
         mmu.registerSegment(halter, 0x0000_FFFE, 2);
         
-        int entry = 0;
+        int entry = 1024;
         
-        NotSoTinySimulator sim = new NotSoTinySimulator(mmu, entry);
+        NotSoTinySimulator sim = new NotSoTinySimulator(mmu);
         sim.setRegSP(0x1000);
         
         try {
             runFast(sim, mem, 100_000_000, halter);
-            //halter.clear();
+            halter.clear();
             //runStepped(sim, mem, 1024, halter);
         } catch(Exception e) {
             e.printStackTrace();
@@ -95,7 +101,7 @@ public class Test {
         printState(sim, mem, new Disassembler());
     }
     
-    public static void runFast(NotSoTinySimulator sim, byte[] mem, int maxInstructions, Halter halter) throws IOException {
+    public static double runFast(NotSoTinySimulator sim, byte[] mem, int maxInstructions, Halter halter) throws IOException {
         int executed = 0;
         long startTime = System.nanoTime();
         
@@ -122,6 +128,7 @@ public class Test {
         
         System.out.println("Executed " + executed + " instructions in " + (time / 1_000_000) + "ms");
         System.out.printf("Average %.3f khz\n", khz);
+        return khz;
     }
     
     public static void runStepped(NotSoTinySimulator sim, byte[] mem, int maxInstructions, Halter halter) throws IOException {

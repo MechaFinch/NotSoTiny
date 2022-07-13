@@ -29,8 +29,12 @@ public class NotSoTinySimulator {
                 reg_sp,
                 reg_bp;
     
+    private boolean externalInterrupt;
+    
+    private byte externalInterruptVector;
+    
     /**
-     * Create the simulator
+     * Start the simulator at the given address
      * 
      * @param memory
      * @param entry
@@ -48,6 +52,17 @@ public class NotSoTinySimulator {
         this.reg_sp = 0;
         this.reg_bp = 0;
         this.reg_f = 0;
+        this.externalInterrupt = false;
+        this.externalInterruptVector = 0;
+    }
+    
+    /**
+     * Start the simulator
+     * 
+     * @param memory
+     */
+    public NotSoTinySimulator(MemoryController memory) {
+        this(memory, memory.read4Bytes(0));
     }
     
     /**
@@ -57,6 +72,12 @@ public class NotSoTinySimulator {
      * opcodes off to operation-specific methods. All for organization.
      */
     public void step() {
+        
+        if(this.externalInterrupt) {
+            this.externalInterrupt = false;
+            runInterrupt(this.externalInterruptVector);
+            return;
+        }
         
         // TODO
         // memory manager may be slow. consider an instruction cache
@@ -399,7 +420,21 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runPMUL(InstructionDescriptor desc) {
-        // TODO
+        LocationDescriptor thinDst = getNormalRIMDestinationDescriptor(desc);
+        
+        int a = getPackedRIMSource(thinDst),
+            b = getPackedRIMSource(getNormalRIMSourceDescriptor(desc));
+        
+        boolean high = desc.op == Opcode.PMULH_RIMP || desc.op == Opcode.PMULSH_RIMP,
+                signed = desc.op == Opcode.PMULSH_RIMP;
+        
+        int c = multiplyPacked(a, b, thinDst.size() != 1, high, signed);
+        
+        if(high) {
+            putWidePackedRIMDestination(thinDst, c);
+        } else {
+            putPackedRIMDestination(thinDst, c);
+        }
     }
     
     /**
@@ -438,7 +473,24 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runPDIV(InstructionDescriptor desc) {
-        // TODO
+        LocationDescriptor thinDst = getNormalRIMDestinationDescriptor(desc),
+                           src = getNormalRIMSourceDescriptor(desc);
+        
+        boolean mod = desc.op == Opcode.PDIVM_RIMP || desc.op == Opcode.PDIVMS_RIMP,
+                signed = desc.op == Opcode.PDIVS_RIMP || desc.op == Opcode.PDIVMS_RIMP;
+        
+        int a = getPackedRIMSource(thinDst),
+            b = mod ? getWidePackedRIMSource(src) : getPackedRIMSource(src);
+        
+        int[] res = dividePacked(a, b, thinDst.size() != 1, mod, signed);
+        
+        int c = mod ? (((res[1] & 0xFFFF) << 16) | (res[0] & 0xFFFF)) : res[0];
+        
+        if(mod) {
+            putWideRIMDestination(thinDst, c);
+        } else {
+            putPackedRIMDestination(thinDst, c);
+        }
     }
     
     /**
@@ -510,7 +562,21 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runPINC(InstructionDescriptor desc) {
-       // TODO 
+        LocationDescriptor dst = getNormalRIMDestinationDescriptor(desc);
+        
+        boolean bytes = dst.size() != 1,
+                subtract = desc.op == Opcode.PDEC_RIMP || desc.op == Opcode.PDCC_RIMP;
+        
+        int b = 0;
+        if(desc.op == Opcode.PINC_RIMP || desc.op == Opcode.PDEC_RIMP) { // unconditional
+            b = bytes ? 0x0101 : 0x1111;
+        } else { // conditional
+            b = this.reg_f & (bytes ? 0x0101 : 0x1111);
+        }
+        
+        int c = addPacked(getPackedRIMSource(dst), b, bytes, subtract, false);
+        
+        putPackedRIMDestination(dst, c);
     }
     
     /**
@@ -575,7 +641,18 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runPADD(InstructionDescriptor desc) {
-        // TODO
+        LocationDescriptor dst = getNormalRIMDestinationDescriptor(desc);
+        
+        boolean bytes = dst.size() != 1,
+                subtract = desc.op == Opcode.PSUB_RIMP || desc.op == Opcode.PSBB_RIMP,
+                includeCarry = desc.op == Opcode.PADC_RIMP || desc.op == Opcode.PSBB_RIMP;
+        
+        int a = getPackedRIMSource(dst),
+            b = getPackedRIMSource(getNormalRIMSourceDescriptor(desc));
+        
+        int c = addPacked(a, b, bytes, subtract, includeCarry);
+        
+        putPackedRIMDestination(dst, c);
     }
     
     /**
@@ -723,13 +800,15 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runRET(InstructionDescriptor desc) {
-        if(desc.op == Opcode.RET) { // normal ret
-            this.reg_ip = this.memory.read4Bytes(this.reg_sp);
-            this.reg_sp += 4;
-        } else { // interrupt ret
-            // TODO
-            throw new IllegalStateException("IRET not implemented");
+        if(desc.op == Opcode.IRET) {
+            // IRET also pops flags
+            this.reg_f = this.memory.read2Bytes(this.reg_sp);
+            this.reg_sp += 2;
         }
+        
+        // normal RET
+        this.reg_ip = this.memory.read4Bytes(this.reg_sp);
+        this.reg_sp += 4;
     }
     
     /**
@@ -738,7 +817,39 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runINT(InstructionDescriptor desc) {
-        // TODO
+        byte b;
+        
+        // vector
+        if(desc.op == Opcode.INT_I8) {
+            b = this.memory.readByte(this.reg_ip);
+            desc.hasImmediateValue = true;
+            desc.immediateWidth = 1;
+        } else {
+            b = (byte) getNormalRIMSource(desc);
+        }
+        
+        // for proper return location
+        updateIP(desc);
+        
+        runInterrupt(b);
+    }
+    
+    /**
+     * Executes an interrupt, whether internal or external
+     * 
+     * @param num
+     */
+    private void runInterrupt(byte num) {
+        // push IP
+        this.reg_sp -= 4;
+        this.memory.write4Bytes(this.reg_sp, this.reg_ip);
+        
+        // push flags
+        this.reg_sp -= 2;
+        this.memory.write2Bytes(this.reg_sp, this.reg_f);
+        
+        // get vector & jump
+        this.reg_ip = this.memory.read4Bytes(((long) num) << 2);
     }
     
     /**
@@ -1461,12 +1572,77 @@ public class NotSoTinySimulator {
      * @param a
      * @param b
      * @param bytes
-     * @param cin
+     * @param subtract
+     * @param includeCarry
      * @return a + b
      */
-    private short addPacked(int a, int b, boolean bytes, boolean cin) {
-        //TODO
-        return -1;
+    private short addPacked(int a, int b, boolean bytes, boolean subtract, boolean includeCarry) {
+        
+        // split things up
+        long al, bl, carryIn;
+        
+        if(subtract) {
+            b = ~b;
+        }
+        
+        // calc
+        if(bytes) {
+            al = ((a << 8) & 0xFF_0000) | (a & 0xFF);
+            bl = ((b << 8) & 0xFF_0000) | (b & 0xFF);
+            carryIn = includeCarry ? (((this.reg_f << 8) & 0x01_0000) | (this.reg_f & 0x01)) : 0;
+            if(subtract) carryIn ^= 0x01_0001;
+        } else {
+            al = ((a << 12) & 0x0F00_0000) | ((a << 8) & 0x000F_0000) | ((a << 4) & 0x0000_0F00) | (a & 0x0000_000F);
+            bl = ((b << 12) & 0x0F00_0000) | ((b << 8) & 0x000F_0000) | ((b << 4) & 0x0000_0F00) | (b & 0x0000_000F);
+            carryIn = includeCarry ? (((this.reg_f << 12) & 0x0100_0000) | ((this.reg_f << 8) & 0x0001_0000) | ((this.reg_f << 4) & 0x0000_0100) | (this.reg_f & 0x0000_0001)) : 0;
+            if(subtract) carryIn ^= 0x0101_0101;
+        }
+        
+        long c = al + bl + carryIn;
+        int f = 0;
+        
+        // flags
+        if(bytes) {
+            // zero
+            f |= ((c & 0xFF_0000) == 0 ? 0x0800 : 0) | ((c & 0xFF) == 0 ? 0x08 : 0);
+            
+            // overflow
+            f |= (((a & 0x8000) == (b & 0x8000) && ((a & 0x8000) != ((c & 0x80_0000) >> 8))) ? 0x0400 : 0) | (((a & 0x80) == (b & 0x80) && ((a & 0x80) != (c & 0x80))) ? 0x04 : 0); 
+            
+            // sign
+            f |= ((c & 0x80_0000) != 0 ? 0x0200 : 0) | ((c & 0x80) != 0 ? 0x02 : 0);
+            
+            // carry
+            f |= ((c & 0x0100_0000) != 0 ? 0x0100 : 0) | ((c & 0x0100) != 0 ? 0x01 : 0);
+        } else {
+            // zero
+            f |= ((c & 0x0F00_0000) == 0 ? 0x8000 : 0) | ((c & 0x0F_0000) == 0 ? 0x0800 : 0) | ((c & 0x0F00) == 0 ? 0x80 : 0) | ((c & 0x0F) == 0 ? 0x08 : 0);
+            
+            // overflow
+            f |= (((a & 0x8000) == (b & 0x8000) && ((a & 0x8000) != ((c & 0x0800_0000) >> 12))) ? 0x4000 : 0) |
+                 (((a & 0x0800) == (b & 0x0800) && ((a & 0x0800) != ((c & 0x0008_0000) >> 8))) ? 0x0400 : 0) |
+                 (((a & 0x0080) == (b & 0x0080) && ((a & 0x0080) != ((c & 0x0000_0800) >> 4))) ? 0x0040 : 0) |
+                 (((a & 0x0008) == (b & 0x0008) && ((a & 0x0008) != (c & 0x0000_0008))) ? 0x0004 : 0);
+            
+            // sign
+            f |= ((c & 0x0800_0000) != 0 ? 0x2000 : 0) | ((c & 0x08_0000) != 0 ? 0x0200 : 0) | ((c & 0x0800) != 0 ? 0x20 : 0) | ((c & 0x08) != 0 ? 0x02 : 0);
+            
+            // carry
+            f |= ((c & 0x1000_0000) != 0 ? 0x1000 : 0) | ((c & 0x10_0000) != 0 ? 0x0100 : 0) | ((c & 0x1000) != 0 ? 0x10 : 0) | ((c & 0x10) != 0 ? 0x01 : 0);
+        }
+        
+        this.reg_f = (short) f;
+        
+        short v = 0;
+        
+        // put things back together
+        if(bytes) {
+            v = (short) (((c >> 8) & 0xFF00) | (c & 0xFF));
+        } else {
+            v = (short) (((c >> 12) & 0xF000) | ((c >> 8) & 0x0F00) | ((c >> 4) & 0x00F0) | (c & 0x000F));
+        }
+        
+        return v;
     }
     
     /**
@@ -1483,11 +1659,48 @@ public class NotSoTinySimulator {
         // calculate
         long res;
         
+        long al = 0,
+             bl = 0;
+        
         if(signed) {
-            res = ((long) a) * ((long) b);
+            switch(size) {
+                case 0:
+                    // shift sign to correct bit, extend, shift back w/ sign-extension
+                    al = (long)(((byte)(a << 4)) >> 4);
+                    bl = (long)(((byte)(b << 4)) >> 4);
+                    break;
+                    
+                case 1:
+                    al = (long)((byte) a);
+                    bl = (long)((byte) b);
+                    break;
+                
+                case 2:
+                    al = (long)((short) a);
+                    bl = (long)((short) b);
+                    break;
+                
+                case 4:
+                    al = (long) a;
+                    bl = (long) b;
+                    break;
+                
+                default:
+            }
         } else {
-            res = (((long) a) & 0xFFFF_FFFFl) * (((long) b) & 0xFFFF_FFFFl);
+            long sizeMask = switch(size) {
+                case 0  -> 0x0Fl;
+                case 1  -> 0xFFl;
+                case 2  -> 0xFFFFl;
+                case 4  -> 0xFFFF_FFFFl;
+                default -> 0l;
+            };
+            
+            al = ((long) a) & sizeMask;
+            bl = ((long) b) & sizeMask;
         }
+        
+        res = al * bl;
         
         // flags time
         boolean zero = false,
@@ -1495,7 +1708,22 @@ public class NotSoTinySimulator {
                 sign = false,
                 carry = false;
         
-        if(size == 1) { // 8 bit operands
+        if(size == 0) { // 4 bit operands (for packed)
+            overflow = signed ? !((res & 0xF8l) == 0l || (res & 0xF8l) == 0xF8l) : ((res & 0xF0l) != 0l);
+            carry = overflow;
+            
+            if(high) { // 8 bit result
+                zero = (res & 0xFFl) == 0l;
+                sign = (res & 0x80l) != 0l;
+                
+                res &= 0xFFl;
+            } else { // 4 bit result
+                zero = (res & 0x0Fl) == 0l;
+                sign = (res & 0x08l) != 0l;
+                
+                res &= 0x0Fl;
+            }
+        } else if(size == 1) { // 8 bit operands
             // if the top half matches the lower's sign bit, overflow/carry are cleared
             overflow = signed ? !((res & 0xFF80l) == 0l || (res & 0xFF80l) == 0xFF80l) : ((res & 0xFF00l) != 0l);
             carry = overflow;
@@ -1546,14 +1774,38 @@ public class NotSoTinySimulator {
      * 
      * @param a
      * @param b
+     * @param bytes
      * @param high
      * @param signed
-     * @param bytes
      * @return a * b {lower, upper}
      */
-    private int[] multiplyPacked(int a, int b, boolean high, boolean signed, boolean bytes) {
-        //TODO
-        return new int[] {-1, -1};
+    private int multiplyPacked(int a, int b, boolean bytes, boolean high, boolean signed) {
+        // multiplication isn't local like additon, so we have to do things separately
+        if(bytes) {
+            int r1 = multiply(a >> 8, b >> 8, 1, high, signed);
+            short r1f = this.reg_f;
+            int r2 = multiply(a, b, 1, high, signed);
+            
+            this.reg_f |= (r1f << 8);
+            
+            return ((r1 << 16) & 0xFF00_0000) | ((r2 << 8) & 0xFF_0000) | ((r1 << 8) & 0xFF00) | (r2 & 0xFF); 
+        } else {
+            int r1 = multiply(a >> 12, b >> 12, 0, high, signed);
+            short r1f = this.reg_f;
+            
+            int r2 = multiply(a >> 8, b >> 8, 0, high, signed);
+            short r2f = this.reg_f;
+            
+            int r3 = multiply(a >> 4, b >> 4, 0, high, signed);
+            short r3f = this.reg_f;
+            
+            int r4 = multiply(a, b, 0, high, signed);
+            
+            this.reg_f |= (r1f << 12) | (r2f << 8) | (r3f << 4);
+            
+            return ((r1 << 24) & 0xF000_0000) | ((r2 << 20) & 0x0F00_0000) | ((r3 << 16) & 0xF0_0000) | ((r4 << 12) & 0x0F_0000) |
+                   ((r1 << 12) & 0xF000) | ((r2 << 8) & 0x0F00) | ((r3 << 4) & 0xF0) | (r4 & 0x0F);
+        }
     }
     
     /**
@@ -1571,13 +1823,49 @@ public class NotSoTinySimulator {
              rem;
         
         // calculate
+        long al = 0,
+             bl = 0;
+        
+        // A and B's sizes differ for DIVM
         if(signed) {
-            quot = ((long) a) / ((long) b);
-            rem = ((long) a) % ((long) b);
+            al = switch(size + (mod ? 1 : 0)) {
+                case 0      -> (long)(((byte)(a << 4)) >> 4);
+                case 1      -> (long)((byte) a);
+                case 2      -> (long)((short) a);
+                case 3, 4   -> (long) a;
+                default     -> 0;
+            };
+            
+            bl = switch(size) {
+                case 0      -> (long)(((byte)(b << 4)) >> 4); //shift sign to correct bit, extend, shift back w/ sign-extension
+                case 1      -> (long)((byte) b);
+                case 2      -> (long)((short) b);
+                case 3, 4   -> (long) b;
+                default     -> 0;
+            };
         } else {
-            quot = (((long) a) & 0xFFFF_FFFFl) / (((long) b) & 0xFFFF_FFFFl);
-            rem = (((long) a) & 0xFFFF_FFFFl) % (((long) b) & 0xFFFF_FFFFl);
+            long sizeMaskA = switch(size + (mod ? 1 : 0)) {
+                case 0      -> 0x0Fl;
+                case 1      -> 0xFFl;
+                case 2      -> 0xFFFFl;
+                case 3, 4   -> 0xFFFF_FFFFl;
+                default     -> 0l;
+            };
+            
+            long sizeMaskB = switch(size) {
+                case 0      -> 0x0Fl;
+                case 1      -> 0xFFl;
+                case 2      -> 0xFFFFl;
+                case 3, 4   -> 0xFFFF_FFFFl;
+                default     -> 0l;
+            };
+            
+            al = ((long) a) & sizeMaskA;
+            bl = ((long) b) & sizeMaskB;
         }
+        
+        quot = al / bl;
+        rem = al % bl;
         
         boolean zero = false,
                 overflow = false,
@@ -1585,16 +1873,30 @@ public class NotSoTinySimulator {
                 carry = false;
         
         // flags
-        if(size == 1) {
+        if(size == 0) {
+            zero = (quot & 0x0F) == 0 && (mod ? (rem & 0x0F) == 0 : true);
+            sign = (quot & 0x08) != 0;
+            overflow = quot > 7 || quot < -8;
+            carry = quot > 15;
+            
+            quot &= 0x0Fl;
+            rem &= 0x0Fl;
+        } else if(size == 1) {
             zero = (quot & 0xFF) == 0 && (mod ? (rem & 0xFF) == 0 : true);
             sign = (quot & 0x80) != 0;
             overflow = quot > 127 || quot < -128;
-            carry = quot > 256;
+            carry = quot > 255;
+            
+            quot &= 0xFFl;
+            rem &= 0xFFl;
         } else if(size == 2) {
             zero = (quot & 0xFFFF) == 0 && (mod ? (rem & 0xFFFF) == 0 : true);
             sign = (quot & 0x8000) != 0;
             overflow = quot > 32767 || quot < -32768;
-            carry = quot > 65536;
+            carry = quot > 65535;
+            
+            quot &= 0xFFFFl;
+            rem &= 0xFFFFl;
         } else {
             zero = (quot & 0xFFFF_FFFF) == 0 && (mod ? (rem & 0xFFFF_FFFF) == 0 : true);
             sign = (quot & 0x8000_0000) != 0;
@@ -1618,8 +1920,69 @@ public class NotSoTinySimulator {
      * @return a / b {quotient, remainder}
      */
     private int[] dividePacked(int a, int b, boolean mod, boolean signed, boolean bytes) {
-        //TODO
-        return new int[] {-1, -1};
+        // division isn't local like additon, so we have to do things separately
+        if(bytes) {
+            // because DIVM uses the full value of a, we need to combine properly
+            // might as well do b here too
+            int a1 = (a >> 8) & 0xFF,
+                b1 = (b >> 8) & 0xFF,
+                a2 = a & 0xFF,
+                b2 = b & 0xFF;
+            
+            if(mod) {
+                a1 |= (a >> 16) & 0xFF00;
+                a2 |= (a >> 8) & 0xFF00;
+            }
+            
+            // divide in parts
+            int[] r1 = divide(a1, b1, 1, mod, signed);
+            short rf1 = this.reg_f;
+            
+            int[] r2 = divide(a2, b2, 1, mod, signed);
+            
+            this.reg_f |= (rf1 << 8);
+            
+            return new int[] {
+                    ((r1[0] << 8) & 0xFF00) | (r2[0] & 0xFF),
+                    ((r1[1] << 8) & 0xFF00) | (r2[1] & 0xFF)
+            };
+        } else {
+            // above but more
+            int a1 = (a >> 12) & 0x0F,
+                b1 = (b >> 12) & 0x0F,
+                a2 = (a >> 8) & 0x0F,
+                b2 = (b >> 8) & 0x0F,
+                a3 = (a >> 4) & 0x0F,
+                b3 = (b >> 4) & 0x0F,
+                a4 = a & 0x0F,
+                b4 = b & 0x0F;
+            
+            if(mod) {
+                a1 |= (a >> 24) & 0xF0;
+                a2 |= (a >> 20) & 0xF0;
+                a3 |= (a >> 16) & 0xF0;
+                a4 |= (a >> 12) & 0xF0;
+            }
+            
+            // divide
+            int[] r1 = divide(a1, b1, 0, mod, signed);
+            short r1f = this.reg_f;
+            
+            int[] r2 = divide(a2, b2, 0, mod, signed);
+            short r2f = this.reg_f;
+            
+            int[] r3 = divide(a3, b3, 0, mod, signed);
+            short r3f = this.reg_f;
+            
+            int[] r4 = divide(a4, b4, 0, mod, signed);
+            
+            this.reg_f |= (r1f << 12) | (r2f << 8) | (r3f << 4);
+            
+            return new int[] {
+                    ((r1[0] << 12) & 0xF000) | ((r2[0] << 8) & 0x0F00) | ((r3[0] << 4) & 0xF0) | (r4[0] & 0x0F),
+                    ((r1[1] << 12) & 0xF000) | ((r2[1] << 8) & 0x0F00) | ((r3[1] << 4) & 0xF0) | (r4[1] & 0x0F)
+            };
+        }
     }
     
     /**
@@ -1860,6 +2223,26 @@ public class NotSoTinySimulator {
             // size is 4 write as normal
             writeLocation(normalDesc, val);
         }
+    }
+    
+    /**
+     * Puts the result of a packed RIM in its destination
+     * 
+     * @param normalDesc
+     * @param val
+     */
+    private void putPackedRIMDestination(LocationDescriptor normalDesc, int val) {
+        writeLocation(new LocationDescriptor(normalDesc.type(), 2, normalDesc.address()), val);
+    }
+    
+    /**
+     * Puts the result of a wide packed RIM in its destination
+     * 
+     * @param normalDesc
+     * @param val
+     */
+    private void putWidePackedRIMDestination(LocationDescriptor normalDesc, int val) {
+        writeLocation(new LocationDescriptor(normalDesc.type(), 4, normalDesc.address()), val);
     }
     
     /**
@@ -2133,6 +2516,26 @@ public class NotSoTinySimulator {
         } else {
             return readLocation(normalDesc);
         }
+    }
+    
+    /**
+     * Gets the source of a packed RIM
+     * 
+     * @param desc
+     * @return
+     */
+    private int getPackedRIMSource(LocationDescriptor normalDesc) {
+        return readLocation(new LocationDescriptor(normalDesc.type(), 2, normalDesc.address()));
+    }
+    
+    /**
+     * Gets the source of a wide packed RIM
+     * 
+     * @param normalDesc
+     * @return
+     */
+    private int getWidePackedRIMSource(LocationDescriptor normalDesc) {
+        return readLocation(new LocationDescriptor(normalDesc.type(), 4, normalDesc.address()));
     }
     
     /**

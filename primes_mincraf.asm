@@ -316,15 +316,15 @@ func_primes:
 	POP I
 	
 	; chunk += 1024, end += 1024
-	MOV A, [BP - END_OFFSET]
-	ADD A, 1024
-	MOV [BP - END_OFFSET], A
-	
 	MOV A, [BP - CHUNK_OFFSET]
 	ADD A, 1024
 	MOV [BP - CHUNK_OFFSET], A
 	
-	JNZ .main_loop ; chunk > 0
+	MOV A, [BP - END_OFFSET]
+	ADD A, 1024
+	MOV [BP - END_OFFSET], A
+	
+	JNZ .main_loop ; end > 0
 	
 	; done
 	PUSH ptr msg_done

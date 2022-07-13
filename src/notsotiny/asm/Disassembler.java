@@ -439,9 +439,10 @@ public class Disassembler {
                 this.lastHasDestination = true;
                 return 2;
             
-            case JMP_I8:        case JC_I8:         case JNC_I8:        case JS_I8:         case JNS_I8:
-            case JO_I8:         case JNO_I8:        case JZ_I8:         case JNZ_I8:        case JA_I8:
-            case JBE_I8:        case JG_I8:         case JGE_I8:        case JL_I8:         case JLE_I8:
+            case JMP_I8:        case INT_I8:        case JC_I8:         case JNC_I8:        case JS_I8:
+            case JNS_I8:        case JO_I8:         case JNO_I8:        case JZ_I8:         case JNZ_I8:
+            case JA_I8:         case JBE_I8:        case JG_I8:         case JGE_I8:        case JL_I8:
+            case JLE_I8:
                 this.lastIsRIM = false;
                 this.lastIsI8 = true;
                 this.lastIsI16 = false;
@@ -463,7 +464,7 @@ public class Disassembler {
                 this.lastHasDestination = true;
                 return 3;
             
-            case JMP_I16:       case CALL_I16:      case INT_I16:
+            case JMP_I16:       case CALL_I16:
                 this.lastIsRIM = false;
                 this.lastIsI8 = false;
                 this.lastIsI16 = true;
