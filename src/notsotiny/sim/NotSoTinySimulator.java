@@ -22,7 +22,8 @@ public class NotSoTinySimulator {
                   reg_d,
                   reg_i,
                   reg_j,
-                  reg_f;
+                  reg_f,
+                  reg_pf;
     
     // 32 bit
     private int reg_ip,
@@ -52,6 +53,7 @@ public class NotSoTinySimulator {
         this.reg_sp = 0;
         this.reg_bp = 0;
         this.reg_f = 0;
+        this.reg_pf = 1;
         this.externalInterrupt = false;
         this.externalInterruptVector = 0;
     }
@@ -1188,8 +1190,19 @@ public class NotSoTinySimulator {
                 src = getThinRIMSource(desc);
                 break;
             
+            // flags
+            case MOV_RIM_F:
+                src = this.reg_f;
+                break;
+            
+            case MOV_RIM_PF:
+                src = this.reg_pf;
+                break;
+            
             // rim
             case MOV_RIM:
+            case MOV_F_RIM:
+            case MOV_PF_RIM:
                 src = getNormalRIMSource(desc);
                 break;
             
@@ -1278,6 +1291,15 @@ public class NotSoTinySimulator {
             case MOV_BIO_D:
                 this.memory.write2Bytes(getBIOAddress(desc, false, true), (short) src);
                 return;
+                
+            // flags
+            case MOV_F_RIM:
+                this.reg_f = (short) src;
+                break;
+            
+            case MOV_PF_RIM:
+                this.reg_pf = (short) src;
+                break;
             
             // rim
             case MOVW_RIM:
@@ -1303,6 +1325,8 @@ public class NotSoTinySimulator {
                 return;
             
             case MOV_RIM:
+            case MOV_RIM_F:
+            case MOV_RIM_PF:
                 putNormalRIMDestination(desc, src);
                 return;
             
@@ -1542,21 +1566,21 @@ public class NotSoTinySimulator {
         
         if(size == 1) { // 8 bit
             zero = (c & 0xFF) == 0;
-            overflow = ((a & 0x80) == (b & 0x80)) ? ((a & 0x80) != (c & 0x80)) : false;
+            overflow = ((a & 0x80) == (b & 0x80)) && ((a & 0x80) != (c & 0x80));
             sign = (c & 0x80) != 0;
             carry = (c & 0x100) != 0;
             
             c &= 0xFF;
         } else if(size == 2) { // 16 bit
             zero = (c & 0xFFFF) == 0;
-            overflow = ((a & 0x8000) == (b & 0x8000)) ? ((a & 0x8000) != (c & 0x8000)) : false;
+            overflow = ((a & 0x8000) == (b & 0x8000)) && ((a & 0x8000) != (c & 0x8000));
             sign = (c & 0x8000) != 0;
             carry = (c & 0x1_0000) != 0;
             
             c &= 0xFFFF;
         } else { // 32 bit
             zero = c == 0;
-            overflow = ((a & 0x8000_0000l) == (b & 0x8000_0000l)) ? ((a & 0x8000_0000l) != (c & 0x8000_0000l)) : false;
+            overflow = ((a & 0x8000_0000l) == (b & 0x8000_0000l)) && ((a & 0x8000_0000l) != (c & 0x8000_0000l));
             sign = (c & 0x8000_0000l) != 0;
             carry = (c & 0x1_0000_0000l) != 0;
         }
@@ -1991,9 +2015,16 @@ public class NotSoTinySimulator {
      * @return
      */
     private LocationDescriptor getNormalRIMDestinationDescriptor(InstructionDescriptor desc) {
-        desc.hasRIMByte = true;
+        byte rim;
         
-        byte rim = this.memory.readByte(this.reg_ip);
+        if(desc.hasRIMByte) {
+            rim = desc.rimByte;
+        } else {
+            rim = this.memory.readByte(this.reg_ip);
+            desc.rimByte = rim;
+            desc.hasRIMByte = true;
+        }
+        
         boolean size = (rim & 0x80) == 0;
         
         //System.out.println(String.format("rim, size: %02X, %s", rim, size));
@@ -2138,6 +2169,10 @@ public class NotSoTinySimulator {
                         this.reg_f = (short) val;
                         break;
                         
+                    case REG_PF:
+                        this.reg_pf = (short) val;
+                        break;
+                        
                     default:
                         throw new IllegalArgumentException("Invalid location descriptor: " + desc);
                 }
@@ -2271,9 +2306,16 @@ public class NotSoTinySimulator {
      * @return
      */
     private LocationDescriptor getNormalRIMSourceDescriptor(InstructionDescriptor desc) {
-        desc.hasRIMByte = true;
+        byte rim;
         
-        byte rim = this.memory.readByte(this.reg_ip);
+        if(desc.hasRIMByte) {
+            rim = desc.rimByte;
+        } else {
+            rim = this.memory.readByte(this.reg_ip);
+            desc.rimByte = rim;
+            desc.hasRIMByte = true;
+        }
+        
         boolean size = (rim & 0x80) == 0;
         
         //System.out.println(String.format("rim, size: %02X, %s", rim, size));
@@ -2400,6 +2442,7 @@ public class NotSoTinySimulator {
                 case REG_BP -> this.reg_bp;
                 case REG_SP -> this.reg_sp;
                 case REG_F  -> this.reg_f;
+                case REG_PF -> this.reg_pf;
                 default     -> 0;
             };
             
@@ -2635,6 +2678,28 @@ public class NotSoTinySimulator {
         if(desc.hasImmediateAddress || desc.hasImmediateValue) {
             this.reg_ip += desc.immediateWidth;
         }
+    }
+    
+    /**
+     * Fires an interrupt with the given vector. May be ignored.
+     * 
+     * @param vector
+     */
+    public void fireMaskableInterrupt(byte vector) {
+        if((this.reg_pf & 1) != 0) {
+            this.externalInterrupt = true;
+            this.externalInterruptVector = vector;
+        }
+    }
+    
+    /**
+     * Fires an interrupt with the given vector. Cannot be ignored.
+     * 
+     * @param vector
+     */
+    public void fireNonMaskableInterrupt(byte vector) {
+        this.externalInterrupt = true;
+        this.externalInterruptVector = vector;
     }
     
     /*

@@ -55,16 +55,16 @@ public class Test {
         }
         */
         
-        String filename = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\snake\\snake.asm";
+        //String filename = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\snake\\snake.asm";
         //String filename = "calculator.asm";
-        //String filename = "primes_mincraf.asm";
+        String filename = "primes_mincraf.asm";
         
         List<RelocatableObject> objects = Assembler.assemble(new File(filename), false);
         
         Relocator rel = new Relocator();
         objects.forEach(rel::add);
         
-        int entry = ExecLoader.loadRelocator(rel, "snake.main", mem, 1024);
+        int entry = ExecLoader.loadRelocator(rel, "primes_mincraf.main", mem, 1024, 1024);
         
         Halter halter = new Halter();
         
@@ -81,9 +81,9 @@ public class Test {
         sim.setRegSP(0x1000);
         
         try {
-            //runFast(sim, mem, 100_000_000, halter);
+            runFast(sim, mem, 100_000_000, halter);
             //halter.clear();
-            runStepped(sim, mem, 1024, halter);
+            //runStepped(sim, mem, 1024, halter);
         } catch(Exception e) {
             e.printStackTrace();
         }

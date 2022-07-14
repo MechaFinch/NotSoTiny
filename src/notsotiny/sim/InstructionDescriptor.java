@@ -18,4 +18,6 @@ public class InstructionDescriptor {
     
     public int immediateWidth = 0,              // used by all instructions. the width of an immediate value/address
                sourceWidth = 0;                 // used by thin sources. the width of the source
+    
+    public byte rimByte = 0;                    // caching
 }

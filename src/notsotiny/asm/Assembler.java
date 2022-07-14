@@ -35,7 +35,6 @@ import asmlib.lex.symbols.StringSymbol;
 import asmlib.lex.symbols.Symbol;
 import asmlib.token.Tokenizer;
 import asmlib.util.relocation.RelocatableObject;
-import asmlib.util.relocation.Relocator;
 import asmlib.util.relocation.RelocatableObject.Endianness;
 import notsotiny.asm.components.Component;
 import notsotiny.asm.components.InitializedData;
@@ -826,7 +825,9 @@ public class Assembler {
                         secondIsLByte = secondRegister == Register.AL || secondRegister == Register.BL || secondRegister == Register.CL || secondRegister == Register.DL,
                         secondIsHByte = secondRegister == Register.AH || secondRegister == Register.BH || secondRegister == Register.CH || secondRegister == Register.DH,
                         firstIsFlags = firstRegister == Register.F,
-                        secondIsFlags = secondRegister == Register.F;
+                        firstIsPFlags = firstRegister == Register.PF,
+                        secondIsFlags = secondRegister == Register.F,
+                        secondIsPFlags = secondRegister == Register.PF;
                 
                 int firstSize = firstOperand.getSize(),
                     secondSize = secondOperand.getSize(),
@@ -859,6 +860,15 @@ public class Assembler {
                             break;
                         } else if(secondIsFlags) {
                             opcode = Opcode.MOV_RIM_F;
+                            break;
+                        }
+                        
+                        // PF
+                        if(firstIsPFlags) {
+                            opcode = Opcode.MOV_PF_RIM;
+                            break;
+                        } else if(secondIsPFlags) {
+                            opcode = Opcode.MOV_RIM_PF;
                             break;
                         }
                         
@@ -1319,22 +1329,8 @@ public class Assembler {
         
         // what we workin with
         switch(nextSymbol) {
-                // not actually so ez
+                // actually ez now that the right things are expressive
             case RegisterSymbol rs:
-                Register r = Register.valueOf(rs.name());
-                
-                // handle r16:r16
-                if(r.size() == 2 && symbolQueue.peek() instanceof SpecialCharacterSymbol scs && scs.character() == ':') {
-                    symbolQueue.poll();
-                    
-                    if(symbolQueue.peek() instanceof RegisterSymbol rs2) {
-                        symbolQueue.poll();
-                        return new ResolvableLocationDescriptor(LocationType.REGISTER, Register.valueOf(rs.name() + rs2.name()));
-                    } else {
-                        throw new IllegalArgumentException("Invalid symbol while parsing operand: " + scs);
-                    }
-                }
-                
                 return new ResolvableLocationDescriptor(LocationType.REGISTER, Register.valueOf(rs.name()));
                 
                 // resolved constant
@@ -1595,6 +1591,10 @@ public class Assembler {
      */
     private static ResolvableLocationDescriptor parseOperandExpression(ExpressionSymbol es) {
         LOG.finest("Parsing operand expression: " + es);
+        
+        // double registers
+        if(es.symbols().get(0) instanceof RegisterSymbol rs) return new ResolvableLocationDescriptor(LocationType.REGISTER, parseRegister(es.symbols(), 0));
+        
         // TODO i think there are non-constant cases for this?
         return new ResolvableLocationDescriptor(LocationType.IMMEDIATE, -1, ConstantExpressionParser.parse(new LinkedList<Symbol>(es.symbols())));
     }

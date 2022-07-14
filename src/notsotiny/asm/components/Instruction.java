@@ -150,9 +150,9 @@ public class Instruction implements Component {
                 break;
             
             // source only
-            case PUSH_RIM, AND_F_RIM, OR_F_RIM, XOR_F_RIM, MOV_F_RIM, JMP_RIM, CALL_RIM, INT_RIM, JC_RIM,
-                 JNC_RIM, JS_RIM, JNS_RIM, JO_RIM, JNO_RIM, JZ_RIM, JNZ_RIM, JA_RIM, JBE_RIM, JG_RIM,
-                 JGE_RIM, JL_RIM, JLE_RIM:
+            case PUSH_RIM, AND_F_RIM, OR_F_RIM, XOR_F_RIM, MOV_F_RIM, MOV_PF_RIM, JMP_RIM, CALL_RIM,
+                 INT_RIM, JC_RIM, JNC_RIM, JS_RIM, JNS_RIM, JO_RIM, JNO_RIM, JZ_RIM, JNZ_RIM, JA_RIM,
+                 JBE_RIM, JG_RIM, JGE_RIM, JL_RIM, JLE_RIM:
                 data.addAll(getRIMData(false, true, false, false, false));
                 break;
             
@@ -161,8 +161,8 @@ public class Instruction implements Component {
                 break;
             
             // destination only
-            case POP_RIM, AND_RIM_F, OR_RIM_F, XOR_RIM_F, MOV_RIM_F, INC_RIM, ICC_RIM, DEC_RIM, DCC_RIM,
-                 NOT_RIM, NEG_RIM, CMP_RIM_0:
+            case POP_RIM, AND_RIM_F, OR_RIM_F, XOR_RIM_F, MOV_RIM_F, MOV_RIM_PF, INC_RIM, ICC_RIM,
+                 DEC_RIM, DCC_RIM, NOT_RIM, NEG_RIM, CMP_RIM_0:
                 data.addAll(getRIMData(true, false, false, false, false));
                 break;
             

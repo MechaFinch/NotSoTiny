@@ -117,6 +117,7 @@ j
 bp
 sp
 f
+pf
 ::sizes::
 byte
 word
@@ -138,3 +139,9 @@ dp
 as
 ::expressive::
 as
+a
+b
+c
+d
+i
+j

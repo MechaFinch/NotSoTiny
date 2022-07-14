@@ -5,7 +5,7 @@ import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
 
 /**
- * black & white bitmap of a section of memory
+ * Greyscale bytemap of a section of memory
  * 
  * @author Alex Pickering
  */
@@ -13,15 +13,12 @@ public class Screen extends Canvas {
     
     private int screenWidth,
                 screenHeight,
-                pixelSize,
-                widthBytes;
+                pixelSize;
     
     public Screen(int screenWidth, int screenHeight, int pixelSize) {
         this.screenWidth = screenWidth;
         this.screenHeight = screenHeight;
         this.pixelSize = pixelSize;
-        
-        this.widthBytes = this.screenWidth / 8;
         
         this.setWidth(screenWidth * pixelSize);
         this.setHeight(screenHeight * pixelSize);
@@ -42,18 +39,16 @@ public class Screen extends Canvas {
         
         // draw
         for(int y = 0; y < this.screenHeight; y++) {
-            for(int x = 0; x < this.widthBytes; x++) {
-                byte b = mem[startAddress + x + (y * this.widthBytes)];
+            for(int x = 0; x < this.screenWidth; x++) {
+                byte b = mem[startAddress + x + (y * this.screenWidth)];
                 
-                for(int i = 7; i >= 0; i--) {
-                    if(((b >> i) & 0x01) == 1) {
-                        g.setFill(Color.WHITE);
-                    } else {
-                        g.setFill(Color.BLACK);
-                    }
-                    
-                    g.fillRect(((x * 8) + 7 - i) * pixelSize, y * pixelSize, pixelSize, pixelSize);
-                }
+                int red = ((b >> 6) & 0x03) * (256 / 4),
+                    green = ((b >> 2) & 0x07) * (256 / 8),
+                    blue = (b & 0x03) * (256 / 4);
+                
+                //g.setFill(Color.grayRgb(b & 0xFF));
+                g.setFill(Color.rgb(red, green, blue));
+                g.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
             }
         }
     }

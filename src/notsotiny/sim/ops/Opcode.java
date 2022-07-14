@@ -190,6 +190,9 @@ public enum Opcode {
     SUB_RIM_I8  (0x9A, Operation.SUB),
     SBB_RIM_I8  (0x9B, Operation.SBB),
     
+    MOV_PF_RIM  (0x9C, Operation.MOV),
+    MOV_RIM_PF  (0x9D, Operation.MOV),
+    
     INC_RIM     (0xA0, Operation.INC),
     ICC_RIM     (0xA1, Operation.ICC),
     PINC_RIMP   (0xA2, Operation.PINC),
