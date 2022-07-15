@@ -78,7 +78,7 @@ public class Instruction implements Component {
                  XCHG_C_D, XCHG_AL_BL, XCHG_AL_CL, XCHG_AL_DL, XCHG_BL_CL, XCHG_BL_DL, XCHG_CL_DL,
                  PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_BP, PUSH_SP, PUSH_F, POP_A, POP_B,
                  POP_C, POP_D, POP_I, POP_J, POP_BP, POP_SP, POP_F, NOT_F, INC_I, INC_J, ICC_I, ICC_J,
-                 DEC_I, DEC_J, DCC_I, DCC_J, RET, IRET:
+                 DEC_I, DEC_J, DCC_I, DCC_J, RET, IRET, PUSHA, POPA:
                 break;
             
             // 8 bit immediate only
@@ -366,6 +366,7 @@ public class Instruction implements Component {
             } else {
                 rim |= src ? 0b00_000_001 : 0b00_000_101;
                 bioData = getImmediateData(offs, 4);
+                this.cachedImmediateOffset = 1; // will be incremented
             }
         }
         
@@ -376,7 +377,7 @@ public class Instruction implements Component {
         
         // immediate
         if(includeSource && sourceType == LocationType.IMMEDIATE) {
-            this.cachedImmediateOffset = data.size();
+            this.cachedImmediateOffset = data.size() + 1;
             data.addAll(getImmediateData(this.source.getImmediate(), sourceSize));
         }
         
@@ -540,6 +541,8 @@ public class Instruction implements Component {
         if(this.cachedImmediateOffset != -1) return this.cachedImmediateOffset;
         
         getObjectCode();
+        
+        if(this.cachedImmediateOffset == -1) throw new IllegalStateException("Immediate offset not set");
         
         return this.cachedImmediateOffset;
     }

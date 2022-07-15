@@ -14,7 +14,9 @@ public enum Operation {
     MOVZ    (Family.MOVE),
     XCHG    (Family.MOVE),
     PUSH    (Family.MOVE),
+    PUSHA   (Family.MOVE),
     POP     (Family.MOVE),
+    POPA    (Family.MOVE),
     
     AND     (Family.LOGIC),
     OR      (Family.LOGIC),

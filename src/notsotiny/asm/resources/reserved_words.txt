@@ -6,7 +6,9 @@ movz
 mov
 xchg
 push
+pusha
 pop
+popa
 and
 or
 xor

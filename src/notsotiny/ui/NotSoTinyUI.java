@@ -2,6 +2,8 @@ package notsotiny.ui;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -10,11 +12,16 @@ import java.util.concurrent.TimeUnit;
 import javax.sound.midi.MidiUnavailableException;
 
 import asmlib.util.relocation.ExecLoader;
+import asmlib.util.relocation.Relocator;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.geometry.Pos;
+import javafx.geometry.VPos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -50,22 +57,25 @@ public class NotSoTinyUI extends Application {
     
     // RAM segment constants
     private static final long IVT_START = 0x0000_0000l,
-                              IVT_END = 0x0000_03FFl,
+                              IVT_END = 0x0000_0400l,
                               PROGRAM_START = 0x0000_0400l,
-                              PROGRAM_END = 0x0003_FFFFl,
+                              PROGRAM_END = 0x0004_0000l,
                               HEAP_START = 0x8000_0000l,
-                              HEAP_END = 0x8003_FFFFl,
+                              HEAP_END = 0x8004_0000l,
                               VIDEO_START = 0xC000_0000l,
-                              VIDEO_END = 0xC001_33FFl,
+                              VIDEO_END = 0xC001_5000l,
+                              CHARACTER_SET_START = 0xC001_3000l,
                               STACK_START = 0xFFFE_0000l,
-                              STACK_END = 0xFFFF_FFFFl;
+                              STACK_END = 0x1_0000_0000l;
     
     // MMIO constants
     private static final long HALTER_ADDRESS = 0xF000_0000l,
                               SIC_ADDRESS = 0xF000_0002l;
     
     // other constants
-    private static final String PROGRAM_EXEC_FILE = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\lib\\test.oex";
+    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\lib\\",
+                                PROGRAM_EXEC_FILE = "test.oex",
+                                TEXT_FONT_FILE = "text.dat";
     
     // sim vars
     private NotSoTinySimulator sim;
@@ -82,6 +92,8 @@ public class NotSoTinyUI extends Application {
     
     private SoundInterfaceController sic;               // 0xF000_0002 - 0xF000_0005
     
+    private Relocator relocator;
+    
     // actually memory arrays
     private byte[] ivtRAM,
                    programRAM,
@@ -94,14 +106,19 @@ public class NotSoTinyUI extends Application {
     
     private ScheduledFuture<?> rtcHandler;
     
-    private long rtcPeriodus = 1_000_000l / 128,
+    private long rtcPeriodus = 1_000_000l / 50_000,
                  usSinceLastUIUpdate = 0;
     
     private boolean simRunning = false;
     
     // misc
     private long instructionsExecuted, // tracks since UI was last updated
-                 elapsedTimens;
+                 elapsedTimens,
+                 breakpointAddress = -1l;;
+    
+    private boolean enableBreakpoints = false;
+    
+    private String breakpointSymbol = "";
     
     /**
      * Initialize the simulator
@@ -141,8 +158,17 @@ public class NotSoTinyUI extends Application {
         this.mmu.registerSegment(halter, HALTER_ADDRESS, 2);
         this.mmu.registerSegment(sic, SIC_ADDRESS, 4);
         
+        // load text font
+        byte[] font = Files.readAllBytes(new File(PROGRAM_DATA_FOLDER + TEXT_FONT_FILE).toPath());
+        System.arraycopy(font, 0, this.videoRAM, (int)(CHARACTER_SET_START - VIDEO_START), font.length);
+        
         // Load program into memory
-        int entry = ExecLoader.loadExecFile(new File(PROGRAM_EXEC_FILE), programRAM, (int) PROGRAM_START, 0);
+        List<Object> relocatorPair = ExecLoader.loadExecFileToRelocator(new File(PROGRAM_DATA_FOLDER + PROGRAM_EXEC_FILE));
+        
+        this.relocator = (Relocator) relocatorPair.get(0);
+        String entrySymbol = (String) relocatorPair.get(1);
+        
+        int entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, programRAM, (int) PROGRAM_START, 0);
         
         // write entry vector
         this.mmu.write4Bytes(0, entry);
@@ -168,6 +194,7 @@ public class NotSoTinyUI extends Application {
      * TODO TEMPORARY REPLACE WITH RTC
      */
     private void startSim() {
+        this.halter.clear();
         this.simRunning = true;
         this.rtcHandler = this.rtcScheduler.scheduleAtFixedRate(() -> stepSim(), 0l, this.rtcPeriodus, TimeUnit.MICROSECONDS);
     }
@@ -189,10 +216,17 @@ public class NotSoTinyUI extends Application {
      * TODO TEMPORARY REPLACE WITH INDEPENDENT THREAD THAT WATCHES THE HALTER
      */
     private void stepSim() {
+        if(this.halter.halted()) {
+            stopSim();
+            return;
+        }
+        
         this.sim.step();
         this.instructionsExecuted++;
         
-        if(this.halter.halted()) stopSim();
+        if(this.enableBreakpoints && this.breakpointAddress != -1l) {
+            if(this.sim.getRegIP() == (this.breakpointAddress & 0xFFFF_FFFF)) this.halter.writeByte(0, (byte) 0);
+        }
         
         // cap UI update rate
         if(this.simRunning && this.rtcPeriodus < 16_666) {
@@ -203,28 +237,9 @@ public class NotSoTinyUI extends Application {
                 updateUI();
             }
         } else {
+            usSinceLastUIUpdate = 0;
             updateUI();
         }
-        
-        printState();
-    }
-    
-    private void printState() {
-        Disassembler dis = new Disassembler();
-        System.out.println();
-        
-        System.out.println(String.format("A    B    C    D%n%04X %04X %04X %04X%nI    J    F%n%04X %04X %04X%nip       bp       sp%n%08X %08X %08X",
-                                         sim.getRegA(), sim.getRegB(), sim.getRegC(), sim.getRegD(),
-                                         sim.getRegI(), sim.getRegJ(), sim.getRegF(),
-                                         sim.getRegIP(), sim.getRegBP(), sim.getRegSP()));
-        
-        System.out.println(dis.disassemble(this.programRAM, sim.getRegIP() - (int) PROGRAM_START));
-        
-        for(int j = 0; j < dis.getLastInstructionLength(); j++) {
-            System.out.print(String.format("%02X ", this.programRAM[sim.getRegIP() + j - (int) PROGRAM_START]));
-        }
-        
-        System.out.println();
     }
     
     /*
@@ -246,11 +261,17 @@ public class NotSoTinyUI extends Application {
     
     private Screen screen;
     
-    private Text infoAverageMIPS;
+    private Text infoAverageMIPS,
+                 infoProcessorState,
+                 infoCurrentBreakpoint;
+    
+    private TextField fieldBreakpoint;
     
     private Button buttonToggleAdvanced,
                    buttonToggleRunning,
                    buttonStepSim;
+    
+    private CheckBox checkEnableBreakpoints;
     
     private Node advancedView;
     
@@ -280,8 +301,24 @@ public class NotSoTinyUI extends Application {
         HBox boxBasicControls = new HBox(this.buttonToggleRunning, this.buttonStepSim, rBasicControlsSeparator, boxBasicInfo);
         
         // advanced view
-        Text testText = new Text("kajdflgj;sldfkg");
-        this.advancedView = new VBox(testText);
+        this.infoProcessorState = new Text("");
+        
+        Text labelBreakpoint = new Text("Breakpoint");
+        this.fieldBreakpoint = new TextField();
+        Region rGapBreakpoint = new Region();
+        rGapBreakpoint.setPrefWidth(10);
+        
+        HBox boxBreakpointField = new HBox(labelBreakpoint, this.fieldBreakpoint);
+        boxBreakpointField.setAlignment(Pos.CENTER_LEFT);
+        this.fieldBreakpoint.setMinWidth(200);
+        
+        this.infoCurrentBreakpoint = new Text("Current Breakpoint: (none)");
+        this.checkEnableBreakpoints = new CheckBox("Enable Breakpoints");
+        
+        Region rAdvancedViewSeparator = new Region();
+        VBox.setVgrow(rAdvancedViewSeparator, Priority.ALWAYS);
+        
+        this.advancedView = new VBox(this.infoProcessorState, rAdvancedViewSeparator, boxBreakpointField, this.infoCurrentBreakpoint, this.checkEnableBreakpoints);
         
         // grid
         GridPane pain = new GridPane();
@@ -289,13 +326,38 @@ public class NotSoTinyUI extends Application {
         pain.add(boxBasicControls, 0, 1, 1, 1);
         pain.add(this.advancedView, 1, 0, 1, 2);
         
+        pain.setHgap(10);
+        pain.setVgap(10);
+        
         // bindings
         this.buttonToggleAdvanced.setOnAction(e -> toggleAdvancedView());
         this.buttonToggleRunning.setOnAction(e -> toggleRunSimulator());
-        this.buttonStepSim.setOnAction(e -> stepSim());
+        
+        this.buttonStepSim.setOnAction(e -> {
+            this.halter.clear();
+            stepSim();
+        });
+        
+        this.checkEnableBreakpoints.setOnAction(e -> {
+            this.enableBreakpoints = this.checkEnableBreakpoints.isSelected();
+        });
+        
+        this.fieldBreakpoint.setOnAction(e -> {
+            this.breakpointSymbol = this.fieldBreakpoint.getText();
+            
+            try {
+                this.breakpointAddress = this.relocator.getReference(this.breakpointSymbol);
+            } catch(Exception ex) {
+                this.breakpointSymbol = "(invalid symbol)";
+                this.breakpointAddress = -1l;
+            }
+            
+            updateUI();
+        });
         
         this.advancedView.managedProperty().bind(this.advancedView.visibleProperty());
         this.advancedView.setVisible(this.advancedViewVisisble);
+        ((VBox)this.advancedView).setMinWidth(300);
         
         Scene scene = new Scene(pain);
         scene.getStylesheets().add(getClass().getResource("resources/application.css").toExternalForm());
@@ -329,6 +391,31 @@ public class NotSoTinyUI extends Application {
                 this.buttonToggleAdvanced.setText("Hide advanced/debug view");
                 
                 // TODO advanced view
+                // processor state
+                Disassembler dis = new Disassembler();
+                String state = "-- Processor State --\n";
+                
+                state += String.format("A    B    C    D%n%04X %04X %04X %04X%nI    J    F%n%04X %04X %04X%nip       bp       sp%n%08X %08X %08X%n",
+                        sim.getRegA(), sim.getRegB(), sim.getRegC(), sim.getRegD(),
+                        sim.getRegI(), sim.getRegJ(), sim.getRegF(),
+                        sim.getRegIP(), sim.getRegBP(), sim.getRegSP());
+                
+                state += dis.disassemble(this.programRAM, sim.getRegIP() - (int) PROGRAM_START) + "\n";
+                
+                for(int j = 0; j < dis.getLastInstructionLength(); j++) {
+                    state += String.format("%02X ", this.programRAM[sim.getRegIP() + j - (int) PROGRAM_START]);
+                }
+                
+                state += "\n\n" + this.relocator.getAddressName(sim.getRegIP());
+                
+                this.infoProcessorState.setText(state);
+                
+                // breakpoints
+                if(!this.breakpointSymbol.equals("")) {
+                    this.infoCurrentBreakpoint.setText("Current Breakpoint: " + this.breakpointSymbol);
+                } else {
+                    this.infoCurrentBreakpoint.setText("Current Breakpoint: (none)");
+                }
             } else {
                 this.buttonToggleAdvanced.setText("Show advanced/debug view");
             }

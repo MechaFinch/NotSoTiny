@@ -295,7 +295,7 @@ public class Disassembler {
             };
             
             if(scale != 0) {
-                System.out.println(scale);
+                //System.out.println(scale);
                 source += " * " + (1 << scale) + ")";
             }
         }
@@ -338,7 +338,12 @@ public class Disassembler {
      */
     private String getMnemonic(Opcode op) {
         String s = op.toString();
-        return s.substring(0, s.indexOf("_"));
+        
+        if(s.contains("_")) {
+            return s.substring(0, s.indexOf("_"));
+        }
+        
+        return s;
     }
     
     /**

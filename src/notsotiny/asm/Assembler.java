@@ -172,6 +172,7 @@ public class Assembler {
             }
         }
         
+        LOG.info("Done.");
         return new ArrayList<RelocatableObject>(objects);
     }
     
@@ -313,11 +314,13 @@ public class Assembler {
                         LOG.finer("Added label " + l.name() + " at index " + allInstructions.size());
                         break;
                         
+                        /*
                         // implicit label
                     case NameSymbol n:
                         labelIndexMap.put(n.name(), allInstructions.size());
                         LOG.finer("Added label " + n.name() + " at index " + allInstructions.size());
                         break;
+                        */
                     
                     case MnemonicSymbol m:
                         Instruction inst = parseInstruction(symbolQueue, m);
@@ -593,6 +596,8 @@ public class Assembler {
                 case NOP    -> new Instruction(Opcode.NOP);
                 case RET    -> new Instruction(Opcode.RET);
                 case IRET   -> new Instruction(Opcode.IRET);
+                case PUSHA  -> new Instruction(Opcode.PUSHA);
+                case POPA   -> new Instruction(Opcode.POPA);
                 default     -> null; // not possible
             };
         } else {
@@ -711,6 +716,15 @@ public class Assembler {
                             };
                         } else {
                             opcode = Opcode.JMP_RIM;
+                        }
+                        break;
+                    
+                        // 8 bit immediates
+                    case INT:
+                        if(isImmediate && firstOperand.getSize() != -1 && firstOperand.getSize() < 2) {
+                            opcode = Opcode.INT_I8;
+                        } else {
+                            opcode = Opcode.INT_RIM;
                         }
                         break;
                         
@@ -1607,7 +1621,7 @@ public class Assembler {
      */
     private static boolean hasFirstOperand(Operation op) {
         return switch(op) {
-            case NOP, RET, IRET -> false;
+            case NOP, PUSHA, POPA, RET, IRET -> false;
             default -> true;
         };
     }
@@ -1909,6 +1923,8 @@ public class Assembler {
                         if(!isLibraryReference(name, libraries)) {
                             name = fileName + "." + name;
                         }
+                        
+                        LOG.finest("Adding incoming reference " + name + " at address " + address);
                         
                         // if we're not in an expression and it's not relative, it'll change when relocated
                         // also could be an external reference

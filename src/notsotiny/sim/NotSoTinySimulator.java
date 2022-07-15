@@ -453,6 +453,11 @@ public class NotSoTinySimulator {
         int a = readLocation(thinDst),
             b = mod ? getWideRIMSource(desc) : getNormalRIMSource(desc);
         
+        // correct immediate size, set wrongly by getWideRIMSource because of its reasonable assumtion that it's dealing with a source
+        if(mod && desc.hasImmediateValue) {
+            desc.immediateWidth /= 2;
+        }
+        
         // {quot, rem}
         int[] res = divide(a, b, thinDst.size(), mod, signed); 
         
@@ -971,10 +976,12 @@ public class NotSoTinySimulator {
                 break;
             
             case PUSH:
+            case PUSHA:
                 runPUSH(desc);
                 break;
             
             case POP:
+            case POPA:
                 runPOP(desc);
                 break;
             
@@ -1454,6 +1461,19 @@ public class NotSoTinySimulator {
      * @return
      */
     private void runPUSH(InstructionDescriptor desc) {
+        // deal with this separately cause of multiple registers and whatnot
+        if(desc.op == Opcode.PUSHA) {
+            this.reg_sp -= 16;
+            this.memory.write4Bytes(this.reg_sp + 0, this.reg_bp);
+            this.memory.write2Bytes(this.reg_sp + 4, this.reg_j);
+            this.memory.write2Bytes(this.reg_sp + 6, this.reg_i);
+            this.memory.write2Bytes(this.reg_sp + 8, this.reg_d);
+            this.memory.write2Bytes(this.reg_sp + 10, this.reg_c);
+            this.memory.write2Bytes(this.reg_sp + 12, this.reg_b);
+            this.memory.write2Bytes(this.reg_sp + 14, this.reg_a);
+            return;
+        }
+        
         // deal with operand size
         int opSize = switch(desc.op) {
             case PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_F -> 2;
@@ -1498,6 +1518,20 @@ public class NotSoTinySimulator {
      * @param op
      */
     private void runPOP(InstructionDescriptor desc) {
+        // deal with POPA separately
+        if(desc.op == Opcode.POPA) {
+            this.reg_bp = this.memory.read4Bytes(this.reg_sp + 0);
+            this.reg_j = this.memory.read2Bytes(this.reg_sp + 4);
+            this.reg_i = this.memory.read2Bytes(this.reg_sp + 6);
+            this.reg_d = this.memory.read2Bytes(this.reg_sp + 8);
+            this.reg_c = this.memory.read2Bytes(this.reg_sp + 10);
+            this.reg_b = this.memory.read2Bytes(this.reg_sp + 12);
+            this.reg_a = this.memory.read2Bytes(this.reg_sp + 14);
+            
+            this.reg_sp += 16;
+            return;
+        }
+        
         // deal with operand size
         int opSize = switch(desc.op) {
             case POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_F -> 2;

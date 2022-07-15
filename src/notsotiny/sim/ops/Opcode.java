@@ -192,6 +192,8 @@ public enum Opcode {
     
     MOV_PF_RIM  (0x9C, Operation.MOV),
     MOV_RIM_PF  (0x9D, Operation.MOV),
+    PUSHA       (0x9E, Operation.PUSHA),
+    POPA        (0x9F, Operation.POPA),
     
     INC_RIM     (0xA0, Operation.INC),
     ICC_RIM     (0xA1, Operation.ICC),
