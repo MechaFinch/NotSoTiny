@@ -92,11 +92,16 @@ public class Assembler {
         String directory = new File(args[optimize ? 1 : 0]).getAbsolutePath();
         directory = directory.substring(0, directory.lastIndexOf("\\")) + "\\";
         
-        List<String> execContents = new ArrayList<>();
+        Set<String> execContents = new HashSet<>();
         
         for(RelocatableObject obj : objects) {
-            String filename = obj.getName() + ".obj";
+            String filename = "obj\\" + obj.getName() + ".obj";
             execContents.add(filename);
+            
+            // make obj directory if it doesn't exist
+            if(!new File(directory + "obj\\").exists()) {
+                new File(directory + "obj\\").mkdir();
+            }
             
             try(FileOutputStream fos = new FileOutputStream(directory + filename)){
                 fos.write(obj.asObjectFile());

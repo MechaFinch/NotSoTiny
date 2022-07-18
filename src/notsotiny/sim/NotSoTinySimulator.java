@@ -73,7 +73,7 @@ public class NotSoTinySimulator {
      * Opcodes are sent to family handlers based on their category. These family handlers then send
      * opcodes off to operation-specific methods. All for organization.
      */
-    public void step() {
+    public synchronized void step() {
         
         if(this.externalInterrupt) {
             this.externalInterrupt = false;
@@ -237,6 +237,8 @@ public class NotSoTinySimulator {
         } else {
             LocationDescriptor dst = getNormalRIMDestinationDescriptor(desc);
             int v = ~readLocation(dst);
+            
+            if(desc.op == Opcode.NEG_RIM) v += 1; 
             
             // flags
             boolean zero = v == 0,
@@ -447,31 +449,30 @@ public class NotSoTinySimulator {
     private void runDIV(InstructionDescriptor desc) {
         LocationDescriptor thinDst = getNormalRIMDestinationDescriptor(desc);
         
+        int size = thinDst.size();
+        
         boolean mod = desc.op == Opcode.DIVM_RIM || desc.op == Opcode.DIVMS_RIM,
                 signed = desc.op == Opcode.DIVS_RIM || desc.op == Opcode.DIVMS_RIM;
         
-        int a = readLocation(thinDst),
-            b = mod ? getWideRIMSource(desc) : getNormalRIMSource(desc);
-        
-        // correct immediate size, set wrongly by getWideRIMSource because of its reasonable assumtion that it's dealing with a source
-        if(mod && desc.hasImmediateValue) {
-            desc.immediateWidth /= 2;
+        if(mod && thinDst.size() != 4) {
+            thinDst = new LocationDescriptor(thinDst.type(), thinDst.size() * 2, thinDst.address());
         }
         
-        // {quot, rem}
-        int[] res = divide(a, b, thinDst.size(), mod, signed); 
+        int a = readLocation(thinDst),
+            b = getNormalRIMSource(desc);
         
-        int c = switch(thinDst.size()) {
+        // {quot, rem}
+        int[] res = divide(a, b, thinDst.size(), mod, signed);
+        
+        // use unmodified size
+        int c = switch(size) {
             case 1  -> mod ? (((res[1] & 0xFF) << 8) | (res[0] & 0xFF)) : res[0]; 
             case 2  -> mod ? (((res[1] & 0xFFFF) << 16) | (res[0] & 0xFFFF)) : res[0];
             default -> res[0];
         };
         
-        if(mod) {
-            putWideRIMDestination(thinDst, c);
-        } else {
-            writeLocation(thinDst, c);
-        }
+        // no mod check because the destination was modified above
+        writeLocation(thinDst, c);
     }
     
     /**
@@ -486,8 +487,13 @@ public class NotSoTinySimulator {
         boolean mod = desc.op == Opcode.PDIVM_RIMP || desc.op == Opcode.PDIVMS_RIMP,
                 signed = desc.op == Opcode.PDIVS_RIMP || desc.op == Opcode.PDIVMS_RIMP;
         
-        int a = getPackedRIMSource(thinDst),
-            b = mod ? getWidePackedRIMSource(src) : getPackedRIMSource(src);
+        int a = mod ? getWidePackedRIMSource(thinDst) : getPackedRIMSource(thinDst),
+            b = getPackedRIMSource(src);
+        
+        // immedaites are always 2 bytes for packed
+        if(desc.hasImmediateValue) {
+            desc.immediateWidth = 2;
+        }
         
         int[] res = dividePacked(a, b, thinDst.size() != 1, mod, signed);
         
@@ -656,6 +662,10 @@ public class NotSoTinySimulator {
         
         int a = getPackedRIMSource(dst),
             b = getPackedRIMSource(getNormalRIMSourceDescriptor(desc));
+        
+        if(desc.hasImmediateValue) {
+            desc.immediateWidth = 2;
+        }
         
         int c = addPacked(a, b, bytes, subtract, includeCarry);
         
@@ -2746,6 +2756,7 @@ public class NotSoTinySimulator {
     public short getRegI() { return this.reg_i; }
     public short getRegJ() { return this.reg_j; }
     public short getRegF() { return this.reg_f; }
+    public short getRegPF() { return this.reg_pf; }
     public int getRegIP() { return this.reg_ip; }
     public int getRegBP() { return this.reg_bp; }
     public int getRegSP() { return this.reg_sp; }
@@ -2760,6 +2771,7 @@ public class NotSoTinySimulator {
     public void setRegI(short i) { this.reg_i = i; }
     public void setRegJ(short j) { this.reg_j = j; }
     public void setRegF(short f) { this.reg_f = f; }
+    public void setRegPF(short pf) { this.reg_pf = pf; }
     public void setRegIP(int ip) { this.reg_ip = ip; }
     public void setRegBP(int bp) { this.reg_bp = bp; }
     public void setRegSP(int sp) { this.reg_sp = sp; }

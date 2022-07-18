@@ -52,6 +52,18 @@ public class ResolvableExpression implements ResolvableValue {
             this.right = rer.minimize();
         }
         
+        if(this.operation == Operator.ADD) {
+            if(this.left.isResolved() && this.left.value() == 0) { // 0 + x = x
+                return this.right;
+            } else if(this.right.isResolved() && this.right.value() == 0) { // x + 0 = x
+                return this.left;
+            }
+        } else if(this.operation == Operator.SUBTRACT) {
+            if(this.right.isResolved() && this.right.value() == 0) { // x - 0 = x
+                return this.left;
+            }
+        }
+        
         // resolve if possible
         if(this.left.isResolved() && this.right.isResolved()) {
             return new ResolvableConstant(this.value());

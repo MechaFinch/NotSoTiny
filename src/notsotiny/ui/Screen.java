@@ -42,9 +42,26 @@ public class Screen extends Canvas {
             for(int x = 0; x < this.screenWidth; x++) {
                 byte b = mem[startAddress + x + (y * this.screenWidth)];
                 
+                /*
+                // 332
                 int red = ((b >> 5) & 0x07) * (256 / 7),
                     green = ((b >> 2) & 0x07) * (256 / 7),
                     blue = (b & 0x03) * (256 / 3);
+                */
+                
+                /*
+                // 323
+                int red = ((b >> 5) & 0x07) * (256 / 7),
+                    green = ((b >> 3) & 0x03) * (256 / 3),
+                    blue = (b & 0x07) * (256 / 7);
+                */
+                
+                
+                // 233
+                int red = ((b >> 6) & 0x03) * (256 / 3),
+                    green = ((b >> 3) & 0x07) * (256 / 7),
+                    blue = (b & 0x07) * (256 / 7);
+                
                 
                 //g.setFill(Color.grayRgb(b & 0xFF));
                 g.setFill(Color.rgb(red, green, blue));

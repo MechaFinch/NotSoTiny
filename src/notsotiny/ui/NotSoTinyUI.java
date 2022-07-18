@@ -16,12 +16,12 @@ import asmlib.util.relocation.Relocator;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Pos;
-import javafx.geometry.VPos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.TextField;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -39,6 +39,7 @@ import notsotiny.sim.memory.SoundInterfaceController;
 public class NotSoTinyUI extends Application {
 
     public static void main(String[] args) {
+        System.out.println("launching");
         Application.launch(args);
     }
     
@@ -70,23 +71,31 @@ public class NotSoTinyUI extends Application {
     
     // MMIO constants
     private static final long HALTER_ADDRESS = 0xF000_0000l,
-                              SIC_ADDRESS = 0xF000_0002l;
+                              SIC_ADDRESS = 0xF000_0002l,
+                              KEYBOARD_BUFFER_ADDRESS = 0xF000_0006l;
     
     // other constants
-    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\lib\\",
+    private static final String PROGRAM_DATA_FOLDER = "data\\",
+                                PROGRAM_EXEC_FILE = "game.oex",
+                                TEXT_FONT_FILE = "text.dat";
+    
+    /*
+    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\Desktop\\game jam\\gmtk-jam-2022\\src\\",
                                 PROGRAM_EXEC_FILE = "test.oex",
                                 TEXT_FONT_FILE = "text.dat";
+    */
     
     // sim vars
     private NotSoTinySimulator sim;
     
     private MemoryManager mmu;
     
-    private FlatMemoryController ivtRAMController,      // 0x0000_0000 - 0x0000_03FF
-                                 programRAMController,  // 0x0000_0400 - 0x0003_FFFF
-                                 heapRAMController,     // 0x8000_0000 - 0x8003_FFFF
-                                 videoRAMController,    // 0xC000_0000 - 0xC001_33FF
-                                 stackRAMController;    // 0xFFFE_0000 - 0xFFFF_FFFF
+    private FlatMemoryController ivtRAMController,          // 0x0000_0000 - 0x0000_03FF
+                                 programRAMController,      // 0x0000_0400 - 0x0003_FFFF
+                                 heapRAMController,         // 0x8000_0000 - 0x8003_FFFF
+                                 videoRAMController,        // 0xC000_0000 - 0xC001_33FF
+                                 stackRAMController,        // 0xFFFE_0000 - 0xFFFF_FFFF
+                                 keyboardBufferController;  // 0xF000_0006 - 0xF000_0007
     
     private Halter halter;                              // 0xF000_0000 - 0xF000_0001
     
@@ -99,22 +108,103 @@ public class NotSoTinyUI extends Application {
                    programRAM,
                    heapRAM,
                    videoRAM,
-                   stackRAM;
+                   stackRAM,
+                   keyboardBuffer;
     
     // real time clock stuff
-    private final ScheduledExecutorService rtcScheduler = Executors.newScheduledThreadPool(1);
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
     
-    private ScheduledFuture<?> rtcHandler;
+    private SimulatorThread simThread;
     
-    private long rtcPeriodus = 1_000_000l / 50_000,
-                 usSinceLastUIUpdate = 0;
-    
-    private boolean simRunning = false;
+    /**
+     * Thread for running the simulator
+     * 
+     * @author Mechafinch
+     */
+    private class SimulatorThread extends Thread {
+        private long periodus = 0;
+        
+        private ScheduledFuture<?> clockHandler;
+        
+        /**
+         * Constructor
+         * 
+         * @param periodus period in microseconds
+         */
+        public SimulatorThread(long periodus) {
+            this.periodus = periodus;
+        }
+        
+        @Override
+        public void run() {
+            while(true) {
+                try {
+                    // run as fast as possible or no?
+                    if(this.periodus == 0) {
+                        //System.out.println("running fast");
+                        this.clockHandler = null;
+                        
+                        // just run until halted
+                        while(!NotSoTinyUI.this.halter.halted()) {
+                            step();
+                        }
+                    } else if(this.clockHandler == null || this.clockHandler.isDone()){
+                        //System.out.println("running slow");
+                        // run at the given rate
+                        if(!NotSoTinyUI.this.halter.halted()) {
+                            this.clockHandler = NotSoTinyUI.this.scheduler.scheduleAtFixedRate(() -> this.step(), 0, this.periodus, TimeUnit.MICROSECONDS);
+                        }
+                    }
+                    
+                    synchronized(this) {
+                        wait();
+                    }
+                } catch(Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        
+        /**
+         * Stops the clock
+         */
+        private void stopSim() {
+            if(this.clockHandler != null) {
+                while(!this.clockHandler.isDone()) this.clockHandler.cancel(false);
+            }
+        }
+        
+        /**
+         * Steps the simulator
+         */
+        private void step() {
+            if(NotSoTinyUI.this.halter.halted()) {
+                this.stopSim();
+            } else {
+                try {
+                    NotSoTinyUI.this.sim.step();
+                } catch(Exception e) {
+                    e.printStackTrace();
+                    throw e;
+                }
+                NotSoTinyUI.this.instructionsExecuted++;
+            }
+            
+            if(NotSoTinyUI.this.enableBreakpoints && NotSoTinyUI.this.breakpointAddress != -1l) {
+                if(NotSoTinyUI.this.sim.getRegIP() == (NotSoTinyUI.this.breakpointAddress & 0xFFFF_FFFF)) NotSoTinyUI.this.halter.writeByte(0, (byte) 0);
+            }
+        }
+        
+        //public void setPeriod(long p) { this.periodus = p; }
+    }
     
     // misc
     private long instructionsExecuted, // tracks since UI was last updated
                  elapsedTimens,
-                 breakpointAddress = -1l;;
+                 breakpointAddress = -1l,
+                 memwatchAddress = 0;
+    
+    private double lastAverageMIPS = 0;
     
     private boolean enableBreakpoints = false;
     
@@ -133,18 +223,18 @@ public class NotSoTinyUI extends Application {
         heapRAM = new byte[(int)(HEAP_END - HEAP_START)];
         videoRAM = new byte[(int)(VIDEO_END - VIDEO_START)];
         stackRAM = new byte[(int)(STACK_END - STACK_START)];
+        keyboardBuffer = new byte[2];
         
         ivtRAMController = new FlatMemoryController(ivtRAM);
         programRAMController = new FlatMemoryController(programRAM);
         heapRAMController = new FlatMemoryController(heapRAM);
         videoRAMController = new FlatMemoryController(videoRAM);
         stackRAMController = new FlatMemoryController(stackRAM);
+        keyboardBufferController = new FlatMemoryController(keyboardBuffer);
         
         // initialize other segments
         halter = new Halter();
         sic = new SoundInterfaceController();
-        
-        // TODO for RTC, the halter should start halted.
         
         // initialize memory manager
         this.mmu = new MemoryManager();
@@ -157,6 +247,7 @@ public class NotSoTinyUI extends Application {
         
         this.mmu.registerSegment(halter, HALTER_ADDRESS, 2);
         this.mmu.registerSegment(sic, SIC_ADDRESS, 4);
+        this.mmu.registerSegment(keyboardBufferController, KEYBOARD_BUFFER_ADDRESS, 2);
         
         // load text font
         byte[] font = Files.readAllBytes(new File(PROGRAM_DATA_FOLDER + TEXT_FONT_FILE).toPath());
@@ -175,72 +266,70 @@ public class NotSoTinyUI extends Application {
         
         // simulator
         this.sim = new NotSoTinySimulator(this.mmu);
+        
+        // timing stuff
+        this.simThread = new SimulatorThread(4);
+        
+        this.simThread.start();
+        
+        // start seconds clock
+        
+        this.scheduler.scheduleAtFixedRate(() -> {
+            this.sim.fireNonMaskableInterrupt((byte) 1);
+            this.halter.clear();
+            notifySimulatorThread();
+        }, 2000l, 100l, TimeUnit.MILLISECONDS);
+        
+        //this.halter.writeByte(0l, (byte) 0);
     }
     
     /**
      * Toggles the simulator
-     * TODO TEMPROARY REPLACE WITH RTC
      */
     private void toggleRunSimulator() {
-        if(this.simRunning) {
-            stopSim();
+        if(this.halter.halted()) {
+            this.halter.clear();
+            notifySimulatorThread();
         } else {
-            startSim();
+            this.halter.writeByte(0l, (byte) 0);
         }
     }
     
     /**
-     * Start running the simulator
-     * TODO TEMPORARY REPLACE WITH RTC
+     * Awakens the simulator thread
      */
-    private void startSim() {
-        this.halter.clear();
-        this.simRunning = true;
-        this.rtcHandler = this.rtcScheduler.scheduleAtFixedRate(() -> stepSim(), 0l, this.rtcPeriodus, TimeUnit.MICROSECONDS);
-    }
-    
-    /**
-     * Stop running the simulator
-     * TODO TEMPORARY REPLACE WITH RTC
-     */
-    private void stopSim() {
-        if(this.rtcHandler != null) {
-            while(!this.rtcHandler.isDone()) this.rtcHandler.cancel(false);
-            this.simRunning = false;
-            updateUI();
+    private void notifySimulatorThread() {
+        synchronized(this.simThread) { 
+            this.simThread.notify();
         }
     }
     
     /**
      * Step the simulator
-     * TODO TEMPORARY REPLACE WITH INDEPENDENT THREAD THAT WATCHES THE HALTER
      */
     private void stepSim() {
-        if(this.halter.halted()) {
-            stopSim();
-            return;
-        }
-        
         this.sim.step();
         this.instructionsExecuted++;
         
         if(this.enableBreakpoints && this.breakpointAddress != -1l) {
             if(this.sim.getRegIP() == (this.breakpointAddress & 0xFFFF_FFFF)) this.halter.writeByte(0, (byte) 0);
         }
-        
-        // cap UI update rate
-        if(this.simRunning && this.rtcPeriodus < 16_666) {
-            if(usSinceLastUIUpdate < 16_666) {
-                usSinceLastUIUpdate += this.rtcPeriodus;
-            } else {
-                usSinceLastUIUpdate = 0;
-                updateUI();
-            }
-        } else {
-            usSinceLastUIUpdate = 0;
-            updateUI();
-        }
     }
+    
+    /**
+     * Handles a key being typed
+     * 
+     * @param ke
+     */
+    private void handleKeyTyped(KeyEvent ke) {
+        this.keyboardBuffer[0] = (byte) ke.getCharacter().charAt(0);
+        
+        this.sim.fireMaskableInterrupt((byte) 2);
+        this.halter.clear();
+        notifySimulatorThread();
+    }
+    
+    
     
     /*
      * == GRAPHICS ==
@@ -263,9 +352,12 @@ public class NotSoTinyUI extends Application {
     
     private Text infoAverageMIPS,
                  infoProcessorState,
-                 infoCurrentBreakpoint;
+                 infoCurrentBreakpoint,
+                 infoCurrentWatchAddress,
+                 infoMemwatch;
     
-    private TextField fieldBreakpoint;
+    private TextField fieldBreakpoint,
+                      fieldMemwatch;
     
     private Button buttonToggleAdvanced,
                    buttonToggleRunning,
@@ -292,21 +384,30 @@ public class NotSoTinyUI extends Application {
         
         VBox boxBasicInfo = new VBox(this.infoAverageMIPS, this.buttonToggleAdvanced);
         
-        this.buttonToggleRunning = new Button("Start CPU");
-        this.buttonStepSim = new Button("Step CPU"); // TODO MOVE TO ADVANCED VIEW
-        
         Region rBasicControlsSeparator = new Region();
         HBox.setHgrow(rBasicControlsSeparator, Priority.ALWAYS);
         
-        HBox boxBasicControls = new HBox(this.buttonToggleRunning, this.buttonStepSim, rBasicControlsSeparator, boxBasicInfo);
+        HBox boxBasicControls = new HBox(rBasicControlsSeparator, boxBasicInfo);
         
         // advanced view
         this.infoProcessorState = new Text("");
         
+        this.infoMemwatch = new Text("");
+        
+        Text labelMemwatch = new Text("Memwatch Address");
+        this.fieldMemwatch = new TextField();
+        //Region rGapMemwatch = new Region();
+        //rGapMemwatch.setPrefWidth(10);
+        
+        HBox boxMemwatchField = new HBox(labelMemwatch, this.fieldMemwatch);
+        boxMemwatchField.setAlignment(Pos.CENTER_LEFT);
+        
+        this.infoCurrentWatchAddress = new Text("Memwatch Address: 00000000");
+        
         Text labelBreakpoint = new Text("Breakpoint");
         this.fieldBreakpoint = new TextField();
-        Region rGapBreakpoint = new Region();
-        rGapBreakpoint.setPrefWidth(10);
+        //Region rGapBreakpoint = new Region();
+        //rGapBreakpoint.setPrefWidth(10);
         
         HBox boxBreakpointField = new HBox(labelBreakpoint, this.fieldBreakpoint);
         boxBreakpointField.setAlignment(Pos.CENTER_LEFT);
@@ -315,10 +416,22 @@ public class NotSoTinyUI extends Application {
         this.infoCurrentBreakpoint = new Text("Current Breakpoint: (none)");
         this.checkEnableBreakpoints = new CheckBox("Enable Breakpoints");
         
-        Region rAdvancedViewSeparator = new Region();
-        VBox.setVgrow(rAdvancedViewSeparator, Priority.ALWAYS);
+        this.buttonToggleRunning = new Button("Start CPU");
+        this.buttonStepSim = new Button("Step CPU");
+        HBox boxToggleStep = new HBox(buttonToggleRunning, buttonStepSim);
+        this.buttonToggleRunning.setMinWidth(83);
         
-        this.advancedView = new VBox(this.infoProcessorState, rAdvancedViewSeparator, boxBreakpointField, this.infoCurrentBreakpoint, this.checkEnableBreakpoints);
+        Region rAdvancedViewSeparator1 = new Region();
+        Region rAdvancedViewSeparator2 = new Region();
+        Region rAdvancedViewSeparator3 = new Region();
+        VBox.setVgrow(rAdvancedViewSeparator1, Priority.ALWAYS);
+        rAdvancedViewSeparator2.setMinHeight(10);
+        rAdvancedViewSeparator3.setMinHeight(10);
+        
+        this.advancedView = new VBox(this.infoProcessorState, rAdvancedViewSeparator1,
+                                     this.infoMemwatch, boxMemwatchField, this.infoCurrentWatchAddress, rAdvancedViewSeparator2,
+                                     boxBreakpointField, this.infoCurrentBreakpoint, this.checkEnableBreakpoints, rAdvancedViewSeparator3,
+                                     boxToggleStep);
         
         // grid
         GridPane pain = new GridPane();
@@ -351,8 +464,18 @@ public class NotSoTinyUI extends Application {
                 this.breakpointSymbol = "(invalid symbol)";
                 this.breakpointAddress = -1l;
             }
-            
-            updateUI();
+        });
+        
+        this.fieldMemwatch.setOnAction(e -> {
+            try {
+                this.memwatchAddress = Long.parseLong(this.fieldMemwatch.getText(), 16);
+            } catch(Exception ex1) {
+                try {
+                    this.memwatchAddress = this.relocator.getReference(this.fieldMemwatch.getText());
+                } catch(Exception ex2) {
+                    this.breakpointAddress = 0;
+                }
+            }
         });
         
         this.advancedView.managedProperty().bind(this.advancedView.visibleProperty());
@@ -362,7 +485,11 @@ public class NotSoTinyUI extends Application {
         Scene scene = new Scene(pain);
         scene.getStylesheets().add(getClass().getResource("resources/application.css").toExternalForm());
         
+        scene.addEventHandler(KeyEvent.KEY_TYPED, (key) -> handleKeyTyped(key));
+        //scene.addEventHandler(KeyEvent.KEY_PRESSED, null);
+        
         // show the window
+        this.stage.setTitle("500 Dice");
         this.stage.setScene(scene);
         this.stage.show();
         this.stage.setResizable(false);
@@ -372,7 +499,8 @@ public class NotSoTinyUI extends Application {
             System.exit(0);
         });
         
-        updateUI();
+        // start periodic UI updates
+        this.scheduler.scheduleAtFixedRate(() -> updateUI(), 0l, 1_000_000 / 30, TimeUnit.MICROSECONDS);
     }
     
     /**
@@ -380,13 +508,25 @@ public class NotSoTinyUI extends Application {
      */
     private void updateUI() {
         Platform.runLater(() -> {
-            double mips = (((double) this.instructionsExecuted) / ((double) this.elapsedTimens)) * 1000;
-            this.infoAverageMIPS.setText(String.format("Average MIPS: %2.2f", mips));
+            // calculate average mips every half second
+            long time = System.nanoTime() - this.elapsedTimens;
+            if(time > 1_000_000_000l) {
+                long executed = this.instructionsExecuted;
+                this.instructionsExecuted = 0;
+                this.elapsedTimens = System.nanoTime();
+                
+                double mips = (((double) executed) / ((double) time)) * 1_000_000_000;
+                this.lastAverageMIPS = mips;
+            }
             
-            this.buttonToggleRunning.setText(this.simRunning ? "Stop CPU" : "Start CPU");
+            // basic info
+            this.infoAverageMIPS.setText(String.format("Average IPS: %6.0f", this.lastAverageMIPS));
+            
+            this.buttonToggleRunning.setText(this.halter.halted() ? "Start CPU" : "Stop CPU");
             
             this.screen.update(this.videoRAM, 0);
             
+            // advanced info
             if(this.advancedViewVisisble) {
                 this.buttonToggleAdvanced.setText("Hide advanced/debug view");
                 
@@ -395,12 +535,14 @@ public class NotSoTinyUI extends Application {
                 Disassembler dis = new Disassembler();
                 String state = "-- Processor State --\n";
                 
-                state += String.format("A    B    C    D%n%04X %04X %04X %04X%nI    J    F%n%04X %04X %04X%nip       bp       sp%n%08X %08X %08X%n",
+                state += String.format("A    B    C    D%n%04X %04X %04X %04X%nI    J    F    PF%n%04X %04X %04X %04X%nip       bp       sp%n%08X %08X %08X%n",
                         sim.getRegA(), sim.getRegB(), sim.getRegC(), sim.getRegD(),
-                        sim.getRegI(), sim.getRegJ(), sim.getRegF(),
+                        sim.getRegI(), sim.getRegJ(), sim.getRegF(), sim.getRegPF(),
                         sim.getRegIP(), sim.getRegBP(), sim.getRegSP());
                 
-                state += dis.disassemble(this.programRAM, sim.getRegIP() - (int) PROGRAM_START) + "\n";
+                try {
+                    state += dis.disassemble(this.programRAM, sim.getRegIP() - (int) PROGRAM_START) + "\n";
+                } catch(ArrayIndexOutOfBoundsException e) {}
                 
                 for(int j = 0; j < dis.getLastInstructionLength(); j++) {
                     state += String.format("%02X ", this.programRAM[sim.getRegIP() + j - (int) PROGRAM_START]);
@@ -409,6 +551,17 @@ public class NotSoTinyUI extends Application {
                 state += "\n\n" + this.relocator.getAddressName(sim.getRegIP());
                 
                 this.infoProcessorState.setText(state);
+                
+                // memwatch
+                String memwatch = "";
+                
+                for(int i = 0; i < 16; i++) {
+                    memwatch += String.format("%02X ", this.mmu.readByte(this.memwatchAddress + i));
+                    if(i % 8 == 7) memwatch += "\n";
+                }
+                
+                this.infoMemwatch.setText(memwatch);
+                this.infoCurrentWatchAddress.setText(String.format("Current Memwatch Address: %08X", this.memwatchAddress));
                 
                 // breakpoints
                 if(!this.breakpointSymbol.equals("")) {
@@ -429,10 +582,7 @@ public class NotSoTinyUI extends Application {
      */
     private void toggleAdvancedView() {
         this.advancedViewVisisble = !this.advancedViewVisisble;
-        
         this.advancedView.setVisible(this.advancedViewVisisble);
-        updateUI();
-        
         this.stage.sizeToScene();
     }
 }
