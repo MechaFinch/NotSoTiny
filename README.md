@@ -14,6 +14,8 @@ The /docs/ folder contains the documentation of the NST architecture. It's quite
 ### The Assembler
 The assembler will take an assembly source file and assemble it and its `%include` dependencies into .obj relocatable object files. This is a custom format which boils down to a bunch of metadata for where symbols are in the object code followed by said object code, and are loaded via AssemblerLib's relocator. Aside from enabling position independency the object files allow the debug tools in the UI to convert source file symbol names into addresses, which is very convenient.
 
+The assembler still isn't quite complete. It outputs accurate machine code, but it doesn't output space-optimized machine code. NST uses a variable-length encoding in which address offsets and most immediate shortcuts can have shorter sign-extended encodings. For anything whose value depends on the length of encoded instructions, the assembler currently cannot take advantage of that. It's a relatively simple algorithm of "make things shorter until that dosen't let anything else get shorter", but it still needs implementing.
+
 ### The Simulator
 The simulator runs NST machine code, and that's it. It uses a memory management system that allows non-continuous addresses which makes for convenient simulation of MMIO and the like. The most imporant public methods `step` the simulator by having it execute a single instruction, and fire interrupts which tell the next step to run an interrupt instruction.
 
