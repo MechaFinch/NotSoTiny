@@ -3,11 +3,14 @@ Simulator and toolchain for my NotSoTiny architecture.
 
 This project uses the AssemblerLib library of my own creation. It can be found [here](https://github.com/MechaFinch/AssemblerLib)
 
-The name comes from why it was originally created, the idea was to implement it on a TinyFPGA (unfortunately that got delayed from shipping in March to September) and be designed for advanted techniques like out-of-order execution - this is one of the motivators behind the ---- design - hence it's capabilities are not-so-tiny. Hopefully.
+The name comes from why it was originally created, the idea was to implement it on a TinyFPGA (unfortunately that got delayed from shipping in March to September) and be designed with advanced stuff like out-of-order execution in mind, hence it's capabilities are not-so-tiny. Hopefully.
 
 ## Project Structure
 This repository contains three largely independent elements: The assembler, found in the `notsotiny.asm` package, the simulator, found in the `notsotiny.sim` package, and the UI, found in the `notsotiny.ui` package. The assembler and UI each contain `main` methods to be run as programs, while the simulator is used by the UI to run code. 
- 
+
+### The Docs
+The /docs/ folder contains the documentation of the NST architecture. It's quite bare-bones but it's all the necessary information. The isa file describes the registers, instruction encoding, and notes about behaviors that might be ambiguous. The instruction listing file contains a listing of every instruction by opcode, including some notes such as aliases and whether single-argument instructions use the source or destination of the RIM encoding.
+
 ### The Assembler
 The assembler will take an assembly source file and assemble it and its `%include` dependencies into .obj relocatable object files. This is a custom format which boils down to a bunch of metadata for where symbols are in the object code followed by said object code, and are loaded via AssemblerLib's relocator. Aside from enabling position independency the object files allow the debug tools in the UI to convert source file symbol names into addresses, which is very convenient.
 
