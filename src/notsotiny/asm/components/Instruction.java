@@ -4,7 +4,6 @@ import java.util.LinkedList;
 import java.util.List;
 
 import notsotiny.asm.Register;
-import notsotiny.asm.resolution.Resolvable;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor.LocationType;
 import notsotiny.asm.resolution.ResolvableMemory;
@@ -64,6 +63,8 @@ public class Instruction implements Component {
     
     @Override
     public List<Byte> getObjectCode() {
+        if(!hasValidOperands()) throw new IllegalArgumentException("Invalid operands: " + this);
+        
         this.cachedImmediateOffset = -1;
         List<Byte> data = new LinkedList<>();
         data.add(this.op.getOp());
@@ -71,29 +72,29 @@ public class Instruction implements Component {
         // what do we need to do
         switch(this.op) {
             // nothing
-            case NOP, XCHG_AH_AL, XCHG_BH_BL, XCHG_CH_CL, XCHG_DH_DL, MOV_A_B, MOV_A_C, MOV_A_D, MOV_B_A,
-                 MOV_B_C, MOV_B_D, MOV_C_A, MOV_C_B, MOV_C_D, MOV_D_A, MOV_D_B, MOV_D_C, MOV_AL_BL,
-                 MOV_AL_CL, MOV_AL_DL, MOV_BL_AL, MOV_BL_CL, MOV_BL_DL, MOV_CL_AL, MOV_CL_BL, MOV_CL_DL,
-                 MOV_DL_AL, MOV_DL_BL, MOV_DL_CL, XCHG_A_B, XCHG_A_C, XCHG_A_D, XCHG_B_C, XCHG_B_D,
-                 XCHG_C_D, XCHG_AL_BL, XCHG_AL_CL, XCHG_AL_DL, XCHG_BL_CL, XCHG_BL_DL, XCHG_CL_DL,
-                 PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_BP, PUSH_SP, PUSH_F, POP_A, POP_B,
-                 POP_C, POP_D, POP_I, POP_J, POP_BP, POP_SP, POP_F, NOT_F, INC_I, INC_J, ICC_I, ICC_J,
-                 DEC_I, DEC_J, DCC_I, DCC_J, RET, IRET, PUSHA, POPA:
+            case NOP, MOV_A_B, MOV_A_C, MOV_A_D, MOV_B_A, MOV_B_C, MOV_B_D, MOV_C_A, MOV_C_B, MOV_C_D,
+                 MOV_D_A, MOV_D_B, MOV_D_C, MOV_AL_BL, MOV_AL_CL, MOV_AL_DL, MOV_BL_AL, MOV_BL_CL,
+                 MOV_BL_DL, MOV_CL_AL, MOV_CL_BL, MOV_CL_DL, MOV_DL_AL, MOV_DL_BL, MOV_DL_CL, 
+                 PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L, PUSH_BP, PUSH_SP,
+                 PUSH_F, POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L, POP_BP, POP_SP,
+                 POP_F, NOT_F, INC_I, INC_J, INC_K, INC_L, ICC_I, ICC_J, ICC_K, ICC_L, DEC_I, DEC_J,
+                 DEC_K, DEC_L, DCC_I, DCC_J, DCC_K, DCC_L, RET, IRET, PUSHA, POPA, HLT:
                 break;
             
             // 8 bit immediate only
             case MOV_A_I8, MOV_B_I8, MOV_C_I8, MOV_D_I8, ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADC_A_I8,
                  ADC_B_I8, ADC_C_I8, ADC_D_I8, SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SBB_A_I8, SBB_B_I8,
-                 SBB_C_I8, SBB_D_I8, JMP_I8, INT_I8, JC_I8, JNC_I8, JS_I8, JNS_I8, JO_I8, JNO_I8, JZ_I8,
-                 JNZ_I8, JA_I8, JBE_I8, JG_I8, JGE_I8, JL_I8, JLE_I8:
+                 SBB_C_I8, SBB_D_I8, ADD_SP_I8, SUB_SP_I8, JMP_I8, INT_I8, JC_I8, JNC_I8, JS_I8, JNS_I8,
+                 JO_I8, JNO_I8, JZ_I8, JNZ_I8, JA_I8, JBE_I8, JG_I8, JGE_I8, JL_I8, JLE_I8:
                 this.cachedImmediateOffset = 1;
                 data.addAll(getImmediateData(this.source.getImmediate(), 1));
                 break;
             
             // 16 bit immediate only
-            case MOV_I_I16, MOV_J_I16, MOV_A_I16, MOV_B_I16, MOV_C_I16, MOV_D_I16, ADD_A_I16, ADD_B_I16,
-                 ADD_C_I16, ADD_D_I16, ADC_A_I16, ADC_B_I16, ADC_C_I16, ADC_D_I16, SUB_A_I16, SUB_B_I16,
-                 SUB_C_I16, SUB_D_I16, SBB_A_I16, SBB_B_I16, SBB_C_I16, SBB_D_I16, JMP_I16, CALL_I16:
+            case MOV_I_I16, MOV_J_I16, MOV_K_I16, MOV_L_I16, MOV_A_I16, MOV_B_I16, MOV_C_I16, MOV_D_I16,
+                 ADD_A_I16, ADD_B_I16, ADD_C_I16, ADD_D_I16, ADC_A_I16, ADC_B_I16, ADC_C_I16, ADC_D_I16,
+                 SUB_A_I16, SUB_B_I16, SUB_C_I16, SUB_D_I16, SBB_A_I16, SBB_B_I16, SBB_C_I16, SBB_D_I16,
+                 JMP_I16, CALL_I16:
                 this.cachedImmediateOffset = 1;
                 data.addAll(getImmediateData(this.source.getImmediate(), 2));
                 break;
@@ -318,9 +319,9 @@ public class Instruction implements Component {
                 case CL, C, BC  -> 0b00_010_000;
                 case DL, D, CD  -> 0b00_011_000;
                 case AH, I, JI  -> 0b00_100_000;
-                case BH, J, IJ  -> 0b00_101_000;
-                case CH, BP     -> 0b00_110_000;
-                case DH, SP     -> 0b00_111_000;
+                case BH, J, LK  -> 0b00_101_000;
+                case CH, K, BP  -> 0b00_110_000;
+                case DH, L, SP  -> 0b00_111_000;
                 default         -> 0; // handled earlier
             };
         } else if(includeSource && sourceType == LocationType.REGISTER) {
@@ -330,9 +331,9 @@ public class Instruction implements Component {
                 case CL, C, BC  -> 0b00_010_000;
                 case DL, D, CD  -> 0b00_011_000;
                 case AH, I, JI  -> 0b00_100_000;
-                case BH, J, IJ  -> 0b00_101_000;
-                case CH, BP     -> 0b00_110_000;
-                case DH, SP     -> 0b00_111_000;
+                case BH, J, LK  -> 0b00_101_000;
+                case CH, K, BP  -> 0b00_110_000;
+                case DH, L, SP  -> 0b00_111_000;
                 default         -> 0; // handled earlier
             };
         }
@@ -345,9 +346,9 @@ public class Instruction implements Component {
                 case CL, C, BC  -> 0b00_000_010;
                 case DL, D, CD  -> 0b00_000_011;
                 case AH, I, JI  -> 0b00_000_100;
-                case BH, J, IJ  -> 0b00_000_101;
-                case CH, BP     -> 0b00_000_110;
-                case DH, SP     -> 0b00_000_111;
+                case BH, J, LK  -> 0b00_000_101;
+                case CH, K, BP  -> 0b00_000_110;
+                case DH, L, SP  -> 0b00_000_111;
                 default         -> 0; // handled earlier
             };
         //} else if(includeSource && sourceType == LocationType.IMMEDIATE) { // do nothing
@@ -397,19 +398,6 @@ public class Instruction implements Component {
         
         boolean hasIndex = rm.getIndex() != Register.NONE;
         
-        // index
-        bio |= switch(rm.getIndex()) {
-            case A      -> 0b000;
-            case B      -> 0b001;
-            case C      -> 0b010;
-            case D      -> 0b011;
-            case I      -> 0b100;
-            case J      -> 0b101;
-            case BP     -> 0b110;
-            case NONE   -> 0b111;
-            default -> throw new IllegalArgumentException("Invalid index: " + rm.getIndex());
-        };
-        
         // check
         if(!hasIndex && rm.getBase() == Register.NONE) throw new IllegalArgumentException("Must have at least one register for BIO: " + rm); 
         
@@ -420,7 +408,7 @@ public class Instruction implements Component {
             case BC         -> 0b010_000;
             case CD         -> 0b011_000;
             case JI         -> 0b100_000;
-            case IJ         -> 0b101_000;
+            case LK         -> 0b101_000;
             case BP         -> 0b110_000;
             case SP, NONE   -> 0b111_000;
             default         -> throw new IllegalArgumentException("Invalid base: " + rm.getBase());
@@ -431,10 +419,9 @@ public class Instruction implements Component {
         // scale
         if(hasIndex) { // scale scales the index
             bio |= switch(rm.getScale()) {
-                case 1  -> 0b00_000_000;
-                case 2  -> 0b01_000_000;
-                case 4  -> 0b10_000_000;
-                case 8  -> 0b11_000_000;
+                case 1  -> 0b01_000_000;
+                case 2  -> 0b10_000_000;
+                case 4  -> 0b11_000_000;
                 default -> throw new IllegalArgumentException("Invalid scale: " + rm.getScale());
             };
         } else if(includeOffset && rm.getOffset().isResolved()) { // scale scales the offset
@@ -442,6 +429,23 @@ public class Instruction implements Component {
             
             offsetSize = getValueWidth(offset, true, true);
             bio |= ((offsetSize - 1) & 0b11) << 6;
+        }
+        
+        // index or offset size
+        if(hasIndex) {
+            bio |= switch(rm.getIndex()) {
+                case A  -> 0b000;
+                case B  -> 0b001;
+                case C  -> 0b010;
+                case D  -> 0b011;
+                case I  -> 0b100;
+                case J  -> 0b101;
+                case K  -> 0b110;
+                case L  -> 0b111;
+                default -> throw new IllegalArgumentException("Invalid index: " + rm.getIndex());
+            };
+        } else if(includeOffset) {
+            bio |= (offsetSize - 1) & 0b11;
         }
         
         data.add(bio);
@@ -535,6 +539,48 @@ public class Instruction implements Component {
     }
     
     /**
+     * @return True if the operands are (likely to be) valid
+     */
+    public boolean hasValidOperands() {
+        if(this.source.getType() == LocationType.REGISTER && this.source.getSize() == 4) {
+            switch(this.op) {
+                // opcodes that allow wide sources
+                case MOVW_RIM, CALLA_RIM32, JMPA_RIM32,
+                    PUSH_BP, PUSH_SP:
+                    break;
+                
+                default:
+                    return false;
+            }
+        }
+        
+        if(this.destination.getType() == LocationType.REGISTER && this.destination.getSize() == 4) {
+            switch(this.op) {
+                // opcodes that allow wide destiantions
+                case MOVW_RIM, MOVS_RIM, MOVZ_RIM, LEA_RIM, MOV_BP_I32, MOV_SP_I32,
+                     POP_BP, POP_SP,
+                     ADD_SP_I8, SUB_SP_I8,
+                     MULH_RIM, MULSH_RIM, PMULH_RIMP, PMULSH_RIMP,
+                     DIVM_RIM, DIVMS_RIM, PDIVM_RIMP, PDIVMS_RIMP:
+                    break;
+                
+                default:
+                    return false;
+            }
+        }
+        
+        if(this.op == Opcode.LEA_RIM) {
+            if(this.source.getType() != LocationType.MEMORY ||
+               this.destination.getType() != LocationType.REGISTER ||
+               this.destination.getSize() != 4) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
      * @return The location of the immediate relative to the start of the instruction. Will be at least 1
      */
     public int getImmediateOffset() {
@@ -550,15 +596,6 @@ public class Instruction implements Component {
     @Override
     public boolean isResolved() {
         return this.source.isResolved() && this.destination.isResolved();
-    }
-    
-    @Override
-    public void resolve() {
-    }
-
-    @Override
-    public void setParent(Resolvable r) {
-        // Instructions don't have parents
     }
     
     @Override

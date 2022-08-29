@@ -41,11 +41,14 @@ public class MemoryManager implements MemoryController {
         
         // check for overlap
         if(this.segmentControllers.size() != 0) {
-            long closestSegmentStart = this.startAddresses.floor(start + size - 1),
-                 closestSegmentEnd = this.endAddresses.get(closestSegmentStart);
+            Long closestSegmentStart = this.startAddresses.floor(start + size - 1);
             
-            if(closestSegmentStart > start || closestSegmentEnd > start) {
-                throw new IllegalArgumentException("Memory segments cannot overlap");
+            if(closestSegmentStart != null) {
+                long closestSegmentEnd = this.endAddresses.get(closestSegmentStart);
+                
+                if(closestSegmentStart > start || closestSegmentEnd > start) {
+                    throw new IllegalArgumentException("Memory segments cannot overlap");
+                }
             }
         }
         

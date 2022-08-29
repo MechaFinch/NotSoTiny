@@ -57,9 +57,9 @@ public class NotSoTinyUI extends Application {
      */
     
     // RAM segment constants
-    private static final long IVT_START = 0x0000_0000l,
-                              IVT_END = 0x0000_0400l,
-                              PROGRAM_START = 0x0000_0400l,
+    private static final long //IVT_START = 0x0000_0000l,
+                              //IVT_END = 0x0000_0400l,
+                              PROGRAM_START = 0x0000_0000l,
                               PROGRAM_END = 0x0004_0000l,
                               HEAP_START = 0x8000_0000l,
                               HEAP_END = 0x8004_0000l,
@@ -75,28 +75,30 @@ public class NotSoTinyUI extends Application {
                               KEYBOARD_BUFFER_ADDRESS = 0xF000_0006l;
     
     // other constants
+    /*
     private static final String PROGRAM_DATA_FOLDER = "data\\",
                                 PROGRAM_EXEC_FILE = "game.oex",
                                 TEXT_FONT_FILE = "text.dat";
+    */
     
-    /*
-    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\Desktop\\game jam\\gmtk-jam-2022\\src\\",
+    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\calculator\\",
                                 PROGRAM_EXEC_FILE = "test.oex",
                                 TEXT_FONT_FILE = "text.dat";
-    */
+    
     
     // sim vars
     private NotSoTinySimulator sim;
     
     private MemoryManager mmu;
     
-    private FlatMemoryController ivtRAMController,          // 0x0000_0000 - 0x0000_03FF
+    private FlatMemoryController //ivtRAMController,          // 0x0000_0000 - 0x0000_03FF
                                  programRAMController,      // 0x0000_0400 - 0x0003_FFFF
                                  heapRAMController,         // 0x8000_0000 - 0x8003_FFFF
                                  videoRAMController,        // 0xC000_0000 - 0xC001_33FF
                                  stackRAMController,        // 0xFFFE_0000 - 0xFFFF_FFFF
                                  keyboardBufferController;  // 0xF000_0006 - 0xF000_0007
     
+    // halter is deprecated by a HLT instruction but legacy programs yadda yadda
     private Halter halter;                              // 0xF000_0000 - 0xF000_0001
     
     private SoundInterfaceController sic;               // 0xF000_0002 - 0xF000_0005
@@ -104,7 +106,7 @@ public class NotSoTinyUI extends Application {
     private Relocator relocator;
     
     // actually memory arrays
-    private byte[] ivtRAM,
+    private byte[] //ivtRAM,
                    programRAM,
                    heapRAM,
                    videoRAM,
@@ -145,13 +147,14 @@ public class NotSoTinyUI extends Application {
                         this.clockHandler = null;
                         
                         // just run until halted
-                        while(!NotSoTinyUI.this.halter.halted()) {
+                        while(!(NotSoTinyUI.this.halter.halted() || NotSoTinyUI.this.sim.getHalted())) {
                             step();
                         }
                     } else if(this.clockHandler == null || this.clockHandler.isDone()){
+                        
                         //System.out.println("running slow");
                         // run at the given rate
-                        if(!NotSoTinyUI.this.halter.halted()) {
+                        if(!(NotSoTinyUI.this.halter.halted() || NotSoTinyUI.this.sim.getHalted())) {
                             this.clockHandler = NotSoTinyUI.this.scheduler.scheduleAtFixedRate(() -> this.step(), 0, this.periodus, TimeUnit.MICROSECONDS);
                         }
                     }
@@ -178,10 +181,10 @@ public class NotSoTinyUI extends Application {
          * Steps the simulator
          */
         private void step() {
-            if(NotSoTinyUI.this.halter.halted()) {
+            if(NotSoTinyUI.this.halter.halted() || NotSoTinyUI.this.sim.getHalted()) {
                 this.stopSim();
             } else {
-                try {
+                try { 
                     NotSoTinyUI.this.sim.step();
                 } catch(Exception e) {
                     e.printStackTrace();
@@ -191,7 +194,10 @@ public class NotSoTinyUI extends Application {
             }
             
             if(NotSoTinyUI.this.enableBreakpoints && NotSoTinyUI.this.breakpointAddress != -1l) {
-                if(NotSoTinyUI.this.sim.getRegIP() == (NotSoTinyUI.this.breakpointAddress & 0xFFFF_FFFF)) NotSoTinyUI.this.halter.writeByte(0, (byte) 0);
+                if(NotSoTinyUI.this.sim.getRegIP() == (NotSoTinyUI.this.breakpointAddress & 0xFFFF_FFFF)) {
+                    //NotSoTinyUI.this.halter.writeByte(0, (byte) 0);
+                    NotSoTinyUI.this.sim.setHalted(true);
+                }
             }
         }
         
@@ -218,14 +224,14 @@ public class NotSoTinyUI extends Application {
      */
     private void initSimulator() throws MidiUnavailableException, IOException {
         // initialize flat memory segments
-        ivtRAM = new byte[(int)(IVT_END - IVT_START)];
+        //ivtRAM = new byte[(int)(IVT_END - IVT_START)];
         programRAM = new byte[(int)(PROGRAM_END - PROGRAM_START)];
         heapRAM = new byte[(int)(HEAP_END - HEAP_START)];
         videoRAM = new byte[(int)(VIDEO_END - VIDEO_START)];
         stackRAM = new byte[(int)(STACK_END - STACK_START)];
         keyboardBuffer = new byte[2];
         
-        ivtRAMController = new FlatMemoryController(ivtRAM);
+        //ivtRAMController = new FlatMemoryController(ivtRAM);
         programRAMController = new FlatMemoryController(programRAM);
         heapRAMController = new FlatMemoryController(heapRAM);
         videoRAMController = new FlatMemoryController(videoRAM);
@@ -239,7 +245,7 @@ public class NotSoTinyUI extends Application {
         // initialize memory manager
         this.mmu = new MemoryManager();
         
-        this.mmu.registerSegment(ivtRAMController, IVT_START, IVT_END - IVT_START);
+        //this.mmu.registerSegment(ivtRAMController, IVT_START, IVT_END - IVT_START);
         this.mmu.registerSegment(programRAMController, PROGRAM_START, PROGRAM_END - PROGRAM_START);
         this.mmu.registerSegment(heapRAMController, HEAP_START, HEAP_END - HEAP_START);
         this.mmu.registerSegment(videoRAMController, VIDEO_START, VIDEO_END - VIDEO_START);
@@ -259,7 +265,7 @@ public class NotSoTinyUI extends Application {
         this.relocator = (Relocator) relocatorPair.get(0);
         String entrySymbol = (String) relocatorPair.get(1);
         
-        int entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, programRAM, (int) PROGRAM_START, 0);
+        int entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, programRAM, 0, 0);
         
         // write entry vector
         this.mmu.write4Bytes(0, entry);
@@ -268,19 +274,21 @@ public class NotSoTinyUI extends Application {
         this.sim = new NotSoTinySimulator(this.mmu);
         
         // timing stuff
-        this.simThread = new SimulatorThread(4);
+        this.simThread = new SimulatorThread(5);
         
         this.simThread.start();
         
         // start seconds clock
-        
+        /*
         this.scheduler.scheduleAtFixedRate(() -> {
             this.sim.fireNonMaskableInterrupt((byte) 1);
             this.halter.clear();
             notifySimulatorThread();
         }, 2000l, 100l, TimeUnit.MILLISECONDS);
+        */
         
         //this.halter.writeByte(0l, (byte) 0);
+        //this.sim.setHalted(true);
     }
     
     /**
@@ -289,9 +297,11 @@ public class NotSoTinyUI extends Application {
     private void toggleRunSimulator() {
         if(this.halter.halted()) {
             this.halter.clear();
+            this.sim.setHalted(false);
             notifySimulatorThread();
         } else {
             this.halter.writeByte(0l, (byte) 0);
+            this.sim.setHalted(true);
         }
     }
     
@@ -312,7 +322,10 @@ public class NotSoTinyUI extends Application {
         this.instructionsExecuted++;
         
         if(this.enableBreakpoints && this.breakpointAddress != -1l) {
-            if(this.sim.getRegIP() == (this.breakpointAddress & 0xFFFF_FFFF)) this.halter.writeByte(0, (byte) 0);
+            if(this.sim.getRegIP() == (this.breakpointAddress & 0xFFFF_FFFF)) {
+                //this.halter.writeByte(0, (byte) 0);
+                this.sim.setHalted(true);
+            }
         }
     }
     
@@ -448,6 +461,7 @@ public class NotSoTinyUI extends Application {
         
         this.buttonStepSim.setOnAction(e -> {
             this.halter.clear();
+            this.sim.setHalted(false);
             stepSim();
         });
         
@@ -489,7 +503,7 @@ public class NotSoTinyUI extends Application {
         //scene.addEventHandler(KeyEvent.KEY_PRESSED, null);
         
         // show the window
-        this.stage.setTitle("500 Dice");
+        this.stage.setTitle("NST Emulator");
         this.stage.setScene(scene);
         this.stage.show();
         this.stage.setResizable(false);
@@ -522,7 +536,7 @@ public class NotSoTinyUI extends Application {
             // basic info
             this.infoAverageMIPS.setText(String.format("Average IPS: %6.0f", this.lastAverageMIPS));
             
-            this.buttonToggleRunning.setText(this.halter.halted() ? "Start CPU" : "Stop CPU");
+            this.buttonToggleRunning.setText(this.sim.getHalted() ? "Start CPU" : "Stop CPU");
             
             this.screen.update(this.videoRAM, 0);
             
@@ -535,9 +549,10 @@ public class NotSoTinyUI extends Application {
                 Disassembler dis = new Disassembler();
                 String state = "-- Processor State --\n";
                 
-                state += String.format("A    B    C    D%n%04X %04X %04X %04X%nI    J    F    PF%n%04X %04X %04X %04X%nip       bp       sp%n%08X %08X %08X%n",
+                state += String.format("A    B    C    D%n%04X %04X %04X %04X%nI    J    K    L%n%04X %04X %04X %04X%nF    PF%n%04X %04X%nip       bp       sp%n%08X %08X %08X%n",
                         sim.getRegA(), sim.getRegB(), sim.getRegC(), sim.getRegD(),
-                        sim.getRegI(), sim.getRegJ(), sim.getRegF(), sim.getRegPF(),
+                        sim.getRegI(), sim.getRegJ(), sim.getRegK(), sim.getRegL(),
+                        sim.getRegF(), sim.getRegPF(),
                         sim.getRegIP(), sim.getRegBP(), sim.getRegSP());
                 
                 try {

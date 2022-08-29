@@ -40,7 +40,7 @@
 	|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|
 	|                                                                          | IE |
 	|--------------------------------------------------------------------------|----|
-	IE: Interrupt Enable (default 1)
+	IE: Interrupt Enable (default 1). If 1, maskable interrupts are allowed. If 0, maskable interrupts are ignored
 	
 	
 	rim bytes
@@ -56,58 +56,96 @@
 	0		16 bit	32 bit	2x8
 	1		8 bit	16 bit 	4x4
 	
-	bio bytes
+	bio
 	|---|---|---|---|---|---|---|---|
 	| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
 	|---|---|---|---|---|---|---|---|
-	| scale | pair base |     index |
+	| scale | pair base | r16 index |
 	|-------|-----------|-----------|
 	
-	addr = base + (index * scale) + offset
+	value	reg					immediate/memory
+			16  8	pair
+	000		A	AL	D:A			immediate value source
+	001		B	BL	A:B			immediate address source
+	010		C	CL	B:C			base + index source
+	011		D	DL	C:D			base + index + offset source
+	100		I	AH	J:I			???
+	101		J	BH	L:K			immediate address destination
+	110		K	CH	BP			base + index destination
+	111		L	DH	SP/none		base + index + offset destination
 	
-	if there is an index, scale is the number of left-shifts applied to the index, and the offset is 32-bit
-	if there is no index, (scale + 1) is the number of bytes of the offset
+	value	scale	index
+	00		0		1 byte offset
+	01		1		2 byte offset
+	10		2		3 byte offset
+	11		4		4 byte offset
 	
-	value	reg			immediate/memory
-			16  8
-	000		A	AL		immediate value source
-	001		B	BL		immediate address source
-	010		C	CL		base + index source
-	011		D	DL		base + index + offset source
-	100		I	AH		???
-	101		J	BH		immediate address destination
-	110		BP	CH		base + index destination
-	111		SP	DH		base + index + offset destination
-	
-			pair	index
-	000		D:A		A
-	001		A:B		B
-	010		B:C		C
-	011		C:D		D
-	100		J:I		I
-	101		I:J		J
-	110		BP		BP
-	111		SP/none	none
+	address = base + (index * scale) + offset
+	if scale = 0, the lower 2 bits of index + 1 specifies the number of bytes of the offset, if it
+	is present. If there is also no base, this value is ignored and the offset is 4 bytes wide.
 	
 	As an argument, pair 111 is always SP
-	As a base, pair 111 is SP if the index is none (111), and is none otherwise.
-	[SP + offset] is a valid address, while [base + (scale * SP) + offset] is not.
+	As a base, pair 111 is none if there is an index and SP if there is not
 	
-	Sources for BP and SP are always 32 bits (pairs) unless the operation specifies its size,
-	including when the source is ignored by the operation.
 	MOVW uses pairs for both sources and destinations.
-	Wide destination operations use wide destinations and normal sources. If BP or SP are used
-	as a source for a wide destination operation, their lower 16 bits are used.
+	Wide destination operations use wide destinations and normal sources.
 	MOVS sign extends, and MOVZ zero extends.
-	
-	Packed RIM is restricted to register destinations A/D:A, B/A:B, C/B:C, and D/C:D.
-	In other words, the reg and rim values ignore the most significant bit.
 	
 	For division, the carry and overflow flags are set appropriately if the quotient is too
 	large for the destination. The zero flag is set if both quotient and remainder (if applicible)
 	are zero. The sign flag is set according to the quotient.	
 	
 	Interrupts push IP, then flags, then jump to the address at [arg * 4]
-	Made for interrupts, PUSHA pushes, in order, A, B, C, D, I, J, BP. POPA pops the equivalent.
+	Made for interrupts, PUSHA pushes, in order, A, B, C, D, I, J, K, L, BP. POPA pops the equivalent.
+	The HLT instruction halts execution until an interrupt is received
 		
 	Conditions match x86
+	
+	
+	
+	
+	
+	
+	Index Register Overhaul Revisions
+	- Add index registers K and L
+		- Remove XCHG shortcuts
+		- Rearrange opcodes
+		- Remove BP and SP from RIM
+			- SP ADD/SUB i8 shortcuts
+		- BIO overhaul
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	used addressing modes
+	base offset
+		BP
+		D:A
+		J:I
+	offset
+	base
+		J:I
+		BP
+		D:A
+		A:B
+	basae index
+		BP J
+		BP I
+		BP C
+		J:I D
+		J:I B
+		J:I A
+		J:I C
+		A:B I
+	index offset
+		J
+	base index offset
+		J:I D
+		A:B I

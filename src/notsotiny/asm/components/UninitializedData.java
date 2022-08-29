@@ -3,8 +3,6 @@ package notsotiny.asm.components;
 import java.util.LinkedList;
 import java.util.List;
 
-import notsotiny.asm.resolution.Resolvable;
-
 /**
  * A Component representing some amount of uninitialized data.
  * 
@@ -38,16 +36,6 @@ public class UninitializedData implements Component {
     @Override
     public boolean isResolved() {
         return true;
-    }
-
-    @Override
-    public void resolve() {
-        // not applicible
-    }
-
-    @Override
-    public void setParent(Resolvable r) {
-        // no parent
     }
 
     @Override

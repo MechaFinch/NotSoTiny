@@ -3,9 +3,7 @@ package notsotiny.asm.components;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
-import notsotiny.asm.resolution.Resolvable;
 import notsotiny.asm.resolution.ResolvableValue;
 
 /**
@@ -82,16 +80,6 @@ public class InitializedData implements Component {
     @Override
     public boolean isResolved() {
         return data.stream().allMatch(rv -> rv.isResolved());
-    }
-
-    @Override
-    public void resolve() {
-        // TODO Auto-generated method stub
-    }
-
-    @Override
-    public void setParent(Resolvable r) {
-        // no parent
     }
     
     @Override

@@ -39,6 +39,7 @@ import asmlib.util.relocation.RelocatableObject.Endianness;
 import notsotiny.asm.components.Component;
 import notsotiny.asm.components.InitializedData;
 import notsotiny.asm.components.Instruction;
+import notsotiny.asm.components.Repetition;
 import notsotiny.asm.components.UninitializedData;
 import notsotiny.asm.resolution.ResolvableConstant;
 import notsotiny.asm.resolution.ResolvableExpression;
@@ -253,97 +254,95 @@ public class Assembler {
             
             // parse
             try {
-                switch(s) {
-                    case DirectiveSymbol d:
-                        switch(d.name()) {
-                            // import another file
-                            case "%INCLUDE":
-                            case "IMPORT":
-                                String fileName = "",
-                                       libName = ""; // imported file's library name
-                                
-                                // we should have an Expression with <filename> as <name>
-                                if(symbolQueue.poll() instanceof ExpressionSymbol es) {
-                                    fileName = switch(es.symbols().get(0)) {
-                                        case NameSymbol ns      -> ns.name();
-                                        case StringSymbol ss    -> ss.value();
-                                        default -> throw new IllegalArgumentException("Invalid library description");
-                                    };
-                                    
-                                    // as
-                                    if(!(es.symbols().get(1) instanceof DirectiveSymbol ds && ds.name().equals("AS")))
-                                        throw new IllegalArgumentException("Invalid library description");
-                                    
-                                    // value
-                                    if(es.symbols().get(2) instanceof NameSymbol ns) {
-                                        libName = ns.name();
-                                    } else throw new IllegalArgumentException("Invalid library description");
-                                } else throw new IllegalArgumentException("Invalid library description");
-                                
-                                // working directory
-                                if(!new File(fileName).isAbsolute()) fileName = workingDirectory + fileName;
-                                
-                                // add library
-                                LOG.finer("Added file " + fileName + " as " + libName);
-                                includedFiles.add(fileName);
-                                libraryNamesMap.put(new File(fileName), libName);
-                                break;
-                                
-                            // set library name
-                            case "%LIBNAME":
-                                // expecting a name
-                                libraryName = switch(symbolQueue.poll()) {
+                // handle directives that need more info than normal
+                boolean handled = false;
+                if(s instanceof DirectiveSymbol d) {
+                    switch(d.name()) {
+                        // import another file
+                        case "%INCLUDE":
+                        case "IMPORT":
+                            String fileName = "",
+                                   libName = ""; // imported file's library name
+                            
+                            // we should have an Expression with <filename> as <name>
+                            if(symbolQueue.poll() instanceof ExpressionSymbol es) {
+                                fileName = switch(es.symbols().get(0)) {
                                     case NameSymbol ns      -> ns.name();
                                     case StringSymbol ss    -> ss.value();
-                                    default -> throw new IllegalArgumentException("Invalid library naem");
+                                    default -> throw new IllegalArgumentException("Invalid library description");
                                 };
-                                break;
+                                
+                                // as
+                                if(!(es.symbols().get(1) instanceof DirectiveSymbol ds && ds.name().equals("AS")))
+                                    throw new IllegalArgumentException("Invalid library description");
+                                
+                                // value
+                                if(es.symbols().get(2) instanceof NameSymbol ns) {
+                                    libName = ns.name();
+                                } else throw new IllegalArgumentException("Invalid library description");
+                            } else throw new IllegalArgumentException("Invalid library description");
                             
-                            // code directives
-                            default:
-                                Component c = parseDirective(symbolQueue, d);
-                                
-                                LOG.finer("Directive resulted in: " + c);
-                                
-                                if(c != null) {
-                                    allInstructions.add(c);
-                                    if(!c.isResolved()) unresolvedInstructions.add(c);
-                                } else encounteredError = true;
-                        }
-                        break;
+                            // working directory
+                            if(!new File(fileName).isAbsolute()) fileName = workingDirectory + fileName;
+                            
+                            // add library
+                            if(!includedFiles.contains(fileName)) {
+                                LOG.finer("Added file " + fileName + " as " + libName);
+                                includedFiles.add(fileName);
+                            }
+                            
+                            libraryNamesMap.put(new File(fileName), libName);
+                            
+                            handled = true;
+                            break;
+                            
+                        // set library name
+                        case "%LIBNAME":
+                            // expecting a name
+                            libraryName = switch(symbolQueue.poll()) {
+                                case NameSymbol ns      -> ns.name();
+                                case StringSymbol ss    -> ss.value();
+                                default -> throw new IllegalArgumentException("Invalid library name");
+                            };
+                            
+                            handled = true;
+                            break;
                         
-                        // explicit label
-                        // add it to the map
-                    case LabelSymbol l:
+                        // set library origin
+                        case "%ORG":
+                            // expecting a constant
+                            long origin = switch(symbolQueue.poll()) {
+                                case ConstantSymbol cs -> cs.value();
+                                default -> throw new IllegalArgumentException("Invalid origin");
+                            };
+                            
+                            outgoingReferences.put("ORIGIN", (int) origin);
+                            outgoingReferenceWidths.put("ORIGIN", 4);
+                            
+                            handled = true;
+                            break;
+                        
+                        // code directives
+                        default:
+                    }
+                }
+                
+                if(!handled) {
+                    if(s instanceof LabelSymbol l) {
                         labelIndexMap.put(l.name(), allInstructions.size());
                         LOG.finer("Added label " + l.name() + " at index " + allInstructions.size());
-                        break;
+                    } else {                
+                        Component c = parseLine(s, symbolQueue, line);
                         
-                        /*
-                        // implicit label
-                    case NameSymbol n:
-                        labelIndexMap.put(n.name(), allInstructions.size());
-                        LOG.finer("Added label " + n.name() + " at index " + allInstructions.size());
-                        break;
-                        */
-                    
-                    case MnemonicSymbol m:
-                        Instruction inst = parseInstruction(symbolQueue, m);
-                        
-                        if(inst == null) {
-                            // placeholder
-                            LOG.warning("PARSE INSTRUCTION RETURNED NULL");
+                        if(c == null) {
                             encounteredError = true;
                         } else {
-                            LOG.finer("Parsed instruction: " + inst);
-                            allInstructions.add(inst);
-                            if(!inst.isResolved()) unresolvedInstructions.add(inst);
+                            //LOG.finest(c.toString());
+                            allInstructions.add(c);
+                            
+                            if(!c.isResolved()) unresolvedInstructions.add(c);
                         }
-                        break;
-                        
-                    default: // do nothing
-                        LOG.warning("Unknown construct start: " + s + " on line " + line);
-                        encounteredError = true;
+                    }
                 }
             } catch(IndexOutOfBoundsException e) { // these let us avoid checking that needed symbols exist
                 throw new IllegalArgumentException("Missing symbol after " + s + " on line " + line);
@@ -382,55 +381,7 @@ public class Assembler {
             // check for invalid library references
             // we can't do math on a value we cannot access by definition
             if(!c.isResolved()) {
-                switch(c) {
-                    case Instruction inst:
-                        ResolvableLocationDescriptor source = inst.getSourceDescriptor(),
-                                                     dest = inst.getDestinationDescriptor();
-                        
-                        // check source
-                        if(!source.isResolved()) {
-                            ResolvableValue rv = switch(source.getType()) {
-                                case IMMEDIATE  -> source.getImmediate();
-                                case MEMORY     -> source.getMemory().getOffset();
-                                default         -> null; // shouldn't happen
-                            };
-                            
-                            if(rv instanceof ResolvableExpression re) checkExpressionValidity(re, labelIndexMap);
-                            else if(rv instanceof ResolvableConstant rc && isLibraryReference(rc.getName(), libNames)) {
-                                // make sure jumps to libraries are absolute
-                                Operation opType = inst.getOpcode().getType();
-                                
-                                if(opType == Operation.JCC) throw new IllegalArgumentException("Cannot make conditional jump absolute: " + inst);
-                                else if(opType == Operation.JMP) { // convert to JMPA 
-                                    inst.setOpcode(Opcode.JMPA_I32);
-                                } else if(opType == Operation.CALL) { // convert to CALLA
-                                    inst.setOpcode(Opcode.CALLA_I32);
-                                }
-                            }
-                        }
-                        
-                        // check destination
-                        if(!dest.isResolved()) {
-                            ResolvableValue rv = switch(dest.getType()) {
-                                case IMMEDIATE  -> dest.getImmediate();
-                                case MEMORY     -> dest.getMemory().getOffset();
-                                default         -> null; // shouldn't happen
-                            };
-                            
-                            if(rv instanceof ResolvableExpression re) checkExpressionValidity(re, labelIndexMap);
-                        }
-                        break;
-                    
-                    case InitializedData init:
-                        for(ResolvableValue rv : init.getUnresolvedData()) {
-                            if(rv instanceof ResolvableExpression rei) {
-                                checkExpressionValidity(rei, labelIndexMap);
-                            }
-                        }
-                        break;
-                    
-                    default: // not possible
-                }
+                validateLibraryReferences(c, libNames, labelIndexMap);
             }
             
             // getSize is set up to give the worst-case immediate width isn't overridden
@@ -462,66 +413,8 @@ public class Assembler {
             
             if(!c.isResolved()) {
                 String before = c.toString();
-                boolean relocated = false;
                 
-                switch(c) {
-                    case Instruction inst:
-                        ResolvableLocationDescriptor source = inst.getSourceDescriptor(),
-                                                     dest = inst.getDestinationDescriptor();
-                        
-                        // resolve source
-                        if(!source.isResolved()) {
-                            switch(source.getType()) {
-                                case IMMEDIATE:
-                                    // jumps are relative
-                                    Operation type = inst.getOpcode().getType();
-                                    boolean relative = false;
-                                    if(type == Operation.JMP || type == Operation.JCC || type == Operation.CALL) relative = true;
-                                    
-                                    relocated |= resolveValue(source.getImmediate(), labelAddressMap, libNames, incomingReferences, libraryName, addr + (relative ? c.getSize() : inst.getImmediateOffset()), relative, false);
-                                    
-                                    if(relative && !source.isResolved()) throw new IllegalArgumentException("Could not resolve relative value: " + source);
-                                    
-                                    // infer size if not done already
-                                    if(source.isResolved() && source.getSize() == -1) source.setSize(getValueWidth(source.getImmediate().value(), false, false));
-                                    break;
-                                    
-                                case MEMORY:
-                                    relocated |= resolveValue(source.getMemory().getOffset(), labelAddressMap, libNames, incomingReferences, libraryName, addr + inst.getImmediateOffset(), false, false);
-                                    break;
-                                    
-                                default:
-                            }
-                        }
-                        
-                        // resolve destination
-                        if(!dest.isResolved()) {
-                            switch(dest.getType()) {
-                                /* this shouldn't be possible idk why i wrote it
-                                case IMMEDIATE:
-                                    resolveValue(dest.getImmediate(), labelAddressMap, false, 0);
-                                    if(dest.isResolved() && dest.getSize() == -1) dest.setSize(getValueWidth(dest.getImmediate().value(), false));
-                                    break; */
-                                    
-                                case MEMORY:
-                                    relocated |= resolveValue(dest.getMemory().getOffset(), labelAddressMap, libNames, incomingReferences, libraryName, addr + inst.getImmediateOffset(), false, false);
-                                    break;
-                                    
-                                default:
-                            }
-                        }
-                        break;
-                        
-                    case InitializedData init:
-                        for(ResolvableValue rv : init.getUnresolvedData()) {
-                            relocated = resolveValue(rv, labelAddressMap, libNames, incomingReferences, libraryName, addr, false, false);
-                            
-                            if(init.getWordSize() != 4) relocated = false;
-                        }
-                        break;
-                    
-                    default:
-                }
+                boolean relocated = resolveComponent(c, labelAddressMap, libNames, incomingReferences, libraryName, addr);
                 
                 LOG.finer(before + " resolved to " + c);
                 
@@ -532,7 +425,14 @@ public class Assembler {
             
             int s = c.getSize();
             
-            if(s != len) throw new IllegalArgumentException("Length changed after resolution: " + len + " -> " + s);
+            if(s != len) {
+                // check if this affected any labels
+                for(String lbl : labelIndexMap.keySet()) {
+                    if(labelIndexMap.get(lbl) > i) {
+                        throw new IllegalArgumentException("Length changed after resolution: " + len + " -> " + s + " for component " + c);
+                    }
+                }
+            }
             
             addr += s;
         }
@@ -578,6 +478,195 @@ public class Assembler {
         
         return new RenameableRelocatableObject(Endianness.LITTLE, libraryName, 2, incomingReferences, outgoingReferences, incomingReferenceWidths, outgoingReferenceWidths, objectCodeArray, false, libraryNamesMap);
     }
+    
+    /**
+     * Resolves a component
+     * 
+     * @param c
+     * @return
+     */
+    private static boolean resolveComponent(Component c, Map<String, Integer> labelAddressMap, Set<String> libNames, HashMap<String, List<Integer>> incomingReferences, String libraryName, int addr) {
+        boolean relocated = false;
+        
+        switch(c) {
+            case Instruction inst:
+                ResolvableLocationDescriptor source = inst.getSourceDescriptor(),
+                                             dest = inst.getDestinationDescriptor();
+                
+                // resolve source
+                if(!source.isResolved()) {
+                    switch(source.getType()) {
+                        case IMMEDIATE:
+                            // jumps are relative
+                            Operation type = inst.getOpcode().getType();
+                            boolean relative = false;
+                            if(type == Operation.JMP || type == Operation.JCC || type == Operation.CALL) relative = true;
+                            
+                            relocated |= resolveValue(source.getImmediate(), labelAddressMap, libNames, incomingReferences, libraryName, addr + (relative ? c.getSize() : inst.getImmediateOffset()), relative, false);
+                            
+                            if(relative && !source.isResolved()) throw new IllegalArgumentException("Could not resolve relative value: " + source);
+                            
+                            // infer size if not done already
+                            if(source.isResolved() && source.getSize() == -1) source.setSize(getValueWidth(source.getImmediate().value(), false, false));
+                            break;
+                            
+                        case MEMORY:
+                            relocated |= resolveValue(source.getMemory().getOffset(), labelAddressMap, libNames, incomingReferences, libraryName, addr + inst.getImmediateOffset(), false, false);
+                            break;
+                            
+                        default:
+                    }
+                }
+                
+                // resolve destination
+                if(!dest.isResolved()) {
+                    switch(dest.getType()) {
+                        /* this shouldn't be possible idk why i wrote it
+                        case IMMEDIATE:
+                            resolveValue(dest.getImmediate(), labelAddressMap, false, 0);
+                            if(dest.isResolved() && dest.getSize() == -1) dest.setSize(getValueWidth(dest.getImmediate().value(), false));
+                            break; */
+                            
+                        case MEMORY:
+                            relocated |= resolveValue(dest.getMemory().getOffset(), labelAddressMap, libNames, incomingReferences, libraryName, addr + inst.getImmediateOffset(), false, false);
+                            break;
+                            
+                        default:
+                    }
+                }
+                break;
+                
+            case InitializedData init:
+                for(ResolvableValue rv : init.getUnresolvedData()) {
+                    relocated = resolveValue(rv, labelAddressMap, libNames, incomingReferences, libraryName, addr, false, false);
+                    
+                    if(init.getWordSize() != 4) relocated = false;
+                }
+                break;
+                
+            case UninitializedData uninit:
+                break;
+            
+            case Repetition rep:
+                relocated = resolveValue(rep.getReps(), labelAddressMap, libNames, incomingReferences, libraryName, addr, false, false);
+                
+                if(relocated) throw new IllegalArgumentException("Repetition count cannot be an external value");
+                
+                for(int i = 0; i < rep.getReps().value(); i++) {
+                    relocated |= resolveComponent(rep.getData(), labelAddressMap, libNames, incomingReferences, libraryName, addr);
+                    addr += rep.getData().getSize();
+                }
+                break;
+            
+            default:
+        }
+        
+        return relocated;
+    }
+    
+    /**
+     * Validates library references contained in the given component
+     * 
+     * @param c
+     */
+    private static void validateLibraryReferences(Component c, Set<String> libNames, Map<String, Integer> labelIndexMap) {
+        switch(c) {
+            case Instruction inst:
+                ResolvableLocationDescriptor source = inst.getSourceDescriptor(),
+                                             dest = inst.getDestinationDescriptor();
+                
+                // check source
+                if(!source.isResolved()) {
+                    ResolvableValue rv = switch(source.getType()) {
+                        case IMMEDIATE  -> source.getImmediate();
+                        case MEMORY     -> source.getMemory().getOffset();
+                        default         -> null; // shouldn't happen
+                    };
+                    
+                    if(rv instanceof ResolvableExpression re) checkExpressionValidity(re, labelIndexMap);
+                    else if(rv instanceof ResolvableConstant rc && isLibraryReference(rc.getName(), libNames)) {
+                        // make sure jumps to libraries are absolute
+                        Operation opType = inst.getOpcode().getType();
+                        
+                        if(opType == Operation.JCC) throw new IllegalArgumentException("Cannot make conditional jump absolute: " + inst);
+                        else if(opType == Operation.JMP) { // convert to JMPA 
+                            inst.setOpcode(Opcode.JMPA_I32);
+                        } else if(opType == Operation.CALL) { // convert to CALLA
+                            inst.setOpcode(Opcode.CALLA_I32);
+                        }
+                    }
+                }
+                
+                // check destination
+                if(!dest.isResolved()) {
+                    ResolvableValue rv = switch(dest.getType()) {
+                        case IMMEDIATE  -> dest.getImmediate();
+                        case MEMORY     -> dest.getMemory().getOffset();
+                        default         -> null; // shouldn't happen
+                    };
+                    
+                    if(rv instanceof ResolvableExpression re) checkExpressionValidity(re, labelIndexMap);
+                }
+                break;
+            
+            case InitializedData init:
+                for(ResolvableValue rv : init.getUnresolvedData()) {
+                    if(rv instanceof ResolvableExpression rei) {
+                        checkExpressionValidity(rei, labelIndexMap);
+                    }
+                }
+                break;
+            
+            case UninitializedData uninit:
+                break;
+            
+            case Repetition rep:
+                validateLibraryReferences(rep.getData(), libNames, labelIndexMap);
+                
+                if(rep.getReps() instanceof ResolvableExpression re) checkExpressionValidity(re, labelIndexMap);
+                break;
+            
+            default: // not possible
+        }
+    }
+    
+    /**
+     * Parses a line
+     * 
+     * @param s
+     * @param symbolQueue
+     * @return
+     */
+    private static Component parseLine(Symbol s, LinkedList<Symbol> symbolQueue, int line) {
+        switch(s) {
+            case DirectiveSymbol d:
+                Component c = parseDirective(symbolQueue, d);
+                
+                LOG.finer("Directive resulted in: " + c);
+                
+                if(c != null) {
+                    return c;
+                }
+                break;
+            
+            case MnemonicSymbol m:
+                Instruction inst = parseInstruction(symbolQueue, m);
+                
+                if(inst == null) {
+                    // placeholder
+                    LOG.warning("PARSE INSTRUCTION RETURNED NULL");
+                } else {
+                    LOG.finer("Parsed instruction: " + inst);
+                    return inst;
+                }
+                break;
+                
+            default: // do nothing
+                LOG.warning("Unknown construct start: " + s + " on line " + line);
+        }
+        
+        return null;
+    }
 
     /**
      * Parse an instruction
@@ -599,6 +688,7 @@ public class Assembler {
             // no arguments, ez
             return switch(opr) {
                 case NOP    -> new Instruction(Opcode.NOP);
+                case HLT    -> new Instruction(Opcode.HLT);
                 case RET    -> new Instruction(Opcode.RET);
                 case IRET   -> new Instruction(Opcode.IRET);
                 case PUSHA  -> new Instruction(Opcode.PUSHA);
@@ -631,6 +721,8 @@ public class Assembler {
                                 case D  -> Opcode.PUSH_D;
                                 case I  -> Opcode.PUSH_I;
                                 case J  -> Opcode.PUSH_J;
+                                case K  -> Opcode.PUSH_K;
+                                case L  -> Opcode.PUSH_L;
                                 case BP -> Opcode.PUSH_BP;
                                 case SP -> Opcode.PUSH_SP;
                                 case F  -> Opcode.PUSH_F;
@@ -652,6 +744,8 @@ public class Assembler {
                                 case D  -> Opcode.POP_D;
                                 case I  -> Opcode.POP_I;
                                 case J  -> Opcode.POP_J;
+                                case K  -> Opcode.POP_K;
+                                case L  -> Opcode.POP_L;
                                 case BP -> Opcode.POP_BP;
                                 case SP -> Opcode.POP_SP;
                                 case F  -> Opcode.POP_F;
@@ -662,12 +756,14 @@ public class Assembler {
                         };
                         break;
                     
-                        // I/J shortcuts
+                        // index register shortcuts
                     case INC:
                         opcode = switch(type) {
                             case REGISTER   -> switch(register) {
                                 case I  -> Opcode.INC_I;
                                 case J  -> Opcode.INC_J;
+                                case K  -> Opcode.INC_K;
+                                case L  -> Opcode.INC_L;
                                 default -> Opcode.INC_RIM;
                             };
                             
@@ -680,6 +776,8 @@ public class Assembler {
                             case REGISTER   -> switch(register) {
                                 case I  -> Opcode.ICC_I;
                                 case J  -> Opcode.ICC_J;
+                                case K  -> Opcode.ICC_K;
+                                case L  -> Opcode.ICC_L;
                                 default -> Opcode.ICC_RIM;
                             };
                             
@@ -692,6 +790,8 @@ public class Assembler {
                             case REGISTER   -> switch(register) {
                                 case I  -> Opcode.DEC_I;
                                 case J  -> Opcode.DEC_J;
+                                case K  -> Opcode.DEC_K;
+                                case L  -> Opcode.DEC_L;
                                 default -> Opcode.DEC_RIM;
                             };
                             
@@ -704,6 +804,8 @@ public class Assembler {
                             case REGISTER   -> switch(register) {
                                 case I  -> Opcode.DCC_I;
                                 case J  -> Opcode.DCC_J;
+                                case K  -> Opcode.DCC_K;
+                                case L  -> Opcode.DCC_L;
                                 default -> Opcode.DCC_RIM;
                             };
                             
@@ -947,6 +1049,12 @@ public class Assembler {
                             } else if(firstRegister == Register.J) {
                                 opcode = Opcode.MOV_J_I16;
                                 break;
+                            } else if(firstRegister == Register.K) {
+                                opcode = Opcode.MOV_K_I16;
+                                break;
+                            } else if(firstRegister == Register.L) {
+                                opcode = Opcode.MOV_L_I16;
+                                break;
                             }
                         }
                         
@@ -1093,109 +1201,7 @@ public class Assembler {
                         break;
                         
                     case XCHG:
-                        // main shortcuts
-                        if(firstIsABCD && secondIsABCD && firstType != secondType) {
-                            opcode = switch(firstRegister) {
-                                case A  -> switch(secondRegister) {
-                                    case B  -> Opcode.XCHG_A_B;
-                                    case C  -> Opcode.XCHG_A_C;
-                                    case D  -> Opcode.XCHG_A_D;
-                                    default -> Opcode.XCHG_RIM;
-                                };
-                                
-                                case B  -> switch(secondRegister) {
-                                    case A  -> Opcode.XCHG_A_B;
-                                    case C  -> Opcode.XCHG_B_C;
-                                    case D  -> Opcode.XCHG_B_D;
-                                    default -> Opcode.XCHG_RIM;
-                                };
-                                
-                                case C  -> switch(secondRegister) {
-                                    case A  -> Opcode.XCHG_A_C;
-                                    case B  -> Opcode.XCHG_B_C;
-                                    case D  -> Opcode.XCHG_C_D;
-                                    default -> Opcode.XCHG_RIM;
-                                };
-                                
-                                case D  -> switch(secondRegister) {
-                                    case A  -> Opcode.XCHG_A_D;
-                                    case B  -> Opcode.XCHG_B_D;
-                                    case C  -> Opcode.XCHG_C_D;
-                                    default -> Opcode.XCHG_RIM;
-                                };
-                                
-                                default -> Opcode.XCHG_RIM; // fallback
-                            };
-                            
-                            break;
-                        }
-                        
-                        // low-low shortcuts
-                        if(firstIsLByte && secondIsLByte && firstType != secondType) {
-                            opcode = switch(firstRegister) {
-                                case AL -> switch(secondRegister) {
-                                    case BL -> Opcode.XCHG_AL_BL;
-                                    case CL -> Opcode.XCHG_AL_CL;
-                                    case DL -> Opcode.XCHG_AL_DL;
-                                    default -> Opcode.XCHG_RIM;
-                                };
-                                
-                                case BL -> switch(secondRegister) {
-                                    case AL -> Opcode.XCHG_AL_BL;
-                                    case CL -> Opcode.XCHG_BL_CL;
-                                    case DL -> Opcode.XCHG_BL_DL;
-                                    default -> Opcode.XCHG_RIM;
-                                };
-                                
-                                case CL -> switch(secondRegister) {
-                                    case AL -> Opcode.XCHG_AL_CL;
-                                    case BL -> Opcode.XCHG_BL_CL;
-                                    case DL -> Opcode.XCHG_CL_DL;
-                                    default -> Opcode.XCHG_RIM;
-                                };
-                                
-                                case DL -> switch(secondRegister) {
-                                    case AL -> Opcode.XCHG_AL_DL;
-                                    case BL -> Opcode.XCHG_BL_DL;
-                                    case CL -> Opcode.XCHG_CL_DL;
-                                    default -> Opcode.XCHG_RIM;
-                                };
-                                
-                                default -> Opcode.XCHG_RIM; // fallback
-                            };
-                            
-                            break;
-                        }
-                            
-                        // high-low shortcuts
-                        if(((firstIsLByte && secondIsHByte) || (firstIsHByte && secondIsLByte)) && firstType != secondType) {
-                            opcode = switch(firstRegister) {
-                                case AH, AL -> switch(secondRegister) {
-                                    case AH, AL -> Opcode.XCHG_AH_AL;
-                                    default     -> Opcode.XCHG_RIM;
-                                };
-                                
-                                case BH, BL -> switch(secondRegister) {
-                                    case BH, BL -> Opcode.XCHG_BH_BL;
-                                    default     -> Opcode.XCHG_RIM;
-                                };
-                                
-                                case CH, CL -> switch(secondRegister) {
-                                    case CH, CL -> Opcode.XCHG_CH_CL;
-                                    default     -> Opcode.XCHG_RIM;
-                                };
-                                
-                                case DH, DL -> switch(secondRegister) {
-                                    case DH, DL -> Opcode.XCHG_DH_DL;
-                                    default     -> Opcode.XCHG_RIM;
-                                };
-                                
-                                default     -> Opcode.XCHG_RIM; // fallback
-                            };
-                            
-                            break;
-                        }
-                        
+                        // no more shortcuts for xchg
                         opcode = Opcode.XCHG_RIM;
                         break;
                         
@@ -1207,6 +1213,7 @@ public class Assembler {
                                 case B  -> (immediateSize == 1) ? Opcode.ADD_B_I8 : Opcode.ADD_B_I16;
                                 case C  -> (immediateSize == 1) ? Opcode.ADD_C_I8 : Opcode.ADD_C_I16;
                                 case D  -> (immediateSize == 1) ? Opcode.ADD_D_I8 : Opcode.ADD_D_I16;
+                                case SP -> Opcode.ADD_SP_I8;
                                 default -> (immediateSize == 1) ? Opcode.ADD_RIM_I8 : Opcode.ADD_RIM;
                             };
                         } else {
@@ -1235,6 +1242,7 @@ public class Assembler {
                                 case B  -> (immediateSize == 1) ? Opcode.SUB_B_I8 : Opcode.SUB_B_I16;
                                 case C  -> (immediateSize == 1) ? Opcode.SUB_C_I8 : Opcode.SUB_C_I16;
                                 case D  -> (immediateSize == 1) ? Opcode.SUB_D_I8 : Opcode.SUB_D_I16;
+                                case SP -> Opcode.SUB_SP_I8;
                                 default -> (immediateSize == 1) ? Opcode.SUB_RIM_I8 : Opcode.SUB_RIM;
                             };
                         } else {
@@ -1314,14 +1322,14 @@ public class Assembler {
                             
                             if(firstOperand.getType() == LocationType.REGISTER) {
                                 switch(firstOperand.getRegister()) {
-                                    case A, B, C, D, DA, AB, BC, CD: break;
+                                    case A, B, C, D, I, J, K, L, DA, AB, BC, CD, JI, LK: break;
                                     default: throw new IllegalArgumentException("Invalid packed register: " + firstOperand);
                                 }
                             }
                             
                             if(secondOperand.getType() == LocationType.REGISTER) {
                                 switch(secondOperand.getRegister()) {
-                                    case A, B, C, D, DA, AB, BC, CD: break;
+                                    case A, B, C, D, I, J, K, L, DA, AB, BC, CD, JI, LK: break;
                                     default: throw new IllegalArgumentException("Invalid packed register: " + secondOperand);
                                 }
                             }
@@ -1434,8 +1442,8 @@ public class Assembler {
         
         // simplify checks
         Set<Long> scales = Set.of(1l, 2l, 4l, 8l);
-        Set<String> reg16s = Set.of("A", "B", "C", "D", "I", "J"),
-                    reg32s = Set.of("A", "B", "C", "D", "I", "J", "BP", "SP");
+        Set<String> reg16s = Set.of("A", "B", "C", "D", "I", "J", "K", "L"),
+                    reg32s = Set.of("A", "B", "C", "D", "I", "J", "K", "L", "BP", "SP");
         
         for(int i = 0; i < symbols.size(); i++) {
             switch(symbols.get(i)) {
@@ -1481,7 +1489,7 @@ public class Assembler {
                                     
                                     switch(r) {
                                             // index
-                                        case A, B, C, D, I, J:
+                                        case A, B, C, D, I, J, K, L:
                                             if(assignedIndex) throw new IllegalArgumentException("Duplicate index in memory: " + rs);
                                         
                                             index = r;
@@ -1490,7 +1498,7 @@ public class Assembler {
                                             break;
                                         
                                             // base
-                                        case DA, AB, BC, CD, JI, IJ:
+                                        case DA, AB, BC, CD, JI, LK: // separate case cause :
                                             i += 2;
                                             
                                         case BP, SP:
@@ -1578,8 +1586,10 @@ public class Assembler {
                         case "B"    -> n2.equals("C") ? Register.BC : Register.B;
                         case "C"    -> n2.equals("D") ? Register.CD : Register.C;
                         case "D"    -> n2.equals("A") ? Register.DA : Register.D;
-                        case "I"    -> n2.equals("J") ? Register.IJ : Register.I;
+                        case "I"    -> Register.I;
                         case "J"    -> n2.equals("I") ? Register.JI : Register.J;
+                        case "K"    -> Register.K;
+                        case "L"    -> n2.equals("K") ? Register.LK :  Register.L;
                         default     -> Register.valueOf(name);
                     };
                 } else {
@@ -1626,7 +1636,7 @@ public class Assembler {
      */
     private static boolean hasFirstOperand(Operation op) {
         return switch(op) {
-            case NOP, PUSHA, POPA, RET, IRET -> false;
+            case NOP, PUSHA, POPA, RET, IRET, HLT -> false;
             default -> true;
         };
     }
@@ -1683,11 +1693,35 @@ public class Assembler {
             case "DP":
                 return defineData(symbolQueue, 4);
             
+            // repeat the given line x times
+            case "REPEAT":
+                return repeatComponent(symbolQueue);
+            
             // %DEFINE is included here as definitions are handled by AssemblerLib
             // AS is expressive and part of the import/include construct so shouldn't be passed
             default:
                 throw new IllegalArgumentException("Invalid directive: " + ds);
         }
+    }
+    
+    /**
+     * Parses a REPEAT directive's contents
+     * 
+     * @param symbolQueue
+     * @return
+     */
+    private static Component repeatComponent(LinkedList<Symbol> symbolQueue) {
+        // we expect an expression that evaluates to the number of repetitions, a separator, and a line we can send to the normal parser
+        Symbol s = symbolQueue.poll();
+        ResolvableValue reps = switch(s) {
+            case ExpressionSymbol expr  -> ConstantExpressionParser.parse(new LinkedList<Symbol>(expr.symbols()));
+            case ConstantSymbol c       -> new ResolvableConstant(c.value());
+            default -> throw new IllegalArgumentException("Invalid repetition count: " + s);
+        };
+        
+        if(symbolQueue.peek() instanceof SeparatorSymbol ss) symbolQueue.poll();
+        
+        return new Repetition(parseLine(symbolQueue.poll(), symbolQueue, -1), reps);
     }
     
     /**

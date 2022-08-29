@@ -13,8 +13,6 @@ public class ResolvableMemory implements Resolvable {
     private Register base,
                      index;
     
-    private Resolvable parent;
-    
     private ResolvableValue offset;
     
     private int scale;
@@ -32,8 +30,6 @@ public class ResolvableMemory implements Resolvable {
         this.index = index;
         this.scale = scale;
         this.offset = new ResolvableConstant(offset);
-        
-        this.parent = null;
     }
     
     /**
@@ -49,25 +45,11 @@ public class ResolvableMemory implements Resolvable {
         this.index = index;
         this.scale = scale;
         this.offset = offset;
-        
-        this.parent = null;
-        
-        this.offset.setParent(this);
     }
 
     @Override
     public boolean isResolved() {
         return this.offset.isResolved();
-    }
-
-    @Override
-    public void resolve() {
-        if(this.isResolved()) this.parent.resolve();
-    }
-    
-    @Override
-    public void setParent(Resolvable r) {
-        this.parent = r;
     }
     
     @Override

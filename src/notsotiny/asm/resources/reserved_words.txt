@@ -1,5 +1,6 @@
 ::mnemonics::
 nop
+hlt
 movw
 movs
 movz
@@ -116,6 +117,8 @@ cl
 dl
 i
 j
+k
+l
 bp
 sp
 f
@@ -130,6 +133,7 @@ ptr
 import
 %libname
 %define
+%org
 resb
 resw
 resd
@@ -139,6 +143,7 @@ dw
 dd
 dp
 as
+repeat
 ::expressive::
 as
 a
@@ -147,3 +152,5 @@ c
 d
 i
 j
+k
+l

@@ -7,6 +7,7 @@ package notsotiny.sim.ops;
  */
 public enum Operation {
     NOP     (Family.MISC),
+    HLT     (Family.MISC),
     
     MOV     (Family.MOVE),
     MOVW    (Family.MOVE),

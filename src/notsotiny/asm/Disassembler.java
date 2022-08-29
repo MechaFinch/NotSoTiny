@@ -407,15 +407,11 @@ public class Disassembler {
         switch(op) {
             // no arguments, do nothing
             case NOP:
-            case XCHG_AH_AL:    case XCHG_BH_BL:    case XCHG_CH_CL:    case XCHG_DH_DL:
             case MOV_A_B:       case MOV_A_C:       case MOV_A_D:       case MOV_B_A:       case MOV_B_C:
             case MOV_B_D:       case MOV_C_A:       case MOV_C_B:       case MOV_C_D:       case MOV_D_A:
             case MOV_D_B:       case MOV_D_C:       case MOV_AL_BL:     case MOV_AL_CL:     case MOV_AL_DL:
             case MOV_BL_AL:     case MOV_BL_CL:     case MOV_BL_DL:     case MOV_CL_AL:     case MOV_CL_BL:
             case MOV_CL_DL:     case MOV_DL_AL:     case MOV_DL_BL:     case MOV_DL_CL:
-            case XCHG_A_B:      case XCHG_A_C:      case XCHG_A_D:      case XCHG_B_C:      case XCHG_B_D:
-            case XCHG_C_D:      case XCHG_AL_BL:    case XCHG_AL_CL:    case XCHG_AL_DL:    case XCHG_BL_CL:
-            case XCHG_BL_DL:    case XCHG_CL_DL:
             case PUSH_A:        case PUSH_B:        case PUSH_C:        case PUSH_D:        case PUSH_I:
             case PUSH_J:        case PUSH_BP:       case PUSH_SP:       case PUSH_F:
             case POP_A:         case POP_B:         case POP_C:         case POP_D:         case POP_I:

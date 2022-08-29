@@ -14,8 +14,6 @@ public class ResolvableConstant implements ResolvableValue {
     
     private String name;
     
-    private Resolvable parent;
-    
     /**
      * Resolved constructor
      * 
@@ -26,7 +24,6 @@ public class ResolvableConstant implements ResolvableValue {
         
         this.resolved = true;
         this.name = null;
-        this.parent = null;
     }
     
     /**
@@ -39,17 +36,11 @@ public class ResolvableConstant implements ResolvableValue {
         
         this.val = -1;
         this.resolved = false;
-        this.parent = null;
     }
 
     @Override
     public boolean isResolved() {
         return this.resolved;
-    }
-
-    @Override
-    public void resolve() {
-        this.parent.resolve();
     }
     
     @Override
@@ -66,11 +57,6 @@ public class ResolvableConstant implements ResolvableValue {
         }
     }
     
-    @Override
-    public void setParent(Resolvable r) {
-        this.parent = r;
-    }
-    
     /**
      * Set the value and resolve
      * 
@@ -79,8 +65,6 @@ public class ResolvableConstant implements ResolvableValue {
     public void setValue(int val) {
         this.val = val;
         this.resolved = true;
-        
-        resolve();
     }
     
     @Override

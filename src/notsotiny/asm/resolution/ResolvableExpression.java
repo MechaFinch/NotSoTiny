@@ -10,8 +10,6 @@ import notsotiny.asm.Operator;
  */
 public class ResolvableExpression implements ResolvableValue {
     
-    private Resolvable parent;  // container Resolvable
-    
     private ResolvableValue left,    // left side
                             right;   // right side
     
@@ -31,11 +29,6 @@ public class ResolvableExpression implements ResolvableValue {
         this.left = left;
         this.right = right;
         this.operation = operation;
-        
-        this.parent = null;
-        
-        this.left.setParent(this);
-        this.right.setParent(this);
     }
     
     /**
@@ -88,11 +81,6 @@ public class ResolvableExpression implements ResolvableValue {
     public boolean isResolved() {
         return this.left.isResolved() && this.right.isResolved();
     }
-
-    @Override
-    public void resolve() {
-        if(this.isResolved() && this.parent != null) this.parent.resolve();
-    }
     
     /**
      * Gets the value of this expression
@@ -120,11 +108,6 @@ public class ResolvableExpression implements ResolvableValue {
     @Override
     public ResolvableValue copy() {
         return new ResolvableExpression(this.left.copy(), this.right.copy(), this.operation);
-    }
-    
-    @Override
-    public void setParent(Resolvable r) {
-        this.parent = r;
     }
     
     @Override
