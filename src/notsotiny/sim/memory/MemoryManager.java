@@ -78,12 +78,15 @@ public class MemoryManager implements MemoryController {
      * @throws IndexOutOfBoundsException when trying to access out-of-bounds memory
      * @throws NullPointerException if no segments have been registered
      */
-    private long getSegment(long address) {
-        address &= 0xFFFF_FFFFl;
-        Long start = this.startAddresses.floor(address);
+    private long getSegment(long startAddress, long endAddress) {
+        startAddress &= 0xFFFF_FFFFl;
+        endAddress &= 0xFFFF_FFFFl;
+        Long start = this.startAddresses.floor(startAddress);
         
-        if(start == null || this.endAddresses.get(start) < address) {
-            throw new IndexOutOfBoundsException(String.format("Attempted to access non-registered address: %08X", address));
+        if(start == null || this.endAddresses.get(start) < startAddress) {
+            throw new IndexOutOfBoundsException(String.format("Attempted to access non-registered address: %08X", startAddress));
+        } else if(endAddress < startAddress) {
+            throw new IndexOutOfBoundsException(String.format("Multi-byte access overflowed: %08X", startAddress));
         }
         
         return start; 
@@ -94,7 +97,7 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 1 byte: %08X\n", address);
         
-        long seg = getSegment(address);
+        long seg = getSegment(address, address);
         MemoryController sc = this.segmentControllers.get(seg);
         
         return sc.readByte(address - seg);
@@ -105,7 +108,7 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 2 bytes: %08X\n", address);
         
-        long seg = getSegment(address);
+        long seg = getSegment(address, address + 1);
         MemoryController sc = this.segmentControllers.get(seg);
         
         return sc.read2Bytes(address - seg);
@@ -116,7 +119,7 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 3 bytes: %08X\n", address);
         
-        long seg = getSegment(address);
+        long seg = getSegment(address, address + 2);
         MemoryController sc = this.segmentControllers.get(seg);
         
         return sc.read3Bytes(address - seg);
@@ -127,7 +130,7 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 4 bytes: %08X\n", address);
         
-        long seg = getSegment(address);
+        long seg = getSegment(address, address + 3);
         MemoryController sc = this.segmentControllers.get(seg);
         
         return sc.read4Bytes(address - seg);
@@ -138,7 +141,7 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 1 byte: %08X\n", address);
         
-        long seg = getSegment(address);
+        long seg = getSegment(address, address);
         MemoryController sc = this.segmentControllers.get(seg);
         
         sc.writeByte(address - seg, value);
@@ -149,7 +152,7 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 2 bytes: %08X\n", address);
         
-        long seg = getSegment(address);
+        long seg = getSegment(address, address + 1);
         MemoryController sc = this.segmentControllers.get(seg);
         
         sc.write2Bytes(address - seg, value);
@@ -160,7 +163,7 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 3 bytes: %08X\n", address);
         
-        long seg = getSegment(address);
+        long seg = getSegment(address, address + 2);
         MemoryController sc = this.segmentControllers.get(seg);
         
         sc.write3Bytes(address - seg, value);
@@ -171,7 +174,7 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 4 bytes: %08X\n", address);
         
-        long seg = getSegment(address);
+        long seg = getSegment(address, address + 3);
         MemoryController sc = this.segmentControllers.get(seg);
         
         sc.write4Bytes(address - seg, value);

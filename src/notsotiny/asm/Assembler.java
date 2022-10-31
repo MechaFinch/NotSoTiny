@@ -77,20 +77,42 @@ public class Assembler {
      * @throws IOException 
      */
     public static void main(String[] args) throws IOException {
-        if(args.length < 1 || args.length > 4) {
-            System.out.println("Usage: Assembler [-o] <input file> [<executable file> <executable entry point>]");
+        if(args.length < 1 || args.length > 5) {
+            System.out.println("Usage: Assembler [flags] <input file> [<executable file> <executable entry point>]");
             System.out.println("Flags:");
             System.out.println("\t-o\tOptimize instruction width. If enabled, immediate widths are minimized. This restricts some expressions.");
+            System.out.println("\t-d\tEnable debug-friendly object files. If enabled, object files contain the full names of labels, leading to much larger files.");
             System.exit(0);
         }
         
-        boolean optimize = args[0].equals("-o"); 
+        // flags    
+        int flagCount = 0;
+        
+        boolean optimize = false,
+                debug = false;
+        
+        out:
+        while(true) {
+            switch(args[flagCount]) {
+                case "-o":
+                    flagCount++;
+                    optimize = true;
+                    break;
+                
+                case "-d":
+                    flagCount++;
+                    debug = true;
+                
+                default:
+                    break out;
+            }
+        }
         
         // from the VeryTinyAssembler
-        List<RelocatableObject> objects = assemble(new File(args[optimize ? 1 : 0]), optimize);
+        List<RelocatableObject> objects = assemble(new File(args[flagCount]), optimize, debug, (args.length > flagCount + 2) ? args[flagCount + 2] : "");
         
         // write object files
-        String directory = new File(args[optimize ? 1 : 0]).getAbsolutePath();
+        String directory = new File(args[flagCount]).getAbsolutePath();
         directory = directory.substring(0, directory.lastIndexOf("\\")) + "\\";
         
         Set<String> execContents = new HashSet<>();
@@ -110,10 +132,10 @@ public class Assembler {
         }
         
         // exec file
-        if(args.length == (optimize ? 4 : 3)) {
-            try(PrintWriter execWriter = new PrintWriter(directory + args[optimize ? 2 : 1])) {
+        if(args.length == (flagCount + 3)) {
+            try(PrintWriter execWriter = new PrintWriter(directory + args[flagCount + 1])) {
                 // entry point
-                execWriter.println("#entry " + args[optimize ? 3 : 2]);
+                execWriter.println("#entry " + args[flagCount + 2]);
                 
                 // object files
                 execContents.forEach(execWriter::println);
@@ -128,7 +150,7 @@ public class Assembler {
      * @return
      * @throws IOException
      */
-    public static List<RelocatableObject> assemble(File f, boolean optimizeInstructionWidth) throws IOException {
+    public static List<RelocatableObject> assemble(File f, boolean optimizeInstructionWidth, boolean debugFriendlyOutput, String entrySymbolName) throws IOException {
         LOG.info("Assembling from main file: " + f);
         
         ArrayList<RenameableRelocatableObject> objects = new ArrayList<>();
@@ -174,7 +196,29 @@ public class Assembler {
             File file = libraryMap.get(name);
             
             for(RenameableRelocatableObject obj : objects) {
-                obj.rename(file, name);
+                obj.renameLibrary(file, name);
+            }
+        }
+        
+        // compactify library names
+        if(!debugFriendlyOutput) {
+            Map<String, String> nameIDMap = new HashMap<>();
+            int id = 0;
+            
+            for(RenameableRelocatableObject obj : objects) {
+                for(String s : obj.getOutgoingReferenceNames()) {
+                    String n = obj.getName() + ".";
+                    
+                    if((n + s).equals(entrySymbolName) || s.equals("ORIGIN")) continue;
+                    
+                    nameIDMap.put(n + s, n + Integer.toHexString(id++));
+                }
+            }
+            
+            for(RenameableRelocatableObject obj : objects) {
+                for(String old : nameIDMap.keySet()) {
+                    obj.renameGlobal(old, nameIDMap.get(old));
+                }
             }
         }
         
@@ -329,6 +373,11 @@ public class Assembler {
                 
                 if(!handled) {
                     if(s instanceof LabelSymbol l) {
+                        if(labelIndexMap.containsKey(l.name())) {
+                            LOG.warning("Duplicate label: " + l.name() + " on line " + line);
+                            encounteredError = true;
+                        }
+                        
                         labelIndexMap.put(l.name(), allInstructions.size());
                         LOG.finer("Added label " + l.name() + " at index " + allInstructions.size());
                     } else {                
@@ -446,11 +495,14 @@ public class Assembler {
             List<Byte> objCode = c.getObjectCode();
             
             StringBuilder sb = new StringBuilder(String.format("Encoded %-48s %04X: ", c, objectCode.size()));
-            objCode.forEach(b -> sb.append(String.format("%02X ", b)));
             
-            LOG.finest(sb.toString());
+            if(objCode.size() <= 8) {
+                objCode.forEach(b -> sb.append(String.format("%02X ", b)));
+            }
             
             objectCode.addAll(objCode);
+            
+            LOG.finest(String.format("%-86s    %d bytes", sb, objectCode.size()));
         }
         
         // convert object code to array
@@ -476,7 +528,7 @@ public class Assembler {
         LOG.fine("OUTGOING REFERENCES: " + outgoingReferences);
         LOG.fine("INCOMING REFERENCES: " + incomingReferences);
         
-        return new RenameableRelocatableObject(Endianness.LITTLE, libraryName, 2, incomingReferences, outgoingReferences, incomingReferenceWidths, outgoingReferenceWidths, objectCodeArray, false, libraryNamesMap);
+        return new RenameableRelocatableObject(Endianness.LITTLE, libraryName, 4, incomingReferences, outgoingReferences, incomingReferenceWidths, outgoingReferenceWidths, objectCodeArray, false, libraryNamesMap);
     }
     
     /**
@@ -504,14 +556,14 @@ public class Assembler {
                             
                             relocated |= resolveValue(source.getImmediate(), labelAddressMap, libNames, incomingReferences, libraryName, addr + (relative ? c.getSize() : inst.getImmediateOffset()), relative, false);
                             
-                            if(relative && !source.isResolved()) throw new IllegalArgumentException("Could not resolve relative value: " + source);
+                            if(relative && !source.isResolved()) throw new IllegalArgumentException("Could not resolve relative value: " + source + " in " + inst);
                             
                             // infer size if not done already
                             if(source.isResolved() && source.getSize() == -1) source.setSize(getValueWidth(source.getImmediate().value(), false, false));
                             break;
                             
                         case MEMORY:
-                            relocated |= resolveValue(source.getMemory().getOffset(), labelAddressMap, libNames, incomingReferences, libraryName, addr + inst.getImmediateOffset(), false, false);
+                            relocated |= resolveValue(source.getMemory().getOffset(), labelAddressMap, libNames, incomingReferences, libraryName, addr + inst.getAddressOffset(), false, false);
                             break;
                             
                         default:
@@ -528,7 +580,7 @@ public class Assembler {
                             break; */
                             
                         case MEMORY:
-                            relocated |= resolveValue(dest.getMemory().getOffset(), labelAddressMap, libNames, incomingReferences, libraryName, addr + inst.getImmediateOffset(), false, false);
+                            relocated |= resolveValue(dest.getMemory().getOffset(), labelAddressMap, libNames, incomingReferences, libraryName, addr + inst.getAddressOffset(), false, false);
                             break;
                             
                         default:
@@ -958,14 +1010,19 @@ public class Assembler {
                 if(isImmediate) {
                     // if it's resolved we know the size, if it's not use the widest and shorten later
                     ResolvableValue imm = secondOperand.getImmediate();
+                    secondOperand.getSize();
                     
                     if(imm.isResolved()) {
-                        // zero extend so we don't worry about sign
-                        long v = imm.value();
-                        
-                        if(v >= -128 && v <= 127) immediateSize = 1;
-                        else if(v >= -32768 && v <= 32767) immediateSize = 2;
-                        else immediateSize = 4;
+                        if(secondOperand.getSize() == -1) {
+                            // zero extend so we don't worry about sign
+                            long v = imm.value();
+                            
+                            if(v >= -128 && v <= 127) immediateSize = 1;
+                            else if(v >= -32768 && v <= 32767) immediateSize = 2;
+                            else immediateSize = 4;
+                        } else {
+                            immediateSize = secondOperand.getSize();
+                        }
                     } else {
                         immediateSize = 4;
                     }
@@ -1956,6 +2013,10 @@ public class Assembler {
                     break;
                     
                 case ResolvableConstant rc:
+                    if(rc.isResolved()) {
+                        return false;
+                    }
+                    
                     String name = rc.getName();
                     
                     if(!inExpression && !relative) {

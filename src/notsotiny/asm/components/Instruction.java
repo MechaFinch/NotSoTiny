@@ -21,7 +21,8 @@ public class Instruction implements Component {
     
     private ResolvableLocationDescriptor destination, source;
     
-    private int cachedImmediateOffset = -1,
+    private int cachedAddressOffset = -1,
+                cachedImmediateOffset = -1,
                 immediateWidth = -1;
     
     boolean overrideImmediateWidth = false;
@@ -66,6 +67,7 @@ public class Instruction implements Component {
         if(!hasValidOperands()) throw new IllegalArgumentException("Invalid operands: " + this);
         
         this.cachedImmediateOffset = -1;
+        this.cachedAddressOffset = -1;
         List<Byte> data = new LinkedList<>();
         data.add(this.op.getOp());
         
@@ -105,14 +107,14 @@ public class Instruction implements Component {
                 data.addAll(getImmediateData(this.source.getImmediate(), 4));
                 break;
             
-            // 32 bit immediate from memory
+            // 32 bit address
             case MOV_A_O, MOV_B_O, MOV_C_O, MOV_D_O:
-                this.cachedImmediateOffset = 1;
+                this.cachedAddressOffset = 1;
                 data.addAll(getImmediateData(this.source.getMemory().getOffset(), 4));
                 break;
             
             case MOV_O_A, MOV_O_B, MOV_O_C, MOV_O_D:
-                this.cachedImmediateOffset = 1;
+                this.cachedAddressOffset = 1;
                 data.addAll(getImmediateData(this.destination.getMemory().getOffset(), 4));
                 break;
             
@@ -287,11 +289,20 @@ public class Instruction implements Component {
         }
         
         // size bit
-        // this turns out simpler than i thought lol
-        if(includeSource) {
-            if(sourceSize == 1 || (wideSource && sourceSize == 2)) rim |= 0b10_000_000;
+        if(packed) {
+            // packed size is set explicitly during parsing
+            if(includeSource) {
+                if(this.source.getSize() == 1) rim |= 0b10_000_000;
+            } else {
+                if(this.destination.getSize() == 1) rim |= 0b10_000_000;
+            }
         } else {
-            if(destSize == 1) rim |= 0b10_000_000;
+            // this turns out simpler than i thought lol
+            if(includeSource) {
+                if(sourceSize == 1 || (wideSource && sourceSize == 2)) rim |= 0b10_000_000;
+            } else {
+                if(destSize == 1) rim |= 0b10_000_000;
+            }
         }
         
         // type bit
@@ -367,14 +378,14 @@ public class Instruction implements Component {
             } else {
                 rim |= src ? 0b00_000_001 : 0b00_000_101;
                 bioData = getImmediateData(offs, 4);
-                this.cachedImmediateOffset = 1; // will be incremented
+                this.cachedAddressOffset = 1; // will be incremented
             }
         }
         
         data.add(rim);
         if(bioData != null) data.addAll(bioData);
         
-        if(this.cachedImmediateOffset != -1) this.cachedImmediateOffset++; // presumably set by BIO, factor RIM byte
+        if(this.cachedAddressOffset != -1) this.cachedAddressOffset++; // presumably set by BIO, factor RIM byte
         
         // immediate
         if(includeSource && sourceType == LocationType.IMMEDIATE) {
@@ -452,7 +463,7 @@ public class Instruction implements Component {
         
         // offset
         if(includeOffset) {
-            this.cachedImmediateOffset = 2;
+            this.cachedAddressOffset = 2;
             data.addAll(getImmediateData(rm.getOffset(), offsetSize));
         }
         
@@ -581,16 +592,29 @@ public class Instruction implements Component {
     }
     
     /**
-     * @return The location of the immediate relative to the start of the instruction. Will be at least 1
+     * @return The location of the immediate value relative to the start of the instruction. Will be at least 1
      */
     public int getImmediateOffset() {
         if(this.cachedImmediateOffset != -1) return this.cachedImmediateOffset;
         
         getObjectCode();
         
-        if(this.cachedImmediateOffset == -1) throw new IllegalStateException("Immediate offset not set");
+        if(this.cachedImmediateOffset == -1) throw new IllegalStateException("Immediate offset not set " + this);
         
         return this.cachedImmediateOffset;
+    }
+    
+    /**
+     * @return The location of the immediate address relative to the start of the instruction. Will be at least 1
+     */
+    public int getAddressOffset() {
+        if(this.cachedAddressOffset != -1) return this.cachedAddressOffset;
+        
+        getObjectCode();
+        
+        if(this.cachedAddressOffset == -1) throw new IllegalStateException("Address offset not set " + this);
+        
+        return this.cachedAddressOffset;
     }
     
     @Override

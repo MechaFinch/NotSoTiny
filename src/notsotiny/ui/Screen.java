@@ -56,12 +56,24 @@ public class Screen extends Canvas {
                     blue = (b & 0x07) * (256 / 7);
                 */
                 
-                
+                /*
                 // 233
                 int red = ((b >> 6) & 0x03) * (256 / 3),
                     green = ((b >> 3) & 0x07) * (256 / 7),
                     blue = (b & 0x07) * (256 / 7);
+                */
                 
+                /*
+                // greyscale
+                int red = b,
+                    blue = b,
+                    green = b;
+                */
+                
+                // tricolor bluescale
+                int red = ((b >> 0) & 0xEF) * (255 / 0xEF),
+                    green = ((b >> 0) & 0xEF) * (255 / 0xEF),
+                    blue = ((b >> 7) & 0x01) * 255;
                 
                 //g.setFill(Color.grayRgb(b & 0xFF));
                 g.setFill(Color.rgb(red, green, blue));
