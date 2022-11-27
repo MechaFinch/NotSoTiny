@@ -49,6 +49,13 @@ public class ResolvableConstant implements ResolvableValue {
     }
     
     @Override
+    public void unresolveNames() {
+        if(this.name != null) {
+            this.resolved = false;
+        }
+    }
+    
+    @Override
     public ResolvableValue copy() {
         if(this.resolved) {
             return new ResolvableConstant(this.val);

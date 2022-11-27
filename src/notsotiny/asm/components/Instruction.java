@@ -25,7 +25,7 @@ public class Instruction implements Component {
                 cachedImmediateOffset = -1,
                 immediateWidth = -1;
     
-    boolean overrideImmediateWidth = false;
+    private boolean hasFixedSize;
     
     /**
      * Create an instruction with source and destination
@@ -34,11 +34,13 @@ public class Instruction implements Component {
      * @param destination
      * @param source
      * @param address
+     * @param hasFixedSize true if the operand size was set by the source code
      */
-    public Instruction(Opcode op, ResolvableLocationDescriptor destination, ResolvableLocationDescriptor source) {
+    public Instruction(Opcode op, ResolvableLocationDescriptor destination, ResolvableLocationDescriptor source, boolean hasFixedSize) {
         this.op = op;
         this.destination = destination;
         this.source = source;
+        this.hasFixedSize = hasFixedSize;
     }
     
     /**
@@ -47,19 +49,20 @@ public class Instruction implements Component {
      * @param op
      * @param location
      * @param destination
-     * @param address
+     * @param hasFixedSize true if the operand size was set by the source code
      */
-    public Instruction(Opcode op, ResolvableLocationDescriptor location, boolean destination) {
-        this(op, destination ? location : ResolvableLocationDescriptor.NONE, destination ? ResolvableLocationDescriptor.NONE : location);
+    public Instruction(Opcode op, ResolvableLocationDescriptor location, boolean destination, boolean hasFixedSize) {
+        this(op, destination ? location : ResolvableLocationDescriptor.NONE, destination ? ResolvableLocationDescriptor.NONE : location, hasFixedSize);
     }
     
     /**
      * Create an instruction with no parameters
      * 
      * @param op
+     * @param hasFixedSize true if the operand size was set by the source code
      */
-    public Instruction(Opcode op) {
-        this(op, ResolvableLocationDescriptor.NONE, ResolvableLocationDescriptor.NONE);
+    public Instruction(Opcode op, boolean hasFixedSize) {
+        this(op, ResolvableLocationDescriptor.NONE, ResolvableLocationDescriptor.NONE, hasFixedSize);
     }
     
     @Override
@@ -84,7 +87,7 @@ public class Instruction implements Component {
                 break;
             
             // 8 bit immediate only
-            case MOV_A_I8, MOV_B_I8, MOV_C_I8, MOV_D_I8, ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADC_A_I8,
+            case MOVS_A_I8, MOVS_B_I8, MOVS_C_I8, MOVS_D_I8, ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADC_A_I8,
                  ADC_B_I8, ADC_C_I8, ADC_D_I8, SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SBB_A_I8, SBB_B_I8,
                  SBB_C_I8, SBB_D_I8, ADD_SP_I8, SUB_SP_I8, JMP_I8, INT_I8, JC_I8, JNC_I8, JS_I8, JNS_I8,
                  JO_I8, JNO_I8, JZ_I8, JNZ_I8, JA_I8, JBE_I8, JG_I8, JGE_I8, JL_I8, JLE_I8:
@@ -525,6 +528,7 @@ public class Instruction implements Component {
      * @return
      */
     private int getValueWidth(long v, boolean three, boolean four) {
+        // validate overrides
         if(this.immediateWidth != -1) {
             if((!three && this.immediateWidth == 3) || (!four && this.immediateWidth == 4)) {
                 throw new IllegalArgumentException("invalid immediate width override: " + this.immediateWidth + " in " + this);
@@ -533,16 +537,17 @@ public class Instruction implements Component {
             return this.immediateWidth;
         }
         
-        if(v >= -128 && v <= 127) { // 1 byte
+        // determine
+        if((v & 0xFFFF_FF00) == 0 || (v & 0xFFFF_FF00) == 0xFFFF_FF00) { // 1 byte
             return 1;
-        } else if(v >= -32768 && v <= 32767) { // 2 byte
+        } else if((v & 0xFFFF_0000) == 0 || (v & 0xFFFF_0000) == 0xFFFF_0000) { // 2 bytes
             return 2;
-        } else if(v >= -8388608 && v <= 8388607) { // 3 byte
+        } else if((v & 0xFF00_0000) == 0 || (v & 0xFF00_0000) == 0xFF00_0000) { // 3 bytes
             if(three) return 3;
             if(four) return 4;
             
             throw new IllegalArgumentException("value too large for 2 bytes: " + v);
-        } else { // 4 byte
+        } else {
             if(four) return 4;
             
             throw new IllegalArgumentException("value too large for 2 bytes: " + v);
@@ -647,15 +652,10 @@ public class Instruction implements Component {
      */
     public void setImmediateWidth(int w) { this.immediateWidth = w; }
     
-    /**
-     * Sets whether or not to override immediate width in size calculation
-     * @param o
-     */
-    public void setOverrideImmediateWidth(boolean o) { this.overrideImmediateWidth = o; }
-    
     public void setOpcode(Opcode o) { this.op = o; }
     
     public ResolvableLocationDescriptor getSourceDescriptor() { return this.source; }
     public ResolvableLocationDescriptor getDestinationDescriptor() { return this.destination; }
+    public boolean hasFixedSize() { return this.hasFixedSize; }
     public Opcode getOpcode() { return this.op; }
 }

@@ -1166,10 +1166,10 @@ public class NotSoTinySimulator {
                 break;
             
             // immediate 8 moves
-            case MOV_A_I8:
-            case MOV_B_I8:
-            case MOV_C_I8:
-            case MOV_D_I8:
+            case MOVS_A_I8:
+            case MOVS_B_I8:
+            case MOVS_C_I8:
+            case MOVS_D_I8:
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 1;
                 src = this.memory.readByte(this.reg_ip);
@@ -1252,7 +1252,7 @@ public class NotSoTinySimulator {
         // put source in destination
         switch(desc.op) {
             // A
-            case MOV_A_I8:
+            case MOVS_A_I8:
             case MOV_A_I16:
             case MOV_A_O:
             case MOV_A_BI:
@@ -1261,7 +1261,7 @@ public class NotSoTinySimulator {
                 return;
             
             // B
-            case MOV_B_I8:
+            case MOVS_B_I8:
             case MOV_B_I16:
             case MOV_B_O:
             case MOV_B_BI:
@@ -1270,7 +1270,7 @@ public class NotSoTinySimulator {
                 return;
             
             // C
-            case MOV_C_I8:
+            case MOVS_C_I8:
             case MOV_C_I16:
             case MOV_C_O:
             case MOV_C_BI:
@@ -1279,7 +1279,7 @@ public class NotSoTinySimulator {
                 return;
             
             // D
-            case MOV_D_I8:
+            case MOVS_D_I8:
             case MOV_D_I16:
             case MOV_D_O:
             case MOV_D_BI:

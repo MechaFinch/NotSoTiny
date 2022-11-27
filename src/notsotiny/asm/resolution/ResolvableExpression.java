@@ -106,6 +106,12 @@ public class ResolvableExpression implements ResolvableValue {
     }
     
     @Override
+    public void unresolveNames() {
+        this.left.unresolveNames();
+        this.right.unresolveNames();
+    }
+    
+    @Override
     public ResolvableValue copy() {
         return new ResolvableExpression(this.left.copy(), this.right.copy(), this.operation);
     }

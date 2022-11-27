@@ -15,10 +15,10 @@ public enum Opcode {
     MOVS_RIM    (0x02, Operation.MOVS),
     MOVZ_RIM    (0x03, Operation.MOVZ),
     
-    MOV_A_I8    (0x04, Operation.MOV),
-    MOV_B_I8    (0x05, Operation.MOV),
-    MOV_C_I8    (0x06, Operation.MOV),
-    MOV_D_I8    (0x07, Operation.MOV),
+    MOVS_A_I8   (0x04, Operation.MOV),
+    MOVS_B_I8   (0x05, Operation.MOV),
+    MOVS_C_I8   (0x06, Operation.MOV),
+    MOVS_D_I8   (0x07, Operation.MOV),
     
     MOV_A_I16   (0x08, Operation.MOV),
     MOV_B_I16   (0x09, Operation.MOV),

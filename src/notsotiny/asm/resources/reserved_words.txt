@@ -134,6 +134,7 @@ import
 %libname
 %define
 %org
+%nlo
 resb
 resw
 resd

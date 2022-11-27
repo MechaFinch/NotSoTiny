@@ -2,6 +2,7 @@ package notsotiny.asm;
 
 import java.util.LinkedList;
 import java.util.List;
+import java.util.logging.Logger;
 
 import asmlib.lex.symbols.ConstantSymbol;
 import asmlib.lex.symbols.ExpressionSymbol;
@@ -19,6 +20,8 @@ import notsotiny.asm.resolution.ResolvableValue;
  * @author Mechafinch
  */
 public class ConstantExpressionParser {
+    
+    private static Logger LOG = Logger.getLogger(Assembler.class.getName());
     
     /**
      * Parses constants
@@ -69,6 +72,10 @@ public class ConstantExpressionParser {
      */
     private static ResolvableValue parseSubExpression(LinkedList<Symbol> queue) {
         Symbol nextSymbol = queue.peek();
+        if(nextSymbol == null) {
+            LOG.info("Expression parse replaced missing parameter with zero");
+            return new ResolvableConstant(0);
+        }
         
         ResolvableValue val = null;
         

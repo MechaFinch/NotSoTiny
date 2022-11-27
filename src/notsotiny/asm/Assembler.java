@@ -366,6 +366,12 @@ public class Assembler {
                             handled = true;
                             break;
                         
+                        // disable instruction length optimizations
+                        case "%NLO":
+                            optimizeInstructionWidth = false;
+                            handled = true;
+                            break;
+                        
                         // code directives
                         default:
                     }
@@ -419,42 +425,488 @@ public class Assembler {
         NavigableMap<String, Integer> labelAddressMap = new TreeMap<>();        // label -> address
         NavigableMap<Integer, Integer> instructionAddressMap = new TreeMap<>(); // index in allInstructions -> address
         Set<String> libNames = new HashSet<>(libraryNamesMap.values());
+        int addr = 0;
         
         // build initial address map
-        int addr = 0;
-        for(int i = 0; i < allInstructions.size(); i++) {
-            instructionAddressMap.put(i, addr);
-            
-            Component c = allInstructions.get(i);
-            
-            // check for invalid library references
-            // we can't do math on a value we cannot access by definition
-            if(!c.isResolved()) {
-                validateLibraryReferences(c, libNames, labelIndexMap);
-            }
-            
-            // getSize is set up to give the worst-case immediate width isn't overridden
-            addr += c.getSize();
-        }
-        
-        // for trailing label
-        instructionAddressMap.put(allInstructions.size(), addr);
-        
-        // update labels as well
-        for(String lbl : labelIndexMap.keySet()) {
-            int i = labelIndexMap.get(lbl);
-            labelAddressMap.put(lbl, instructionAddressMap.get(i));
-        }
+        LOG.finer("Building label address map");
+        buildAddressMaps(labelAddressMap, labelIndexMap, instructionAddressMap, allInstructions, libNames);
         
         LOG.fine("-- CONSTANT RESOLUTION FIRST PASS RESULTS --");
         LOG.fine(labelAddressMap.toString());
         
         // attempt to minimize parameter sizes (if enabled)
         if(optimizeInstructionWidth) {
-            // TODO
+            LOG.fine("RUNNING INSTRUCTION LENGTH OPTIMIZATION");
+            
+            int optimizationPassNumber = 0;
+            
+            boolean changedValueSizes;
+            
+            do {
+                LOG.fine("Running optimization pass " + optimizationPassNumber++);
+                
+                // resolve values
+                addr = 0;
+                for(int i = 0; i < allInstructions.size(); i++) {
+                    Component c = allInstructions.get(i);
+                    
+                    if(!c.isResolved()) {
+                        String before = c.toString();
+                        
+                        resolveComponent(c, labelAddressMap, libNames, incomingReferences, libraryName, addr);
+                        
+                        LOG.finest(before + " resolved to " + c);
+                    }
+                }
+                
+                changedValueSizes = false;
+                
+                /*
+                 * The following optimizations can be made to instruction length
+                 * MOVW -> MOVZ
+                 * MOVW -> MOVS
+                 * MOV [A, B, C, D], i16 -> MOVS [A, B, C, D], i8
+                 * MOV rim -> MOVZ
+                 * MOV rim -> MOVS
+                 * [ADD, ADC, SUB, SBB] [A, B, C, D], i16 -> [ADD, ADC, SUB, SBB] [A, B, C, D], i8
+                 * [ADD, ADC, SUB, SBB] rim -> [ADD, ADC, SUB, SBB] [A, B, C, D], [i16, i8]
+                 * [ADD, ADC, SUB, SBB] rim -> [ADD, ADC, SUB, SBB] rim, i8
+                 * JMP [i32, i16] -> JMP [i8, i16]
+                 * CMP rim16 -> CMP rim, i8
+                 * CMP rim -> CMP rim, 0
+                 * Jcc rim -> Jcc i8
+                 */
+                
+                // change value sizes if possible
+                for(Component c : allInstructions) {
+                    if(c instanceof Instruction inst && !inst.hasFixedSize()) {
+                        ResolvableLocationDescriptor src = inst.getSourceDescriptor(),
+                                                     dst = inst.getDestinationDescriptor();
+                        
+                        if(src.getType() == LocationType.IMMEDIATE && src.isResolved()) {
+                            long val = src.getImmediate().value();
+                            int width = getValueWidth(val, true, true),
+                                dstWidth = dst.getSize();
+                            
+                            // hijack changedValueSizes for logging
+                            boolean changedValueSizesBefore = changedValueSizes;
+                            changedValueSizes = false;
+                            Opcode before = inst.getOpcode();
+                            
+                            switch(inst.getOpcode()) {
+                                // MOVW -> MOVZ
+                                // MOVW -> MOVS
+                                case MOVW_RIM:
+                                    if(width <= (dstWidth / 2)) {
+                                        inst.setOpcode(Opcode.MOVS_RIM);
+                                        changedValueSizes = true;
+                                    } else if(canZeroExtend(val, dstWidth / 2)) {
+                                        inst.setOpcode(Opcode.MOVZ_RIM);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                // MOV [A, B, C, D], I16 -> MOVS [A, B, C, D], I8
+                                case MOV_A_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.MOVS_A_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case MOV_B_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.MOVS_B_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case MOV_C_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.MOVS_C_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case MOV_D_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.MOVS_D_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                // MOV RIM -> MOVZ RIM
+                                // MOV RIM -> MOVS RIM
+                                case MOV_RIM:
+                                    if(dstWidth == 2) {
+                                        if(width == 1) {
+                                            inst.setOpcode(Opcode.MOVS_RIM);
+                                            changedValueSizes = true;
+                                        } else if(canZeroExtend(val, 1)) {
+                                            inst.setOpcode(Opcode.MOVZ_RIM);
+                                            changedValueSizes = true;
+                                        }
+                                    }
+                                    break;
+                                
+                                // ADD [A, B, C, D], I16 -> ADD [A, B, C, D], I8
+                                case ADD_A_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.ADD_A_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case ADD_B_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.ADD_B_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case ADD_C_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.ADD_C_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case ADD_D_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.ADD_D_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                // ADD RIM -> ADD [A, B, C, D], [I16, I8]
+                                // ADD RIM -> ADD RIM, I8
+                                case ADD_RIM:
+                                    if(dst.getType() == LocationType.REGISTER) {
+                                        switch(dst.getRegister()) {
+                                            case A:     inst.setOpcode(width == 1 ? Opcode.ADD_A_I8 : Opcode.ADD_A_I16); changedValueSizes = true; break;
+                                            case B:     inst.setOpcode(width == 1 ? Opcode.ADD_B_I8 : Opcode.ADD_B_I16); changedValueSizes = true; break;
+                                            case C:     inst.setOpcode(width == 1 ? Opcode.ADD_C_I8 : Opcode.ADD_C_I16); changedValueSizes = true; break;
+                                            case D:     inst.setOpcode(width == 1 ? Opcode.ADD_D_I8 : Opcode.ADD_D_I16); changedValueSizes = true; break;
+                                            default:    if(width == 1) { inst.setOpcode(Opcode.ADD_RIM_I8); changedValueSizes = true; } break;
+                                        }
+                                    } else if(dst.getSize() != 1 && width == 1) {
+                                        inst.setOpcode(Opcode.ADD_RIM_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                // ADC [A, B, C, D], I16 -> ADC [A, B, C, D], I8
+                                case ADC_A_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.ADC_A_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case ADC_B_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.ADC_B_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case ADC_C_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.ADC_C_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case ADC_D_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.ADC_D_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                // ADC RIM -> ADC [A, B, C, D], [I16, I8]
+                                // ADC RIM -> ADC RIM, I8
+                                case ADC_RIM:
+                                    if(dst.getType() == LocationType.REGISTER) {
+                                        switch(dst.getRegister()) {
+                                            case A:     inst.setOpcode(width == 1 ? Opcode.ADC_A_I8 : Opcode.ADC_A_I16); changedValueSizes = true; break;
+                                            case B:     inst.setOpcode(width == 1 ? Opcode.ADC_B_I8 : Opcode.ADC_B_I16); changedValueSizes = true; break;
+                                            case C:     inst.setOpcode(width == 1 ? Opcode.ADC_C_I8 : Opcode.ADC_C_I16); changedValueSizes = true; break;
+                                            case D:     inst.setOpcode(width == 1 ? Opcode.ADC_D_I8 : Opcode.ADC_D_I16); changedValueSizes = true; break;
+                                            default:    if(width == 1) { inst.setOpcode(Opcode.ADC_RIM_I8); changedValueSizes = true; } break;
+                                        }
+                                    } else if(dst.getSize() != 1 && width == 1) {
+                                        inst.setOpcode(Opcode.ADC_RIM_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                // SUB [A, B, C, D], I16 -> SUB [A, B, C, D], I8
+                                case SUB_A_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.SUB_A_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case SUB_B_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.SUB_B_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case SUB_C_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.SUB_C_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case SUB_D_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.SUB_D_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                // SUB RIM -> SUB [A, B, C, D], [I16, I8]
+                                // SUB RIM -> SUB RIM, I8
+                                case SUB_RIM:
+                                    if(dst.getType() == LocationType.REGISTER) {
+                                        switch(dst.getRegister()) {
+                                            case A:     inst.setOpcode(width == 1 ? Opcode.SUB_A_I8 : Opcode.SUB_A_I16); changedValueSizes = true; break;
+                                            case B:     inst.setOpcode(width == 1 ? Opcode.SUB_B_I8 : Opcode.SUB_B_I16); changedValueSizes = true; break;
+                                            case C:     inst.setOpcode(width == 1 ? Opcode.SUB_C_I8 : Opcode.SUB_C_I16); changedValueSizes = true; break;
+                                            case D:     inst.setOpcode(width == 1 ? Opcode.SUB_D_I8 : Opcode.SUB_D_I16); changedValueSizes = true; break;
+                                            default:    if(width == 1) { inst.setOpcode(Opcode.SUB_RIM_I8); changedValueSizes = true; } break;
+                                        }
+                                    } else if(dst.getSize() != 1 && width == 1) {
+                                        inst.setOpcode(Opcode.SUB_RIM_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                // SBB [A, B, C, D], I16 -> SBB [A, B, C, D], I8
+                                case SBB_A_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.SBB_A_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case SBB_B_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.SBB_B_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case SBB_C_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.SBB_C_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                case SBB_D_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.SBB_D_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                // SBB RIM -> SBB [A, B, C, D], [I16, I8]
+                                // SBB RIM -> SBB RIM, I8
+                                case SBB_RIM:
+                                    if(dst.getType() == LocationType.REGISTER) {
+                                        switch(dst.getRegister()) {
+                                            case A:     inst.setOpcode(width == 1 ? Opcode.SBB_A_I8 : Opcode.SBB_A_I16); changedValueSizes = true; break;
+                                            case B:     inst.setOpcode(width == 1 ? Opcode.SBB_B_I8 : Opcode.SBB_B_I16); changedValueSizes = true; break;
+                                            case C:     inst.setOpcode(width == 1 ? Opcode.SBB_C_I8 : Opcode.SBB_C_I16); changedValueSizes = true; break;
+                                            case D:     inst.setOpcode(width == 1 ? Opcode.SBB_D_I8 : Opcode.SBB_D_I16); changedValueSizes = true; break;
+                                            default:    if(width == 1) { inst.setOpcode(Opcode.SBB_RIM_I8); changedValueSizes = true; } break;
+                                        }
+                                    } else if(dst.getSize() != 1 && width == 1) {
+                                        inst.setOpcode(Opcode.SBB_RIM_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                // JMP I16 -> JMP I8
+                                case JMP_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JMP_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                // JMP I32 -> JMP [I16, I8]
+                                case JMP_I32:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JMP_I8);
+                                        changedValueSizes = true;
+                                    } else if(width == 2) {
+                                        inst.setOpcode(Opcode.JMP_I16);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                /*
+                                 * There is a very important assumption being made here that
+                                 * a value will never go from zero to nonzero
+                                 */
+                                // CMP rim, i8 -> CMP rim, 0
+                                case CMP_RIM_I8:
+                                    if(val == 0) {
+                                        inst.setOpcode(Opcode.CMP_RIM_0);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                // CMP rim -> CMP rim, i8
+                                // CMP rim -> CMP rim, 0
+                                case CMP_RIM:
+                                    if(val == 0) { 
+                                        inst.setOpcode(Opcode.CMP_RIM_0);
+                                        changedValueSizes = true;
+                                    } else if(dst.getSize() != 1 && width == 1) {
+                                        inst.setOpcode(Opcode.CMP_RIM_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                // Jcc rim -> Jcc i8
+                                case JC_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JC_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                case JNC_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JNC_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                case JS_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JS_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                case JNS_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JNS_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                case JO_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JO_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                case JNO_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JNO_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                case JZ_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JZ_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                case JNZ_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JNZ_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                case JA_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JA_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                case JBE_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JBE_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                case JG_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JG_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                case JGE_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JGE_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                case JL_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JL_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                case JLE_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JLE_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                default:
+                            }
+                            
+                            if(changedValueSizes) {
+                                LOG.fine("Optimized " + before + " to " + inst);
+                            }
+                            
+                            changedValueSizes |= changedValueSizesBefore;
+                        }
+                    }
+                }
+                
+                // if we changed anything, rebuild the label map
+                if(changedValueSizes) {
+                    LOG.finer("Rebuilding label address map");
+                    buildAddressMaps(labelAddressMap, labelIndexMap, instructionAddressMap, allInstructions, libNames);
+                }
+                
+                // unresolve values
+                incomingReferences.clear();
+                for(Component c : allInstructions) {
+                    unresolveComponent(c);
+                }
+                
+                // if nothing changed we're done
+            } while(changedValueSizes);
+            
         }
         
-        // resolve everything
+        LOG.finer("PERFORMING FINAL RESOLUTION PASS");
+        
+        // perform final resolution
         addr = 0;
         for(int i = 0; i < allInstructions.size(); i++) {
             Component c = allInstructions.get(i);
@@ -529,6 +981,95 @@ public class Assembler {
         LOG.fine("INCOMING REFERENCES: " + incomingReferences);
         
         return new RenameableRelocatableObject(Endianness.LITTLE, libraryName, 4, incomingReferences, outgoingReferences, incomingReferenceWidths, outgoingReferenceWidths, objectCodeArray, false, libraryNamesMap);
+    }
+    
+    /**
+     * Builds the label address map and instruction address map
+     * 
+     * @param labelAddressMap
+     * @param labelIndexMap
+     * @param instructionAddressMap
+     * @param allInstructions
+     * @param libNames
+     */
+    private static void buildAddressMaps(Map<String, Integer> labelAddressMap, Map<String, Integer> labelIndexMap, Map<Integer, Integer> instructionAddressMap, List<Component> allInstructions, Set<String> libNames) {
+        int addr = 0;
+        for(int i = 0; i < allInstructions.size(); i++) {
+            instructionAddressMap.put(i, addr);
+            
+            Component c = allInstructions.get(i);
+            
+            // check for invalid library references
+            // we can't do math on a value we cannot access by definition
+            if(!c.isResolved()) {
+                validateLibraryReferences(c, libNames, labelIndexMap);
+            }
+            
+            // getSize is set up to give the worst-case immediate width isn't overridden
+            addr += c.getSize();
+        }
+        
+        // for trailing label
+        instructionAddressMap.put(allInstructions.size(), addr);
+        
+        // update labels as well
+        for(String lbl : labelIndexMap.keySet()) {
+            int i = labelIndexMap.get(lbl);
+            labelAddressMap.put(lbl, instructionAddressMap.get(i));
+        }
+    }
+    
+    /**
+     * Unresolves a component
+     * 
+     * @param c
+     */
+    private static void unresolveComponent(Component c) {
+        switch(c) {
+            case Instruction inst:
+                ResolvableLocationDescriptor source = inst.getSourceDescriptor(),
+                                             dest = inst.getDestinationDescriptor();
+                
+                // unresolve source
+                switch(source.getType()) {
+                    case IMMEDIATE:
+                        source.getImmediate().unresolveNames();
+                        break;
+                        
+                    case MEMORY:
+                        source.getMemory().getOffset().unresolveNames();
+                        break;
+                        
+                    default:
+                }
+                
+                // unresolve destination
+                switch(dest.getType()) {
+                    case MEMORY:
+                        dest.getMemory().getOffset().unresolveNames();
+                        break;
+                    
+                    default:
+                }
+                
+                break;
+                
+            case InitializedData init:
+                for(ResolvableValue rv : init.getData()) {
+                    rv.unresolveNames();
+                }
+                break;
+                
+            case UninitializedData uninit:
+                break;
+                
+            case Repetition rep:
+                rep.getReps().unresolveNames();
+                unresolveComponent(rep.getData());
+                break;
+                
+            default:
+        }
     }
     
     /**
@@ -739,12 +1280,12 @@ public class Assembler {
         if(!hasFirstOperand(opr)) {
             // no arguments, ez
             return switch(opr) {
-                case NOP    -> new Instruction(Opcode.NOP);
-                case HLT    -> new Instruction(Opcode.HLT);
-                case RET    -> new Instruction(Opcode.RET);
-                case IRET   -> new Instruction(Opcode.IRET);
-                case PUSHA  -> new Instruction(Opcode.PUSHA);
-                case POPA   -> new Instruction(Opcode.POPA);
+                case NOP    -> new Instruction(Opcode.NOP, false);
+                case HLT    -> new Instruction(Opcode.HLT, false);
+                case RET    -> new Instruction(Opcode.RET, false);
+                case IRET   -> new Instruction(Opcode.IRET, false);
+                case PUSHA  -> new Instruction(Opcode.PUSHA, false);
+                case POPA   -> new Instruction(Opcode.POPA, false);
                 default     -> null; // not possible
             };
         } else {
@@ -753,6 +1294,9 @@ public class Assembler {
             Opcode opcode = null;
             
             if(firstOperand == null) return null;
+            
+            // operands that aren't registers and have a size are set by the source code
+            boolean hasFixedOperandSize = firstOperand.getType() != LocationType.REGISTER &&  firstOperand.getSize() != -1;
             
             if(!hasSecondOperand(opr)) {
                 // 1 argument.
@@ -965,8 +1509,8 @@ public class Assembler {
                 
                 // nice and generic-ish
                 return switch(opr) {
-                    case PUSH, JMP, JMPA, JCC, CALL, CALLA, INT -> new Instruction(opcode, firstOperand, false);
-                    default                                     -> new Instruction(opcode, firstOperand, true);
+                    case PUSH, JMP, JMPA, JCC, CALL, CALLA, INT -> new Instruction(opcode, firstOperand, false, hasFixedOperandSize);
+                    default                                     -> new Instruction(opcode, firstOperand, true, hasFixedOperandSize);
                 };
             } else {
                 // we expect a separator, skip it if present
@@ -979,6 +1523,8 @@ public class Assembler {
                 ResolvableLocationDescriptor secondOperand = parseOperand(symbolQueue, canBeMemory);
                 
                 if(secondOperand == null) return null;
+                
+                hasFixedOperandSize |= secondOperand.getType() != LocationType.REGISTER &&  secondOperand.getSize() != -1;
                 
                 // useful values
                 LocationType firstType = firstOperand.getType(),
@@ -1014,12 +1560,7 @@ public class Assembler {
                     
                     if(imm.isResolved()) {
                         if(secondOperand.getSize() == -1) {
-                            // zero extend so we don't worry about sign
-                            long v = imm.value();
-                            
-                            if(v >= -128 && v <= 127) immediateSize = 1;
-                            else if(v >= -32768 && v <= 32767) immediateSize = 2;
-                            else immediateSize = 4;
+                            immediateSize = getValueWidth(imm.value(), true, false);
                         } else {
                             immediateSize = secondOperand.getSize();
                         }
@@ -1083,10 +1624,10 @@ public class Assembler {
                                 // 8/16
                                 if(immediateSize == 1) { // 8
                                     opcode = switch(firstRegister) {
-                                        case A  -> Opcode.MOV_A_I8;
-                                        case B  -> Opcode.MOV_B_I8;
-                                        case C  -> Opcode.MOV_C_I8;
-                                        case D  -> Opcode.MOV_D_I8;
+                                        case A  -> Opcode.MOVS_A_I8;
+                                        case B  -> Opcode.MOVS_B_I8;
+                                        case C  -> Opcode.MOVS_C_I8;
+                                        case D  -> Opcode.MOVS_D_I8;
                                         default -> Opcode.NOP; // not possible
                                     };
                                 } else { // 16/unknown, can be shortened
@@ -1189,7 +1730,7 @@ public class Assembler {
                         }
                         
                         // register-register shortcuts
-                        if(firstType != secondType && ((firstIsABCD && secondIsABCD) || (firstIsLByte && secondIsLByte))) {
+                        if(firstType == secondType && ((firstIsABCD && secondIsABCD) || (firstIsLByte && secondIsLByte))) {
                             // nested switch expression because funny
                             opcode = switch(firstRegister) {
                                 case A  -> switch(secondRegister) {
@@ -1397,7 +1938,7 @@ public class Assembler {
                         break;
                 }
                 
-                return new Instruction(opcode, firstOperand, secondOperand);
+                return new Instruction(opcode, firstOperand, secondOperand, hasFixedOperandSize);
             }
         }
     }
@@ -2059,27 +2600,45 @@ public class Assembler {
      * Gets the width of a value in bytes
      * 
      * @param v
+     * @param one true if 1 is allowed
      * @param three true if 3 is allowed
      * @return
      */
     private static int getValueWidth(long v, boolean one, boolean three) {
-        if(v >= -128 && v <= 127) { // 1 byte
+        if((v & 0xFFFF_FF80) == 0 || (v & 0xFFFF_FF80) == 0xFFFF_FF80) { // 1 byte
             return one ? 1 : 2;
-        } else if(v >= -32768 && v <= 32767) { // 2 byte
+        } else if((v & 0xFFFF_8000) == 0 || (v & 0xFFFF_8000) == 0xFFFF_8000) { // 2 bytes
             return 2;
-        } else if(v >= -8388608 && v <= 8388607) { // 3 byte
+        } else if((v & 0xFF80_0000) == 0 || (v & 0xFF80_0000) == 0xFF80_0000) { // 3 bytes
             return three ? 3 : 4;
-        } else { // 4 byte
+        } else {
             return 4;
         }
     }
     
     /**
-     * Converts an Instruction to use immediate shortcuts if applicable
+     * Returns true if the value can be zero extended from the given number of bytes
      * 
-     * @param inst
+     * @param v
+     * @param len
+     * @return
      */
-    private static void applyImmediateShortcuts(Instruction inst) {
-        // TODO
+    private static boolean canZeroExtend(long v, int len) {
+        int mask = 0xFFFF_FFFF << (len * 8);
+        
+        return (v & mask) == 0;
+    }
+    
+    /**
+     * Returns true if the value can be sign extended from the given number of bytes 
+     * 
+     * @param v
+     * @param len
+     * @return
+     */
+    private static boolean canSignExtend(long v, int len) {
+        int mask = 0xFFFF_FFFF << ((len * 8) - 1);
+        
+        return (v & mask) == 0 || (v & mask) == mask;
     }
 }
