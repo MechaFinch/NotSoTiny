@@ -457,6 +457,8 @@ public class Assembler {
                         
                         LOG.finest(before + " resolved to " + c);
                     }
+                    
+                    addr += c.getSize();
                 }
                 
                 changedValueSizes = false;
@@ -472,13 +474,19 @@ public class Assembler {
                  * [ADD, ADC, SUB, SBB] rim -> [ADD, ADC, SUB, SBB] [A, B, C, D], [i16, i8]
                  * [ADD, ADC, SUB, SBB] rim -> [ADD, ADC, SUB, SBB] rim, i8
                  * JMP [i32, i16] -> JMP [i8, i16]
+                 * JMP rim -> JMP [i32, i16, i8]
+                 * JMPA rim -> JMPA i32
+                 * CALL rim -> CALL i16
+                 * CALLA rim -> CALLA i32
                  * CMP rim16 -> CMP rim, i8
                  * CMP rim -> CMP rim, 0
                  * Jcc rim -> Jcc i8
                  */
                 
                 // change value sizes if possible
-                for(Component c : allInstructions) {
+                for(int i = 0; i < allInstructions.size(); i++) {
+                    Component c = allInstructions.get(i);
+                    
                     if(c instanceof Instruction inst && !inst.hasFixedSize()) {
                         ResolvableLocationDescriptor src = inst.getSourceDescriptor(),
                                                      dst = inst.getDestinationDescriptor();
@@ -492,6 +500,8 @@ public class Assembler {
                             boolean changedValueSizesBefore = changedValueSizes;
                             changedValueSizes = false;
                             Opcode before = inst.getOpcode();
+                            
+                            //LOG.finer("optimization candidate " + inst + " size " + width);
                             
                             switch(inst.getOpcode()) {
                                 // MOVW -> MOVZ
@@ -750,6 +760,35 @@ public class Assembler {
                                         inst.setOpcode(Opcode.JMP_I16);
                                         changedValueSizes = true;
                                     }
+                                    break;
+                                    
+                                // JMP rim -> JMP [i16, i8]
+                                case JMP_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.JMP_I8);
+                                        changedValueSizes = true;
+                                    } else {
+                                        inst.setOpcode(Opcode.JMP_I16);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                // JMPA rim -> JMPA i32
+                                case JMPA_RIM32:
+                                    inst.setOpcode(Opcode.JMPA_I32);
+                                    changedValueSizes = true;
+                                    break;
+                                
+                                // CALL rim -> CALL i16
+                                case CALL_RIM:
+                                    inst.setOpcode(Opcode.CALL_I16);
+                                    changedValueSizes = true;
+                                    break;
+                                
+                                // CALLA rim -> CALLA i32
+                                case CALLA_RIM32:
+                                    inst.setOpcode(Opcode.CALLA_I32);
+                                    changedValueSizes = true;
                                     break;
                                 
                                 /*
@@ -1433,7 +1472,7 @@ public class Assembler {
                         
                         // 16 bit immediates
                     case CALL:
-                        if(isImmediate && firstOperand.getSize() != -1 && firstOperand.getSize() < 4) {
+                        if(isImmediate) {
                             opcode = Opcode.CALL_I16;
                         } else {
                             opcode = Opcode.CALL_RIM;
