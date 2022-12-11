@@ -1,13 +1,15 @@
 
 	16 bit general purpose registers with 8 bit halves and 4-8 SIMD
-		A - AX AH AL
-		B - BX BH BL
-		C - CX CH CL
-		D - DX DH DL
+		A - A AH AL
+		B - B BH BL
+		C - C CH CL
+		D - D DH DL
 	
 	16 bit index registers
-		Index I
-		Index J
+		I
+		J
+		K
+		L
 	
 	32 bit address registers
 		Stack Pointer SP
@@ -80,9 +82,21 @@
 	10		2		3 byte offset
 	11		4		4 byte offset
 	
+	the reg field is the destination unless rim is a memory destination
+	
 	address = base + (index * scale) + offset
-	if scale = 0, the lower 2 bits of index + 1 specifies the number of bytes of the offset, if it
-	is present. If there is also no base, this value is ignored and the offset is 4 bytes wide.
+	If scale != 0, the index field specifies the index as an r16.
+	If scale = 0, the lower 2 bits of index specify the number of bytes of the offset if it is present.
+	If the most significant bit of index = 0, the base field is used as usual.
+	If the most significant bit of index = 1, the base is set to IP and the base field is used to
+	specify the index register. Registers A, B, C, and D are treated as no index in this case. As
+	with relative jumps, IP will point to the first byte of the next instruction.
+	
+	
+	If scale = 0 and the most significant bit of index = 0, the lower 2 bits of index + 1 specifies
+	the number of bytes of the offset, if it is present. If there is also no base, this value is ignored
+	and the offset is 4 bytes wide.
+	If scale = 0 and the most significant bit of index = 1, the base is 
 	
 	As an argument, pair 111 is always SP
 	As a base, pair 111 is none if there is an index and SP if there is not
@@ -93,7 +107,8 @@
 	
 	For division, the carry and overflow flags are set appropriately if the quotient is too
 	large for the destination. The zero flag is set if both quotient and remainder (if applicible)
-	are zero. The sign flag is set according to the quotient.	
+	are zero. The sign flag is set according to the quotient. Quotient goes in the low half and
+	remainder goes in the high half
 	
 	Interrupts push IP, then flags, then jump to the address at [arg * 4]
 	Made for interrupts, PUSHA pushes, in order, A, B, C, D, I, J, K, L, BP. POPA pops the equivalent.
@@ -102,50 +117,13 @@
 	Conditions match x86
 	
 	
+	Packed division returns the packed quotients in the lower register and packed remainders in the
+	upper register.
+	Packed low multiplication returns its results in place.
+	Packed high multiplication returns its values in wide form - i.e. words for 8s and 8s for 4s.
+	
+	The memory-rim value 100 (???) is not strictly defined. However, if the immediate value source
+	is considered as memory pointing to the defined immediate value, it can also be used as a destination,
+	making 100 a valid value and 000 a valid value for the XCHG instruction.
 	
 	
-	
-	
-	Index Register Overhaul Revisions
-	- Add index registers K and L
-		- Remove XCHG shortcuts
-		- Rearrange opcodes
-		- Remove BP and SP from RIM
-			- SP ADD/SUB i8 shortcuts
-		- BIO overhaul
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	used addressing modes
-	base offset
-		BP
-		D:A
-		J:I
-	offset
-	base
-		J:I
-		BP
-		D:A
-		A:B
-	basae index
-		BP J
-		BP I
-		BP C
-		J:I D
-		J:I B
-		J:I A
-		J:I C
-		A:B I
-	index offset
-		J
-	base index offset
-		J:I D
-		A:B I

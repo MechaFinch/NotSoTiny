@@ -45,7 +45,9 @@ public class ConstantExpressionParser {
      *              -> '|' subExpr [subExprRight]
      *              -> '^' subExpr [subExprRight]
      * 
-     * value        -> Constant
+     * value        -> '$' Constant
+     *              -> '@' Constant
+     *              -> Constant
      *              -> Name
      * 
      * @param symbols
@@ -171,7 +173,22 @@ public class ConstantExpressionParser {
     private static ResolvableValue parseValue(LinkedList<Symbol> queue) {
         Symbol s = queue.peek();
         
-        if(s instanceof ConstantSymbol cs) {
+        // handle special symbols
+        if(s instanceof SpecialCharacterSymbol scs) {
+            if(scs.character() == '$' || scs.character() == '@') {
+                queue.poll();
+                s = queue.peek();
+                
+                if(s instanceof NameSymbol ns) {
+                    queue.poll();
+                    
+                    // target - $/@
+                    return new ResolvableExpression(new ResolvableConstant(ns.name()), new ResolvableConstant(scs.character() + ""), Operator.SUBTRACT);
+                } else {
+                    return new ResolvableConstant(scs.character() + "");
+                }
+            }
+        } else if(s instanceof ConstantSymbol cs) {
             queue.poll();
             return new ResolvableConstant(cs.value());
         } else if(s instanceof NameSymbol ns) {

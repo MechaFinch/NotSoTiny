@@ -336,7 +336,8 @@ public class Instruction implements Component {
                 case BH, J, LK  -> 0b00_101_000;
                 case CH, K, BP  -> 0b00_110_000;
                 case DH, L, SP  -> 0b00_111_000;
-                default         -> 0; // handled earlier
+                case NONE       -> 0;
+                default         -> throw new IllegalArgumentException("Invalid destination register " + this.destination.getRegister());
             };
         } else if(includeSource && sourceType == LocationType.REGISTER) {
             rim |= switch(this.source.getRegister()) {
@@ -348,7 +349,8 @@ public class Instruction implements Component {
                 case BH, J, LK  -> 0b00_101_000;
                 case CH, K, BP  -> 0b00_110_000;
                 case DH, L, SP  -> 0b00_111_000;
-                default         -> 0; // handled earlier
+                case NONE       -> 0;
+                default         -> throw new IllegalArgumentException("Invalid source register " + this.source.getRegister());
             };
         }
         
@@ -363,7 +365,8 @@ public class Instruction implements Component {
                 case BH, J, LK  -> 0b00_000_101;
                 case CH, K, BP  -> 0b00_000_110;
                 case DH, L, SP  -> 0b00_000_111;
-                default         -> 0; // handled earlier
+                case NONE       -> 0;
+                default         -> throw new IllegalArgumentException("Invalid source register " + this.source.getRegister());
             };
         //} else if(includeSource && sourceType == LocationType.IMMEDIATE) { // do nothing
             
@@ -410,43 +413,57 @@ public class Instruction implements Component {
         List<Byte> data = new LinkedList<>();
         byte bio = 0;
         
-        boolean hasIndex = rm.getIndex() != Register.NONE;
+        if(this.immediateWidth == 0) {
+            if(rm.getOffset().isResolved() && rm.getOffset().value() != 0) {
+                throw new IllegalArgumentException("Attempted to encode non-zero offset with forced width zero");
+            }
+            
+            includeOffset = false;
+            this.cachedAddressOffset = 2; // issues
+        }
+        
+        boolean hasIndex = rm.getIndex() != Register.NONE,
+                ipRelative = rm.getBase() == Register.IP;
         
         // check
         if(!hasIndex && rm.getBase() == Register.NONE) throw new IllegalArgumentException("Must have at least one register for BIO: " + rm); 
         
         // base
-        bio |= switch(rm.getBase()) {
-            case DA         -> 0b000_000;
-            case AB         -> 0b001_000;
-            case BC         -> 0b010_000;
-            case CD         -> 0b011_000;
-            case JI         -> 0b100_000;
-            case LK         -> 0b101_000;
-            case BP         -> 0b110_000;
-            case SP, NONE   -> 0b111_000;
-            default         -> throw new IllegalArgumentException("Invalid base: " + rm.getBase());
-        };
+        if(!ipRelative) {
+            bio |= switch(rm.getBase()) {
+                case DA         -> 0b000_000;
+                case AB         -> 0b001_000;
+                case BC         -> 0b010_000;
+                case CD         -> 0b011_000;
+                case JI         -> 0b100_000;
+                case LK         -> 0b101_000;
+                case BP         -> 0b110_000;
+                case SP, NONE   -> 0b111_000;
+                default         -> throw new IllegalArgumentException("Invalid base: " + rm.getBase());
+            };
+        } else {
+            // ip relative index
+            bio |= switch(rm.getIndex()) {
+                case I      -> 0b100_100;
+                case J      -> 0b101_100;
+                case K      -> 0b110_100;
+                case L      -> 0b111_100;
+                case NONE   -> 0b000_100;
+                default     -> throw new IllegalArgumentException("Invalid IP-relative index: " + rm.getIndex());
+            };
+        }
         
         int offsetSize = 4;
         
         // scale
-        if(hasIndex) { // scale scales the index
+        if(hasIndex && !ipRelative) { // scale scales the index
             bio |= switch(rm.getScale()) {
                 case 1  -> 0b01_000_000;
                 case 2  -> 0b10_000_000;
                 case 4  -> 0b11_000_000;
                 default -> throw new IllegalArgumentException("Invalid scale: " + rm.getScale());
             };
-        } else if(includeOffset && rm.getOffset().isResolved()) { // scale scales the offset
-            long offset = rm.getOffset().value();
             
-            offsetSize = getValueWidth(offset, true, true);
-            bio |= ((offsetSize - 1) & 0b11) << 6;
-        }
-        
-        // index or offset size
-        if(hasIndex) {
             bio |= switch(rm.getIndex()) {
                 case A  -> 0b000;
                 case B  -> 0b001;
@@ -459,6 +476,9 @@ public class Instruction implements Component {
                 default -> throw new IllegalArgumentException("Invalid index: " + rm.getIndex());
             };
         } else if(includeOffset) {
+            if(rm.getOffset().isResolved()) offsetSize = getValueWidth(rm.getOffset().value(), true, true);
+            else if(this.immediateWidth != -1) offsetSize = this.immediateWidth;
+            
             bio |= (offsetSize - 1) & 0b11;
         }
         
@@ -656,6 +676,7 @@ public class Instruction implements Component {
     
     public ResolvableLocationDescriptor getSourceDescriptor() { return this.source; }
     public ResolvableLocationDescriptor getDestinationDescriptor() { return this.destination; }
+    public int getImmediateWidth() { return this.immediateWidth; }
     public boolean hasFixedSize() { return this.hasFixedSize; }
     public Opcode getOpcode() { return this.op; }
 }

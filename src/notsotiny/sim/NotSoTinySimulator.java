@@ -93,6 +93,15 @@ public class NotSoTinySimulator {
         
         if(desc.op == Opcode.NOP) return; 
         
+        switch(desc.op) {
+            case CMP_RIM_I8, ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8:
+                desc.hasRIMI8 = true;
+                break;
+            
+            default:
+                break;
+        }
+        
         //System.out.println(desc.op.getType().getFamily()); 
         
         switch(desc.op.getType().getFamily()) {
@@ -2504,17 +2513,22 @@ public class NotSoTinySimulator {
      * @return
      */
     private int getBIOAddress(InstructionDescriptor desc, boolean hasRIM, boolean hasOffset) {
-        desc.hasBIOByte = true;
-        
         byte bio = this.memory.readByte(this.reg_ip + (hasRIM ? 1 : 0)),
              base = (byte)((bio >> 3) & 0x07),
              index = (byte)(bio & 0x07),
              scale = (byte)((bio >> 6) & 0x03),
              offsetSize = 4;
         
-        boolean hasIndex = scale != 0;
+        boolean hasIndex = scale != 0,
+                ipRelative = false;
         
         long addr = 0;
+        
+        desc.hasBIOByte = true;
+        if(hasOffset) {
+            desc.hasImmediateAddress = true;
+            desc.immediateWidth = offsetSize;
+        }
         
         // index
         if(hasIndex) {
@@ -2534,26 +2548,47 @@ public class NotSoTinySimulator {
             addr <<= (scale - 1);
         } else {
             offsetSize = (byte)((index & 0x03) + 1);
+            
+            // IP relative
+            if((index & 4) != 0) {
+                ipRelative = true;
+                addr += this.reg_ip;
+                
+                // locate next instruction
+                if(desc.hasRIMByte) addr++;     // rim
+                addr++; // bio
+                if(desc.hasImmediateAddress || desc.hasImmediateValue) addr += desc.immediateWidth; // immediate
+                if(desc.hasRIMI8) addr++; // instructions add to immediateWidth later
+                
+                // base as index
+                addr += switch(base) {
+                    case 0, 1, 2, 3 -> 0;
+                    case 4          -> this.reg_i;
+                    case 5          -> this.reg_j;
+                    case 6          -> this.reg_k;
+                    case 7          -> this.reg_l;
+                    default         -> -1;
+                };
+            }
         }
         
         // base
-        addr += switch(base) {
-            case 0  -> (this.reg_d << 16) | (this.reg_a & 0xFFFF);  // D:A
-            case 1  -> (this.reg_a << 16) | (this.reg_b & 0xFFFF);  // A:B
-            case 2  -> (this.reg_b << 16) | (this.reg_c & 0xFFFF);  // B:C
-            case 3  -> (this.reg_c << 16) | (this.reg_d & 0xFFFF);  // C:D
-            case 4  -> (this.reg_j << 16) | (this.reg_i & 0xFFFF);  // J:I
-            case 5  -> (this.reg_l << 16) | (this.reg_k & 0xFFFF);  // L:K
-            case 6  -> this.reg_bp;
-            case 7  -> hasIndex ? 0 : this.reg_sp;
-            default -> -1;
-        };
+        if(!ipRelative) {
+            addr += switch(base) {
+                case 0  -> (this.reg_d << 16) | (this.reg_a & 0xFFFF);  // D:A
+                case 1  -> (this.reg_a << 16) | (this.reg_b & 0xFFFF);  // A:B
+                case 2  -> (this.reg_b << 16) | (this.reg_c & 0xFFFF);  // B:C
+                case 3  -> (this.reg_c << 16) | (this.reg_d & 0xFFFF);  // C:D
+                case 4  -> (this.reg_j << 16) | (this.reg_i & 0xFFFF);  // J:I
+                case 5  -> (this.reg_l << 16) | (this.reg_k & 0xFFFF);  // L:K
+                case 6  -> this.reg_bp;
+                case 7  -> hasIndex ? 0 : this.reg_sp;
+                default -> -1;
+            };
+        }
         
         // offset
         if(hasOffset) {
-            desc.hasImmediateAddress = true;
-            desc.immediateWidth = offsetSize;
-            
             long immAddr = this.reg_ip + (hasRIM ? 2 : 1);
             
             addr += switch(offsetSize) {

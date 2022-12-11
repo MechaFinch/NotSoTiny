@@ -428,7 +428,7 @@ public class Disassembler {
                 return 1;
             
             // 1 byte
-            case MOV_A_I8:      case MOV_B_I8:      case MOV_C_I8:      case MOV_D_I8:
+            case MOVS_A_I8:      case MOVS_B_I8:      case MOVS_C_I8:      case MOVS_D_I8:
             case ADD_A_I8:      case ADD_B_I8:      case ADD_C_I8:      case ADD_D_I8:      case ADC_A_I8:
             case ADC_B_I8:      case ADC_C_I8:      case ADC_D_I8:
             case SUB_A_I8:      case SUB_B_I8:      case SUB_C_I8:      case SUB_D_I8:      case SBB_A_I8:

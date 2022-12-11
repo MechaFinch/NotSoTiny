@@ -1,9 +1,15 @@
 package notsotiny.asm.components;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import notsotiny.asm.resolution.ResolvableConstant;
 import notsotiny.asm.resolution.ResolvableValue;
 
 /**
@@ -18,7 +24,7 @@ public class InitializedData implements Component {
     private int wordSize;
     
     /**
-     * Constructor
+     * Resolvable Constructor
      * 
      * @param data
      * @param wordSize bytes per word
@@ -26,6 +32,26 @@ public class InitializedData implements Component {
     public InitializedData(List<ResolvableValue> data, int wordSize) {
         this.data = data;
         this.wordSize = wordSize;
+    }
+    
+    /**
+     * File Constructor
+     * 
+     * @param filename
+     */
+    public InitializedData(String filename) { 
+        try {
+            byte[] bytes = Files.readAllBytes(new File(filename).toPath());
+            this.data = new LinkedList<>();
+            
+            for(int i = 0; i < bytes.length; i++) {
+                data.add(new ResolvableConstant(bytes[i]));
+            }
+            
+            this.wordSize = 1;
+        } catch(IOException e) {
+            throw new IllegalArgumentException("Input file caused IOException: " + e.getMessage());
+        }
     }
     
     /**

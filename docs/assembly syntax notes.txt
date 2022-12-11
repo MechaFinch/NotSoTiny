@@ -1,0 +1,9 @@
+
+	$ as a symbol evaluates to the address immediately following the current instruction
+	$<label> evaluates to (label address) - (current instruction end address)
+	
+	@ as a symbol evaluates to the address immediately following the last instruction
+	@<label> evaluates to (label address) - (previous instruction end address)
+	
+	@ when used in an instruction will always point to its opcode.
+	@ when used in a directive will point to the $ of the most recent instruction

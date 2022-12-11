@@ -88,8 +88,8 @@ public class NotSoTinyUI extends Application {
                                 TEXT_FONT_FILE = "text.dat";
     */
     
-    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\snake\\",
-                                PROGRAM_EXEC_FILE = "snake.oex",
+    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\Desktop\\silly  code\\AdventOfCode\\asm\\2022\\",
+                                PROGRAM_EXEC_FILE = "advent.oex",
                                 TEXT_FONT_FILE = "text.dat";
     
     
@@ -293,17 +293,18 @@ public class NotSoTinyUI extends Application {
         this.simThread.start();
         
         // start seconds clock
-        
+        /*
         this.scheduler.scheduleAtFixedRate(() -> {
             this.sim.fireMaskableInterrupt((byte) 1);
             this.halter.clear();
             notifySimulatorThread();
         }, 1_000_000l, 10_000l, TimeUnit.MICROSECONDS);
+        */
         
         // 100 hz
         
         //this.halter.writeByte(0l, (byte) 0);
-        //this.sim.setHalted(true);
+        this.sim.setHalted(true);
     }
     
     /**

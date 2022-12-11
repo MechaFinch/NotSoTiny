@@ -323,7 +323,7 @@ public class Assembler {
                                 // value
                                 if(es.symbols().get(2) instanceof NameSymbol ns) {
                                     libName = ns.name();
-                                } else throw new IllegalArgumentException("Invalid library description");
+                                } else throw new IllegalArgumentException("Invalid library description " + es.symbols().get(2));
                             } else throw new IllegalArgumentException("Invalid library description");
                             
                             // working directory
@@ -387,7 +387,7 @@ public class Assembler {
                         labelIndexMap.put(l.name(), allInstructions.size());
                         LOG.finer("Added label " + l.name() + " at index " + allInstructions.size());
                     } else {                
-                        Component c = parseLine(s, symbolQueue, line);
+                        Component c = parseLine(s, symbolQueue, workingDirectory, line);
                         
                         if(c == null) {
                             encounteredError = true;
@@ -425,7 +425,7 @@ public class Assembler {
         NavigableMap<String, Integer> labelAddressMap = new TreeMap<>();        // label -> address
         NavigableMap<Integer, Integer> instructionAddressMap = new TreeMap<>(); // index in allInstructions -> address
         Set<String> libNames = new HashSet<>(libraryNamesMap.values());
-        int addr = 0;
+        int addr = 0, lastInstructionAddr = -1;
         
         // build initial address map
         LOG.finer("Building label address map");
@@ -447,18 +447,23 @@ public class Assembler {
                 
                 // resolve values
                 addr = 0;
+                lastInstructionAddr = -1;
                 for(int i = 0; i < allInstructions.size(); i++) {
                     Component c = allInstructions.get(i);
                     
                     if(!c.isResolved()) {
                         String before = c.toString();
                         
-                        resolveComponent(c, labelAddressMap, libNames, incomingReferences, libraryName, addr);
+                        resolveComponent(c, labelAddressMap, libNames, incomingReferences, libraryName, addr, lastInstructionAddr, true);
                         
                         LOG.finest(before + " resolved to " + c);
                     }
                     
                     addr += c.getSize();
+                    
+                    if(c instanceof Instruction) {
+                        lastInstructionAddr = addr;
+                    }
                 }
                 
                 changedValueSizes = false;
@@ -487,11 +492,13 @@ public class Assembler {
                 for(int i = 0; i < allInstructions.size(); i++) {
                     Component c = allInstructions.get(i);
                     
-                    if(c instanceof Instruction inst && !inst.hasFixedSize()) {
+                    // is this eligible for optimization
+                    if(c instanceof Instruction inst) {
                         ResolvableLocationDescriptor src = inst.getSourceDescriptor(),
                                                      dst = inst.getDestinationDescriptor();
                         
-                        if(src.getType() == LocationType.IMMEDIATE && src.isResolved()) {
+                        // Optimize source immediates
+                        if(src.getType() == LocationType.IMMEDIATE && src.isResolved() && !inst.hasFixedSize()) {
                             long val = src.getImmediate().value();
                             int width = getValueWidth(val, true, true),
                                 dstWidth = dst.getSize();
@@ -923,6 +930,34 @@ public class Assembler {
                             
                             changedValueSizes |= changedValueSizesBefore;
                         }
+                        
+                        // Optimize memory offsets
+                        if(src.getType() == LocationType.MEMORY || dst.getType() == LocationType.MEMORY) {
+                            // get the value to see if we can optimize
+                            ResolvableValue rOffset;
+                            
+                            if(src.getType() == LocationType.MEMORY) {
+                                rOffset = src.getMemory().getOffset();
+                            } else {
+                                rOffset = dst.getMemory().getOffset();
+                            }
+                            
+                            // we need a resolved nonzero value
+                            if(rOffset.isResolved()) {
+                                long offset = rOffset.value();
+                                
+                                int oldImmSize = inst.getImmediateWidth();
+                                
+                                int newImmSize = (offset != 0) ? getValueWidth(offset, true, true) : 0;
+                                
+                                LOG.finest(c + "  old: " + oldImmSize + " new: " + newImmSize);
+                                
+                                if(newImmSize != oldImmSize) {
+                                    inst.setImmediateWidth(newImmSize);
+                                    changedValueSizes = true;
+                                }
+                            }
+                        }
                     }
                 }
                 
@@ -947,6 +982,7 @@ public class Assembler {
         
         // perform final resolution
         addr = 0;
+        lastInstructionAddr = -1;
         for(int i = 0; i < allInstructions.size(); i++) {
             Component c = allInstructions.get(i);
             int len = c.getSize();
@@ -954,7 +990,7 @@ public class Assembler {
             if(!c.isResolved()) {
                 String before = c.toString();
                 
-                boolean relocated = resolveComponent(c, labelAddressMap, libNames, incomingReferences, libraryName, addr);
+                boolean relocated = resolveComponent(c, labelAddressMap, libNames, incomingReferences, libraryName, addr, lastInstructionAddr, true);
                 
                 LOG.finer(before + " resolved to " + c);
                 
@@ -974,7 +1010,12 @@ public class Assembler {
                 }
             }
             
+            // update addresses
             addr += s;
+            
+            if(c instanceof Instruction) {
+                lastInstructionAddr = addr;
+            }
         }
         
         LOG.fine("-- CONSTANT RESOLUTION FINAL PASS RESULTS --");
@@ -1117,8 +1158,10 @@ public class Assembler {
      * @param c
      * @return
      */
-    private static boolean resolveComponent(Component c, Map<String, Integer> labelAddressMap, Set<String> libNames, HashMap<String, List<Integer>> incomingReferences, String libraryName, int addr) {
+    private static boolean resolveComponent(Component c, Map<String, Integer> labelAddressMap, Set<String> libNames, HashMap<String, List<Integer>> incomingReferences, String libraryName, int addr, int lastInstructionAddress, boolean firstAttempt) {
         boolean relocated = false;
+        
+        int size = c.getSize();
         
         switch(c) {
             case Instruction inst:
@@ -1134,7 +1177,7 @@ public class Assembler {
                             boolean relative = false;
                             if(type == Operation.JMP || type == Operation.JCC || type == Operation.CALL) relative = true;
                             
-                            relocated |= resolveValue(source.getImmediate(), labelAddressMap, libNames, incomingReferences, libraryName, addr + (relative ? c.getSize() : inst.getImmediateOffset()), relative, false);
+                            relocated |= resolveValue(source.getImmediate(), labelAddressMap, libNames, incomingReferences, libraryName, addr, inst.getImmediateOffset(), size, relative, false, lastInstructionAddress);
                             
                             if(relative && !source.isResolved()) throw new IllegalArgumentException("Could not resolve relative value: " + source + " in " + inst);
                             
@@ -1143,7 +1186,7 @@ public class Assembler {
                             break;
                             
                         case MEMORY:
-                            relocated |= resolveValue(source.getMemory().getOffset(), labelAddressMap, libNames, incomingReferences, libraryName, addr + inst.getAddressOffset(), false, false);
+                            relocated |= resolveValue(source.getMemory().getOffset(), labelAddressMap, libNames, incomingReferences, libraryName, addr, inst.getAddressOffset(), size, false, false, lastInstructionAddress);
                             break;
                             
                         default:
@@ -1160,7 +1203,7 @@ public class Assembler {
                             break; */
                             
                         case MEMORY:
-                            relocated |= resolveValue(dest.getMemory().getOffset(), labelAddressMap, libNames, incomingReferences, libraryName, addr + inst.getAddressOffset(), false, false);
+                            relocated |= resolveValue(dest.getMemory().getOffset(), labelAddressMap, libNames, incomingReferences, libraryName, addr, inst.getAddressOffset(), size, false, false, lastInstructionAddress);
                             break;
                             
                         default:
@@ -1170,7 +1213,7 @@ public class Assembler {
                 
             case InitializedData init:
                 for(ResolvableValue rv : init.getUnresolvedData()) {
-                    relocated = resolveValue(rv, labelAddressMap, libNames, incomingReferences, libraryName, addr, false, false);
+                    relocated = resolveValue(rv, labelAddressMap, libNames, incomingReferences, libraryName, addr, 0, size, false, false, lastInstructionAddress);
                     
                     if(init.getWordSize() != 4) relocated = false;
                 }
@@ -1180,12 +1223,12 @@ public class Assembler {
                 break;
             
             case Repetition rep:
-                relocated = resolveValue(rep.getReps(), labelAddressMap, libNames, incomingReferences, libraryName, addr, false, false);
+                relocated = resolveValue(rep.getReps(), labelAddressMap, libNames, incomingReferences, libraryName, addr, 0, size, false, false, lastInstructionAddress);
                 
                 if(relocated) throw new IllegalArgumentException("Repetition count cannot be an external value");
                 
                 for(int i = 0; i < rep.getReps().value(); i++) {
-                    relocated |= resolveComponent(rep.getData(), labelAddressMap, libNames, incomingReferences, libraryName, addr);
+                    relocated |= resolveComponent(rep.getData(), labelAddressMap, libNames, incomingReferences, libraryName, addr, lastInstructionAddress, firstAttempt);
                     addr += rep.getData().getSize();
                 }
                 break;
@@ -1269,10 +1312,10 @@ public class Assembler {
      * @param symbolQueue
      * @return
      */
-    private static Component parseLine(Symbol s, LinkedList<Symbol> symbolQueue, int line) {
+    private static Component parseLine(Symbol s, LinkedList<Symbol> symbolQueue, String workingDirectory, int line) {
         switch(s) {
             case DirectiveSymbol d:
-                Component c = parseDirective(symbolQueue, d);
+                Component c = parseDirective(symbolQueue, d, workingDirectory);
                 
                 LOG.finer("Directive resulted in: " + c);
                 
@@ -2019,6 +2062,14 @@ public class Assembler {
                 if(rld == null) return null;
                 rld.setSize(convertSize(ss));
                 return rld;
+            
+            case SpecialCharacterSymbol scs:
+                // these will be expressions if they're not on their own
+                if(scs.character() == '$' || scs.character() == '@') {
+                    return new ResolvableLocationDescriptor(LocationType.IMMEDIATE, -1, new ResolvableConstant(scs.character() + ""));
+                }
+                
+                throw new IllegalArgumentException("Invalid symbol while parsing operand: " + scs);
                 
             case Symbol s:
                 throw new IllegalArgumentException("Invalid symbol while parsing operand: " + s);
@@ -2080,7 +2131,7 @@ public class Assembler {
         // simplify checks
         Set<Long> scales = Set.of(1l, 2l, 4l, 8l);
         Set<String> reg16s = Set.of("A", "B", "C", "D", "I", "J", "K", "L"),
-                    reg32s = Set.of("A", "B", "C", "D", "I", "J", "K", "L", "BP", "SP");
+                    reg32s = Set.of("A", "B", "C", "D", "I", "J", "K", "L", "BP", "SP", "IP");
         
         for(int i = 0; i < symbols.size(); i++) {
             switch(symbols.get(i)) {
@@ -2301,7 +2352,7 @@ public class Assembler {
      * @param ds
      * @return
      */
-    private static Component parseDirective(LinkedList<Symbol> symbolQueue, DirectiveSymbol ds) {
+    private static Component parseDirective(LinkedList<Symbol> symbolQueue, DirectiveSymbol ds, String workingDirectory) {
         // keywords ordered by reserved_words.txt
         switch(ds.name()) {
             // reserve bytes
@@ -2332,7 +2383,11 @@ public class Assembler {
             
             // repeat the given line x times
             case "REPEAT":
-                return repeatComponent(symbolQueue);
+                return repeatComponent(symbolQueue, workingDirectory);
+            
+            // include a file's binary
+            case "INCBIN":
+                return includeBinary(symbolQueue, workingDirectory);
             
             // %DEFINE is included here as definitions are handled by AssemblerLib
             // AS is expressive and part of the import/include construct so shouldn't be passed
@@ -2342,12 +2397,30 @@ public class Assembler {
     }
     
     /**
+     * Includes a binary file's contents
+     */
+    private static InitializedData includeBinary(LinkedList<Symbol> symbolQueue, String workingDirectory) {
+        Symbol s = symbolQueue.poll();
+        
+        String fileName = switch(s) {
+            case NameSymbol ns      -> ns.name();
+            case StringSymbol ss    -> ss.value();
+            default -> throw new IllegalArgumentException("Invalid library description");
+        };
+        
+        // working directory
+        if(!new File(fileName).isAbsolute()) fileName = workingDirectory + fileName;
+        
+        return new InitializedData(fileName);
+    }
+    
+    /**
      * Parses a REPEAT directive's contents
      * 
      * @param symbolQueue
      * @return
      */
-    private static Component repeatComponent(LinkedList<Symbol> symbolQueue) {
+    private static Component repeatComponent(LinkedList<Symbol> symbolQueue, String workingDirectory) {
         // we expect an expression that evaluates to the number of repetitions, a separator, and a line we can send to the normal parser
         Symbol s = symbolQueue.poll();
         ResolvableValue reps = switch(s) {
@@ -2358,7 +2431,7 @@ public class Assembler {
         
         if(symbolQueue.peek() instanceof SeparatorSymbol ss) symbolQueue.poll();
         
-        return new Repetition(parseLine(symbolQueue.poll(), symbolQueue, -1), reps);
+        return new Repetition(parseLine(symbolQueue.poll(), symbolQueue, workingDirectory, -1), reps);
     }
     
     /**
@@ -2452,7 +2525,7 @@ public class Assembler {
         for(ResolvableConstant rc : unresolvedValues) {
             String n = rc.getName();
             
-            if(!labelIndexMap.containsKey(n)) {
+            if(!labelIndexMap.containsKey(n) && !n.equals("$") && !n.equals("@")) {
                 throw new IllegalArgumentException("Unknown or external label " + n + " in expression " + re);
             }
         }
@@ -2579,8 +2652,10 @@ public class Assembler {
      * @param address
      * @return true if the value resulted in a relocation entry
      */
-    private static boolean resolveValue(ResolvableValue rv, Map<String, Integer> labelAddressMap, Set<String> libraries, HashMap<String, List<Integer>> incomingReferences, String fileName, int address, boolean relative, boolean inExpression) {
+    private static boolean resolveValue(ResolvableValue rv, Map<String, Integer> labelAddressMap, Set<String> libraries, HashMap<String, List<Integer>> incomingReferences, String fileName, int baseAddress, int valueOffset, int size, boolean relative, boolean inExpression, int lastInstructionAddress) {
         boolean relocated = false;
+        
+        int address = baseAddress + (relative ? size : valueOffset);
         
         try {
             switch(rv) {
@@ -2588,8 +2663,8 @@ public class Assembler {
                     ResolvableValue left = re.getLeft(),
                                     right = re.getRight();
                     
-                    if(!left.isResolved()) resolveValue(left, labelAddressMap, libraries, incomingReferences, fileName, address, false, true);
-                    if(!right.isResolved()) resolveValue(right, labelAddressMap, libraries, incomingReferences, fileName, address, false, true);
+                    if(!left.isResolved()) resolveValue(left, labelAddressMap, libraries, incomingReferences, fileName, baseAddress, valueOffset, size, false, true, lastInstructionAddress);
+                    if(!right.isResolved()) resolveValue(right, labelAddressMap, libraries, incomingReferences, fileName, baseAddress, valueOffset, size, false, true, lastInstructionAddress);
                     break;
                     
                 case ResolvableConstant rc:
@@ -2598,6 +2673,15 @@ public class Assembler {
                     }
                     
                     String name = rc.getName();
+                    
+                    // special relative symbols
+                    if(name.equals("$")) {
+                        rc.setValue(baseAddress + size);
+                        return false;
+                    } else if(name.equals("@")) {
+                        rc.setValue(lastInstructionAddress);
+                        return false;
+                    }
                     
                     if(!inExpression && !relative) {
                         if(!isLibraryReference(name, libraries)) {

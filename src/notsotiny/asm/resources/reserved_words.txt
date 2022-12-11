@@ -121,6 +121,7 @@ k
 l
 bp
 sp
+ip
 f
 pf
 ::sizes::
@@ -145,6 +146,7 @@ dd
 dp
 as
 repeat
+incbin
 ::expressive::
 as
 a
