@@ -89,17 +89,12 @@
 	
 	address = base + (index * scale) + offset
 	If scale != 0, the index field specifies the index as an r16.
+	
 	If scale = 0, the lower 2 bits of index specify the number of bytes of the offset if it is present.
 	If the most significant bit of index = 0, the base field is used as usual.
 	If the most significant bit of index = 1, the base is set to IP and the base field is used to
 	specify the index register. Registers A, B, C, and D are treated as no index in this case. As
 	with relative jumps, IP will point to the first byte of the next instruction.
-	
-	
-	If scale = 0 and the most significant bit of index = 0, the lower 2 bits of index + 1 specifies
-	the number of bytes of the offset, if it is present. If there is also no base, this value is ignored
-	and the offset is 4 bytes wide.
-	If scale = 0 and the most significant bit of index = 1, the base is 
 	
 	As an argument, pair 111 is always SP
 	As a base, pair 111 is none if there is an index and SP if there is not
