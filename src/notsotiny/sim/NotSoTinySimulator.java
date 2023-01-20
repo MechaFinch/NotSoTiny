@@ -56,7 +56,7 @@ public class NotSoTinySimulator {
         this.reg_sp = 0;
         this.reg_bp = 0;
         this.reg_f = 0;
-        this.reg_pf = 1;
+        this.reg_pf = 1; // interrupts enabled by default
         this.halted = false;
         this.externalInterrupt = false;
         this.externalInterruptVector = 0;
@@ -2525,10 +2525,6 @@ public class NotSoTinySimulator {
         long addr = 0;
         
         desc.hasBIOByte = true;
-        if(hasOffset) {
-            desc.hasImmediateAddress = true;
-            desc.immediateWidth = offsetSize;
-        }
         
         // index
         if(hasIndex) {
@@ -2598,6 +2594,9 @@ public class NotSoTinySimulator {
                 case 4  -> this.memory.read4Bytes(immAddr);
                 default -> 0;
             };
+            
+            desc.hasImmediateAddress = true;
+            desc.immediateWidth = offsetSize;
         }
         
         return (int) addr;

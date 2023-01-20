@@ -349,7 +349,7 @@ public class Instruction implements Component {
                 case BH, J, LK  -> 0b00_101_000;
                 case CH, K, BP  -> 0b00_110_000;
                 case DH, L, SP  -> 0b00_111_000;
-                case NONE       -> 0;
+                case NONE, PF   -> 0;
                 default         -> throw new IllegalArgumentException("Invalid source register " + this.source.getRegister());
             };
         }
@@ -365,7 +365,7 @@ public class Instruction implements Component {
                 case BH, J, LK  -> 0b00_000_101;
                 case CH, K, BP  -> 0b00_000_110;
                 case DH, L, SP  -> 0b00_000_111;
-                case NONE       -> 0;
+                case NONE, PF   -> 0;
                 default         -> throw new IllegalArgumentException("Invalid source register " + this.source.getRegister());
             };
         //} else if(includeSource && sourceType == LocationType.IMMEDIATE) { // do nothing

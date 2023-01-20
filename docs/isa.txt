@@ -1,5 +1,5 @@
 
-	16 bit general purpose registers with 8 bit halves and 4-8 SIMD
+	16 bit general purpose registers with 8 bit halves
 		A - A AH AL
 		B - B BH BL
 		C - C CH CL
@@ -24,6 +24,9 @@
 		
 		Processor Flags PF (16 bit)
 			can be moved
+	
+	Instructions are encoded as:
+	{Opcode} [RIM] [BIO] [Immediate] [EI8]
 	
 	F layout
 	|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|

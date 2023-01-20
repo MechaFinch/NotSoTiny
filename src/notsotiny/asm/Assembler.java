@@ -478,6 +478,9 @@ public class Assembler {
                  * [ADD, ADC, SUB, SBB] [A, B, C, D], i16 -> [ADD, ADC, SUB, SBB] [A, B, C, D], i8
                  * [ADD, ADC, SUB, SBB] rim -> [ADD, ADC, SUB, SBB] [A, B, C, D], [i16, i8]
                  * [ADD, ADC, SUB, SBB] rim -> [ADD, ADC, SUB, SBB] rim, i8
+                 * [ADD, SUB] rim, 1 -> [INC, DEC] rim
+                 * [ADC, SBB] rim, 0 -> [ICC, DCC] rim
+                 * [INC, ICC, DEC, DCC] rim -> [INC, ICC, DEC, DCC] [I, J, K, L]
                  * JMP [i32, i16] -> JMP [i8, i16]
                  * JMP rim -> JMP [i32, i16, i8]
                  * JMPA rim -> JMPA i32
@@ -611,6 +614,14 @@ public class Assembler {
                                         changedValueSizes = true;
                                     }
                                     break;
+                                
+                                // ADD RIM, 1 -> INC RIM
+                                case ADD_RIM_I8:
+                                    if(val == 1) {
+                                        inst.setOpcode(Opcode.INC_RIM);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
                                     
                                 // ADC [A, B, C, D], I16 -> ADC [A, B, C, D], I8
                                 case ADC_A_I16:
@@ -654,6 +665,14 @@ public class Assembler {
                                         }
                                     } else if(dst.getSize() != 1 && width == 1) {
                                         inst.setOpcode(Opcode.ADC_RIM_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                // ADC RIM, 0 -> ICC RIM
+                                case ADC_RIM_I8:
+                                    if(val == 0) {
+                                        inst.setOpcode(Opcode.ICC_RIM);
                                         changedValueSizes = true;
                                     }
                                     break;
@@ -703,6 +722,14 @@ public class Assembler {
                                         changedValueSizes = true;
                                     }
                                     break;
+                                
+                                // SUB RIM, 1 -> DEC RIM
+                                case SUB_RIM_I8:
+                                    if(val == 1) {
+                                        inst.setOpcode(Opcode.DEC_RIM);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
                                     
                                 // SBB [A, B, C, D], I16 -> SBB [A, B, C, D], I8
                                 case SBB_A_I16:
@@ -747,6 +774,66 @@ public class Assembler {
                                     } else if(dst.getSize() != 1 && width == 1) {
                                         inst.setOpcode(Opcode.SBB_RIM_I8);
                                         changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                // SBB RIM, 0 -> DCC RIM
+                                case SBB_RIM_I8:
+                                    if(val == 0) {
+                                        inst.setOpcode(Opcode.DCC_RIM);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                // INC RIM -> INC [I, J, K, L]
+                                case INC_RIM:
+                                    if(dst.getType() == LocationType.REGISTER) {
+                                        switch(dst.getRegister()) {
+                                            case I:     inst.setOpcode(Opcode.INC_I); changedValueSizes = true; break;
+                                            case J:     inst.setOpcode(Opcode.INC_J); changedValueSizes = true; break;
+                                            case K:     inst.setOpcode(Opcode.INC_K); changedValueSizes = true; break;
+                                            case L:     inst.setOpcode(Opcode.INC_L); changedValueSizes = true; break;
+                                            default:    break;    
+                                        }
+                                    }
+                                    break;
+                                    
+                                // ICC RIM -> ICC [I, J, K, L]
+                                case ICC_RIM:
+                                    if(dst.getType() == LocationType.REGISTER) {
+                                        switch(dst.getRegister()) {
+                                            case I:     inst.setOpcode(Opcode.ICC_I); changedValueSizes = true; break;
+                                            case J:     inst.setOpcode(Opcode.ICC_J); changedValueSizes = true; break;
+                                            case K:     inst.setOpcode(Opcode.ICC_K); changedValueSizes = true; break;
+                                            case L:     inst.setOpcode(Opcode.ICC_L); changedValueSizes = true; break;
+                                            default:    break;    
+                                        }
+                                    }
+                                    break;
+                                    
+                                // DEC RIM -> DEC [I, J, K, L]
+                                case DEC_RIM:
+                                    if(dst.getType() == LocationType.REGISTER) {
+                                        switch(dst.getRegister()) {
+                                            case I:     inst.setOpcode(Opcode.DEC_I); changedValueSizes = true; break;
+                                            case J:     inst.setOpcode(Opcode.DEC_J); changedValueSizes = true; break;
+                                            case K:     inst.setOpcode(Opcode.DEC_K); changedValueSizes = true; break;
+                                            case L:     inst.setOpcode(Opcode.DEC_L); changedValueSizes = true; break;
+                                            default:    break;    
+                                        }
+                                    }
+                                    break;
+                                    
+                                // DCC RIM -> DCC [I, J, K, L]
+                                case DCC_RIM:
+                                    if(dst.getType() == LocationType.REGISTER) {
+                                        switch(dst.getRegister()) {
+                                            case I:     inst.setOpcode(Opcode.DCC_I); changedValueSizes = true; break;
+                                            case J:     inst.setOpcode(Opcode.DCC_J); changedValueSizes = true; break;
+                                            case K:     inst.setOpcode(Opcode.DCC_K); changedValueSizes = true; break;
+                                            case L:     inst.setOpcode(Opcode.DCC_L); changedValueSizes = true; break;
+                                            default:    break;    
+                                        }
                                     }
                                     break;
                                 
