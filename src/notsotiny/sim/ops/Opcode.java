@@ -96,8 +96,8 @@ public enum Opcode {
     PUSH_K      (0x4A, Operation.PUSH),
     PUSH_L      (0x4B, Operation.PUSH),
     PUSH_BP     (0x4C, Operation.PUSH),
-    PUSH_SP     (0x4D, Operation.PUSH),
-    PUSH_F      (0x4E, Operation.PUSH),
+    PUSH_F      (0x4D, Operation.PUSH),
+    PUSH_PF     (0x4E, Operation.PUSH),
     PUSH_RIM    (0x4F, Operation.PUSH),
     
     PUSH_I32    (0x50, Operation.PUSH),
@@ -113,8 +113,8 @@ public enum Opcode {
     POP_K       (0x5A, Operation.POP),
     POP_L       (0x5B, Operation.POP),
     POP_BP      (0x5C, Operation.POP),
-    POP_SP      (0x5D, Operation.POP),
-    POP_F       (0x5E, Operation.POP),
+    POP_F       (0x5D, Operation.POP),
+    POP_PF      (0x5E, Operation.POP),
     POP_RIM     (0x5F, Operation.POP),
     
     AND_F_RIM   (0x60, Operation.AND),

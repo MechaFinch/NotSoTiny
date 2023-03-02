@@ -518,7 +518,7 @@ public class NotSoTinySimulator {
         boolean mod = desc.op == Opcode.PDIVM_RIMP || desc.op == Opcode.PDIVMS_RIMP,
                 signed = desc.op == Opcode.PDIVS_RIMP || desc.op == Opcode.PDIVMS_RIMP;
         
-        int a = mod ? getWidePackedRIMSource(thinDst) : getPackedRIMSource(thinDst, desc),
+        int a = mod ? getWidePackedRIMSource(thinDst, desc) : getPackedRIMSource(thinDst, desc),
             b = getPackedRIMSource(src, desc);
         
         // immedaites are always 2 bytes for packed
@@ -910,7 +910,7 @@ public class NotSoTinySimulator {
      */
     private void runLEA(InstructionDescriptor desc) {
         // souper simple
-        putNormalRIMDestination(desc, getNormalRIMSourceDescriptor(desc).address());
+        putWideRIMDestination(desc, getNormalRIMSourceDescriptor(desc).address());
     }
     
     /**
@@ -1428,8 +1428,8 @@ public class NotSoTinySimulator {
         
         // deal with operand size
         int opSize = switch(desc.op) {
-            case PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L, PUSH_F -> 2;
-            case PUSH_BP, PUSH_SP, PUSH_I32 -> 4;
+            case PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L, PUSH_F, PUSH_PF -> 2;
+            case PUSH_BP, PUSH_I32 -> 4;
             default -> getNormalRIMSourceWidth(desc);
         };
         
@@ -1445,9 +1445,9 @@ public class NotSoTinySimulator {
             case PUSH_J     -> this.reg_j;
             case PUSH_K     -> this.reg_k;
             case PUSH_L     -> this.reg_l;
-            case PUSH_F     -> this.reg_f;
             case PUSH_BP    -> this.reg_bp;
-            case PUSH_SP    -> this.reg_sp;
+            case PUSH_F     -> this.reg_f;
+            case PUSH_PF    -> this.reg_pf;
             case PUSH_I32   -> {
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 4;
@@ -1490,8 +1490,8 @@ public class NotSoTinySimulator {
         
         // deal with operand size
         int opSize = switch(desc.op) {
-            case POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L, POP_F -> 2;
-            case POP_BP, POP_SP -> 4;
+            case POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L, POP_F, POP_PF -> 2;
+            case POP_BP -> 4;
             default -> getNormalRIMSourceWidth(desc);
         };
         
@@ -1517,9 +1517,9 @@ public class NotSoTinySimulator {
             case POP_K:     this.reg_k = (short) val; break;
             case POP_L:     this.reg_l = (short) val; break;
             
-            case POP_F:     this.reg_f = (short) val; break;
             case POP_BP:    this.reg_bp = val; break;
-            case POP_SP:    this.reg_sp = val; break; // must happen after sp is incremented
+            case POP_F:     this.reg_f = (short) val; break;
+            case POP_PF:    this.reg_pf = (short) val; break;
             default:        putNormalRIMDestination(desc, val); // rim
         }
     }
@@ -2500,7 +2500,7 @@ public class NotSoTinySimulator {
      * @param normalDesc
      * @return
      */
-    private int getWidePackedRIMSource(LocationDescriptor normalDesc) {
+    private int getWidePackedRIMSource(LocationDescriptor normalDesc, InstructionDescriptor idesc) {
         return readLocation(new LocationDescriptor(normalDesc.type(), 4, normalDesc.address()));
     }
     

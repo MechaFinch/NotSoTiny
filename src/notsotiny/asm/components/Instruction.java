@@ -80,9 +80,9 @@ public class Instruction implements Component {
             case NOP, MOV_A_B, MOV_A_C, MOV_A_D, MOV_B_A, MOV_B_C, MOV_B_D, MOV_C_A, MOV_C_B, MOV_C_D,
                  MOV_D_A, MOV_D_B, MOV_D_C, MOV_AL_BL, MOV_AL_CL, MOV_AL_DL, MOV_BL_AL, MOV_BL_CL,
                  MOV_BL_DL, MOV_CL_AL, MOV_CL_BL, MOV_CL_DL, MOV_DL_AL, MOV_DL_BL, MOV_DL_CL, 
-                 PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L, PUSH_BP, PUSH_SP,
-                 PUSH_F, POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L, POP_BP, POP_SP,
-                 POP_F, NOT_F, INC_I, INC_J, INC_K, INC_L, ICC_I, ICC_J, ICC_K, ICC_L, DEC_I, DEC_J,
+                 PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L, PUSH_BP, PUSH_F,
+                 PUSH_PF, POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L, POP_BP, POP_F,
+                 POP_PF, NOT_F, INC_I, INC_J, INC_K, INC_L, ICC_I, ICC_J, ICC_K, ICC_L, DEC_I, DEC_J,
                  DEC_K, DEC_L, DCC_I, DCC_J, DCC_K, DCC_L, RET, IRET, PUSHA, POPA, HLT:
                 break;
             
@@ -328,45 +328,45 @@ public class Instruction implements Component {
         // this is the destination register unless dest is memory
         if(includeDestination && destType == LocationType.REGISTER) {
             rim |= switch(this.destination.getRegister()) {
-                case AL, A, DA  -> 0b00_000_000;
-                case BL, B, AB  -> 0b00_001_000;
-                case CL, C, BC  -> 0b00_010_000;
-                case DL, D, CD  -> 0b00_011_000;
-                case AH, I, JI  -> 0b00_100_000;
-                case BH, J, LK  -> 0b00_101_000;
-                case CH, K, BP  -> 0b00_110_000;
-                case DH, L, SP  -> 0b00_111_000;
-                case NONE       -> 0;
-                default         -> throw new IllegalArgumentException("Invalid destination register " + this.destination.getRegister());
+                case AL, A, DA      -> 0b00_000_000;
+                case BL, B, AB      -> 0b00_001_000;
+                case CL, C, BC      -> 0b00_010_000;
+                case DL, D, CD      -> 0b00_011_000;
+                case AH, I, JI      -> 0b00_100_000;
+                case BH, J, LK      -> 0b00_101_000;
+                case CH, K, BP      -> 0b00_110_000;
+                case DH, L, SP      -> 0b00_111_000;
+                case NONE, F, PF    -> 0;
+                default             -> throw new IllegalArgumentException("Invalid destination register " + this.destination.getRegister());
             };
         } else if(includeSource && sourceType == LocationType.REGISTER) {
             rim |= switch(this.source.getRegister()) {
-                case AL, A, DA  -> 0b00_000_000;
-                case BL, B, AB  -> 0b00_001_000;
-                case CL, C, BC  -> 0b00_010_000;
-                case DL, D, CD  -> 0b00_011_000;
-                case AH, I, JI  -> 0b00_100_000;
-                case BH, J, LK  -> 0b00_101_000;
-                case CH, K, BP  -> 0b00_110_000;
-                case DH, L, SP  -> 0b00_111_000;
-                case NONE, PF   -> 0;
-                default         -> throw new IllegalArgumentException("Invalid source register " + this.source.getRegister());
+                case AL, A, DA      -> 0b00_000_000;
+                case BL, B, AB      -> 0b00_001_000;
+                case CL, C, BC      -> 0b00_010_000;
+                case DL, D, CD      -> 0b00_011_000;
+                case AH, I, JI      -> 0b00_100_000;
+                case BH, J, LK      -> 0b00_101_000;
+                case CH, K, BP      -> 0b00_110_000;
+                case DH, L, SP      -> 0b00_111_000;
+                case NONE, F, PF    -> 0;
+                default             -> throw new IllegalArgumentException("Invalid source register " + this.source.getRegister());
             };
         }
         
         // rim
         if((rim & 0b01_000_000) == 0) { // register-register
             rim |= switch(this.source.getRegister()) {
-                case AL, A, DA  -> 0b00_000_000;
-                case BL, B, AB  -> 0b00_000_001;
-                case CL, C, BC  -> 0b00_000_010;
-                case DL, D, CD  -> 0b00_000_011;
-                case AH, I, JI  -> 0b00_000_100;
-                case BH, J, LK  -> 0b00_000_101;
-                case CH, K, BP  -> 0b00_000_110;
-                case DH, L, SP  -> 0b00_000_111;
-                case NONE, PF   -> 0;
-                default         -> throw new IllegalArgumentException("Invalid source register " + this.source.getRegister());
+                case AL, A, DA      -> 0b00_000_000;
+                case BL, B, AB      -> 0b00_000_001;
+                case CL, C, BC      -> 0b00_000_010;
+                case DL, D, CD      -> 0b00_000_011;
+                case AH, I, JI      -> 0b00_000_100;
+                case BH, J, LK      -> 0b00_000_101;
+                case CH, K, BP      -> 0b00_000_110;
+                case DH, L, SP      -> 0b00_000_111;
+                case NONE, F, PF    -> 0;
+                default             -> throw new IllegalArgumentException("Invalid source register " + this.source.getRegister());
             };
         //} else if(includeSource && sourceType == LocationType.IMMEDIATE) { // do nothing
             
@@ -558,11 +558,11 @@ public class Instruction implements Component {
         }
         
         // determine
-        if((v & 0xFFFF_FF00) == 0 || (v & 0xFFFF_FF00) == 0xFFFF_FF00) { // 1 byte
+        if((v & 0x0000_0000_FFFF_FF80l) == 0l || (v & 0x0000_0000_FFFF_FF80l) == 0x0000_0000_FFFF_FF80l) { // 1 byte
             return 1;
-        } else if((v & 0xFFFF_0000) == 0 || (v & 0xFFFF_0000) == 0xFFFF_0000) { // 2 bytes
+        } else if((v & 0x0000_0000_FFFF_8000l) == 0l || (v & 0x0000_0000_FFFF_8000l) == 0x0000_0000_FFFF_8000l) { // 2 bytes
             return 2;
-        } else if((v & 0xFF00_0000) == 0 || (v & 0xFF00_0000) == 0xFF00_0000) { // 3 bytes
+        } else if((v & 0x0000_0000_FF80_0000l) == 0l || (v & 0x0000_0000_FF80_0000l) == 0x0000_0000_FF80_0000l) { // 3 bytes
             if(three) return 3;
             if(four) return 4;
             
@@ -581,8 +581,7 @@ public class Instruction implements Component {
         if(this.source.getType() == LocationType.REGISTER && this.source.getSize() == 4) {
             switch(this.op) {
                 // opcodes that allow wide sources
-                case MOVW_RIM, CALLA_RIM32, JMPA_RIM32,
-                    PUSH_BP, PUSH_SP:
+                case MOVW_RIM, CALLA_RIM32, JMPA_RIM32, PUSH_BP:
                     break;
                 
                 default:
@@ -594,7 +593,7 @@ public class Instruction implements Component {
             switch(this.op) {
                 // opcodes that allow wide destiantions
                 case MOVW_RIM, MOVS_RIM, MOVZ_RIM, LEA_RIM, MOV_BP_I32, MOV_SP_I32,
-                     POP_BP, POP_SP,
+                     POP_BP,
                      ADD_SP_I8, SUB_SP_I8,
                      MULH_RIM, MULSH_RIM, PMULH_RIMP, PMULSH_RIMP,
                      DIVM_RIM, DIVMS_RIM, PDIVM_RIMP, PDIVMS_RIMP:

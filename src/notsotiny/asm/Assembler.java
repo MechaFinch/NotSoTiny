@@ -64,7 +64,7 @@ public class Assembler {
     
     static {
         try {
-            lexer = new Lexer(new File(Assembler.class.getResource("resources/reserved_words.txt").getFile()), "", true);
+            lexer = new Lexer(Assembler.class.getResourceAsStream("resources/reserved_words.txt"), "", true);
         } catch(IOException | NullPointerException e) {
             throw new MissingResourceException(e.getMessage(), Assembler.class.getName(), "lexer reserved word file");
         }
@@ -409,10 +409,10 @@ public class Assembler {
             }
         }
         
-        LOG.fine("-- MAIN PARSE RESULTS --");
-        LOG.fine(allInstructions.toString());
-        LOG.fine(unresolvedInstructions.toString());
-        LOG.fine(labelIndexMap.toString());
+        LOG.finest("-- MAIN PARSE RESULTS --");
+        LOG.finest(allInstructions.toString());
+        LOG.finest(unresolvedInstructions.toString());
+        LOG.finest(labelIndexMap.toString());
         
         if(encounteredError) {
             throw new IllegalStateException("Encountered error(s)");
@@ -431,12 +431,12 @@ public class Assembler {
         LOG.finer("Building label address map");
         buildAddressMaps(labelAddressMap, labelIndexMap, instructionAddressMap, allInstructions, libNames);
         
-        LOG.fine("-- CONSTANT RESOLUTION FIRST PASS RESULTS --");
-        LOG.fine(labelAddressMap.toString());
+        LOG.finest("-- CONSTANT RESOLUTION FIRST PASS RESULTS --");
+        LOG.finest(labelAddressMap.toString());
         
         // attempt to minimize parameter sizes (if enabled)
         if(optimizeInstructionWidth) {
-            LOG.fine("RUNNING INSTRUCTION LENGTH OPTIMIZATION");
+            LOG.fine("Running instruction length optimization...");
             
             int optimizationPassNumber = 0;
             
@@ -489,6 +489,7 @@ public class Assembler {
                  * CMP rim16 -> CMP rim, i8
                  * CMP rim -> CMP rim, 0
                  * Jcc rim -> Jcc i8
+                 * INT rim -> INT i8
                  */
                 
                 // change value sizes if possible
@@ -511,7 +512,7 @@ public class Assembler {
                             changedValueSizes = false;
                             Opcode before = inst.getOpcode();
                             
-                            //LOG.finer("optimization candidate " + inst + " size " + width);
+                            LOG.finest("optimization candidate " + inst + " size " + width);
                             
                             switch(inst.getOpcode()) {
                                 // MOVW -> MOVZ
@@ -552,6 +553,19 @@ public class Assembler {
                                     if(width == 1) {
                                         inst.setOpcode(Opcode.MOVS_D_I8);
                                         changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                // MOVS rim[A, B, C, D], I8 -> MOVS [A, B, C, D], I8
+                                case MOVS_RIM:
+                                    if(dstWidth == 2 && width == 1) {
+                                        switch(dst.getRegister()) {
+                                            case A: inst.setOpcode(Opcode.MOVS_A_I8); changedValueSizes = true; break;
+                                            case B: inst.setOpcode(Opcode.MOVS_B_I8); changedValueSizes = true; break;
+                                            case C: inst.setOpcode(Opcode.MOVS_C_I8); changedValueSizes = true; break;
+                                            case D: inst.setOpcode(Opcode.MOVS_D_I8); changedValueSizes = true; break;
+                                            default:
+                                        }
                                     }
                                     break;
                                     
@@ -1008,11 +1022,18 @@ public class Assembler {
                                     }
                                     break;
                                 
+                                case INT_RIM:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.INT_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
                                 default:
                             }
                             
                             if(changedValueSizes) {
-                                LOG.fine("Optimized " + before + " to " + inst);
+                                LOG.finer("Optimized " + before + " to " + inst);
                             }
                             
                             changedValueSizes |= changedValueSizesBefore;
@@ -1037,7 +1058,7 @@ public class Assembler {
                                 
                                 int newImmSize = (offset != 0) ? getValueWidth(offset, true, true) : 0;
                                 
-                                LOG.finest(c + "  old: " + oldImmSize + " new: " + newImmSize);
+                                //LOG.finest(c + "  old: " + oldImmSize + " new: " + newImmSize);
                                 
                                 if(newImmSize != oldImmSize) {
                                     inst.setImmediateWidth(newImmSize);
@@ -1079,7 +1100,7 @@ public class Assembler {
                 
                 boolean relocated = resolveComponent(c, labelAddressMap, libNames, incomingReferences, libraryName, addr, lastInstructionAddr, true);
                 
-                LOG.finer(before + " resolved to " + c);
+                LOG.finest(before + " resolved to " + c);
                 
                 if(!c.isResolved() && !relocated) {
                     throw new IllegalStateException("Unable to resolve component: " + c);
@@ -1105,15 +1126,15 @@ public class Assembler {
             }
         }
         
-        LOG.fine("-- CONSTANT RESOLUTION FINAL PASS RESULTS --");
-        LOG.fine(allInstructions.toString());
+        LOG.finest("-- CONSTANT RESOLUTION FINAL PASS RESULTS --");
+        LOG.finest(allInstructions.toString());
         
         // collect object code
         for(int i = 0; i < allInstructions.size(); i++) {
             Component c = allInstructions.get(i);
             List<Byte> objCode = c.getObjectCode();
             
-            StringBuilder sb = new StringBuilder(String.format("Encoded %-48s %04X: ", c, objectCode.size()));
+            StringBuilder sb = new StringBuilder(String.format("%04X: ", objectCode.size()));
             
             if(objCode.size() <= 8) {
                 objCode.forEach(b -> sb.append(String.format("%02X ", b)));
@@ -1121,7 +1142,7 @@ public class Assembler {
             
             objectCode.addAll(objCode);
             
-            LOG.finest(String.format("%-86s    %d bytes", sb, objectCode.size()));
+            LOG.finest(String.format("%-30s %-48s %d bytes", sb, c, objectCode.size()));
         }
         
         // convert object code to array
@@ -1143,9 +1164,9 @@ public class Assembler {
             incomingReferenceWidths.put(ref, 4);
         }
         
-        LOG.fine("-- FINAL RELOCATION INFO --");
-        LOG.fine("OUTGOING REFERENCES: " + outgoingReferences);
-        LOG.fine("INCOMING REFERENCES: " + incomingReferences);
+        LOG.finest("-- FINAL RELOCATION INFO --");
+        LOG.finest("OUTGOING REFERENCES: " + outgoingReferences);
+        LOG.finest("INCOMING REFERENCES: " + incomingReferences);
         
         return new RenameableRelocatableObject(Endianness.LITTLE, libraryName, 4, incomingReferences, outgoingReferences, incomingReferenceWidths, outgoingReferenceWidths, objectCodeArray, false, libraryNamesMap);
     }
@@ -1489,12 +1510,29 @@ public class Assembler {
                                 case K  -> Opcode.PUSH_K;
                                 case L  -> Opcode.PUSH_L;
                                 case BP -> Opcode.PUSH_BP;
-                                case SP -> Opcode.PUSH_SP;
                                 case F  -> Opcode.PUSH_F;
+                                case PF -> Opcode.PUSH_PF;
                                 default -> Opcode.PUSH_RIM;
                             };
                             
-                            case IMMEDIATE  -> firstOperand.getSize() == 4 ? Opcode.PUSH_I32 : Opcode.PUSH_RIM;
+                            case IMMEDIATE  -> {
+                                // this is the only single operand instruction that needs the full immediate treatment, others can assume higher and cut down later
+                                ResolvableValue imm = firstOperand.getImmediate();
+                                firstOperand.getSize();
+                                int immediateSize;
+                                
+                                if(imm.isResolved()) {
+                                    if(firstOperand.getSize() == -1) {
+                                        immediateSize = getValueWidth(imm.value(), true, false);
+                                    } else {
+                                        immediateSize = firstOperand.getSize();
+                                    }
+                                } else {
+                                    immediateSize = 4;
+                                }
+                                
+                                yield immediateSize == 4 ? Opcode.PUSH_I32 : Opcode.PUSH_RIM;
+                            }
                             
                             default         -> Opcode.PUSH_RIM;
                         };
@@ -1512,8 +1550,8 @@ public class Assembler {
                                 case K  -> Opcode.POP_K;
                                 case L  -> Opcode.POP_L;
                                 case BP -> Opcode.POP_BP;
-                                case SP -> Opcode.POP_SP;
                                 case F  -> Opcode.POP_F;
+                                case PF -> Opcode.PUSH_PF;
                                 default -> Opcode.POP_RIM;
                             };
                             
@@ -1664,7 +1702,7 @@ public class Assembler {
                     
                         // rim + F
                     case NOT:
-                        opcode = isImmediate ? Opcode.NOT_F : Opcode.NOT_RIM; 
+                        opcode = (type == LocationType.REGISTER && register == Register.F) ? Opcode.NOT_F : Opcode.NOT_RIM; 
                         break;
                     
                         // rim only
@@ -1693,7 +1731,7 @@ public class Assembler {
                 
                 if(secondOperand == null) return null;
                 
-                hasFixedOperandSize |= secondOperand.getType() != LocationType.REGISTER &&  secondOperand.getSize() != -1;
+                hasFixedOperandSize |= secondOperand.getType() != LocationType.REGISTER && secondOperand.getSize() != -1;
                 
                 // useful values
                 LocationType firstType = firstOperand.getType(),
@@ -1709,9 +1747,9 @@ public class Assembler {
                         firstIsABCD = firstRegister == Register.A || firstRegister == Register.B || firstRegister == Register.C || firstRegister == Register.D,
                         secondIsABCD = secondRegister == Register.A || secondRegister == Register.B || secondRegister == Register.C || secondRegister == Register.D,
                         firstIsLByte = firstRegister == Register.AL || firstRegister == Register.BL || firstRegister == Register.CL || firstRegister == Register.DL,
-                        firstIsHByte = firstRegister == Register.AH || firstRegister == Register.BH || firstRegister == Register.CH || firstRegister == Register.DH,
+                        //firstIsHByte = firstRegister == Register.AH || firstRegister == Register.BH || firstRegister == Register.CH || firstRegister == Register.DH,
                         secondIsLByte = secondRegister == Register.AL || secondRegister == Register.BL || secondRegister == Register.CL || secondRegister == Register.DL,
-                        secondIsHByte = secondRegister == Register.AH || secondRegister == Register.BH || secondRegister == Register.CH || secondRegister == Register.DH,
+                        //secondIsHByte = secondRegister == Register.AH || secondRegister == Register.BH || secondRegister == Register.CH || secondRegister == Register.DH,
                         firstIsFlags = firstRegister == Register.F,
                         firstIsPFlags = firstRegister == Register.PF,
                         secondIsFlags = secondRegister == Register.F,
@@ -1965,6 +2003,23 @@ public class Assembler {
                         }
                         
                         opcode = Opcode.MOV_RIM;
+                        break;
+                    
+                    case MOVS:
+                        // shortcuts for ABCD immediate
+                        if(isImmediate && firstIsABCD) {
+                            opcode = switch(firstRegister) {
+                                case A  -> Opcode.MOVS_A_I8;
+                                case B  -> Opcode.MOVS_B_I8;
+                                case C  -> Opcode.MOVS_C_I8;
+                                case D  -> Opcode.MOVS_D_I8;
+                                default -> Opcode.NOP; // not possible
+                            };
+                            
+                            break;
+                        }
+                        
+                        opcode = Opcode.MOVS_RIM;
                         break;
                         
                     case XCHG:
@@ -2815,11 +2870,11 @@ public class Assembler {
      * @return
      */
     private static int getValueWidth(long v, boolean one, boolean three) {
-        if((v & 0xFFFF_FF80) == 0 || (v & 0xFFFF_FF80) == 0xFFFF_FF80) { // 1 byte
+        if((v & 0x0000_0000_FFFF_FF80l) == 0l || (v & 0x0000_0000_FFFF_FF80l) == 0x0000_0000_FFFF_FF80l) { // 1 byte
             return one ? 1 : 2;
-        } else if((v & 0xFFFF_8000) == 0 || (v & 0xFFFF_8000) == 0xFFFF_8000) { // 2 bytes
+        } else if((v & 0x0000_0000_FFFF_8000l) == 0l || (v & 0x0000_0000_FFFF_8000l) == 0x0000_0000_FFFF_8000l) { // 2 bytes
             return 2;
-        } else if((v & 0xFF80_0000) == 0 || (v & 0xFF80_0000) == 0xFF80_0000) { // 3 bytes
+        } else if((v & 0x0000_0000_FF80_0000l) == 0l || (v & 0x0000_0000_FF80_0000l) == 0x0000_0000_FF80_0000l) { // 3 bytes
             return three ? 3 : 4;
         } else {
             return 4;
@@ -2837,18 +2892,5 @@ public class Assembler {
         int mask = 0xFFFF_FFFF << (len * 8);
         
         return (v & mask) == 0;
-    }
-    
-    /**
-     * Returns true if the value can be sign extended from the given number of bytes 
-     * 
-     * @param v
-     * @param len
-     * @return
-     */
-    private static boolean canSignExtend(long v, int len) {
-        int mask = 0xFFFF_FFFF << ((len * 8) - 1);
-        
-        return (v & mask) == 0 || (v & mask) == mask;
     }
 }

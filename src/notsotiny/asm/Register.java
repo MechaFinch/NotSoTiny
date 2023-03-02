@@ -21,4 +21,17 @@ public enum Register {
      * @return size in bytes
      */
     public int size() { return this.size; }
+    
+    @Override
+    public String toString() {
+        return switch(this) {
+            case DA         -> "D:A";
+            case AB         -> "A:B";
+            case BC         -> "B:C";
+            case CD         -> "C:D";
+            case JI         -> "J:I";
+            case LK         -> "L:K";
+            case default    -> super.toString();
+        };
+    }
 }

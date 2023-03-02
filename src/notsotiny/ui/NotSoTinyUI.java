@@ -66,7 +66,7 @@ public class NotSoTinyUI extends Application {
     private static final long //IVT_START = 0x0000_0000l,
                               //IVT_END = 0x0000_0400l,
                               PROGRAM_START = 0x0000_0000l,
-                              PROGRAM_END = 0x0010_0000l,
+                              PROGRAM_END = 0x00F0_0000l,
                               HEAP_START = 0x8000_0000l,
                               HEAP_END = 0x8004_0000l,
                               VIDEO_START = 0xC000_0000l,
@@ -88,8 +88,8 @@ public class NotSoTinyUI extends Application {
                                 TEXT_FONT_FILE = "text.dat";
     */
     
-    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\snake\\",
-                                PROGRAM_EXEC_FILE = "snake.oex",
+    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\mandelbrot\\",
+                                PROGRAM_EXEC_FILE = "mandelbrot.oex",
                                 TEXT_FONT_FILE = "text.dat";
     
     
@@ -102,7 +102,7 @@ public class NotSoTinyUI extends Application {
                                  programRAMController,      // 0x0000_0000 - 0x000F_FFFF
                                  heapRAMController,         // 0x8000_0000 - 0x8003_FFFF
                                  videoRAMController,        // 0xC000_0000 - 0xC001_33FF
-                                 stackRAMController,        // 0xFFFE_0000 - 0xFFFF_FFFF
+                                 stackRAMController,        // 0xFFFC_0000 - 0xFFFF_FFFF
                                  keyboardBufferController;  // 0xF000_0006 - 0xF000_0007
     
     // halter is deprecated by a HLT instruction but legacy programs yadda yadda
@@ -279,27 +279,27 @@ public class NotSoTinyUI extends Application {
         this.relocator = (Relocator) relocatorPair.get(0);
         String entrySymbol = (String) relocatorPair.get(1);
         
-        int entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, programRAM, 0, 0);
+        long entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, stackRAM, 0x0000_0000_0000_0000l, 0);
         
         // write entry vector
-        this.mmu.write4Bytes(0, entry);
+        this.mmu.write4Bytes(0, (int) entry);
         
         // simulator
         this.sim = new NotSoTinySimulator(this.mmu);
         
         // timing stuff
-        this.simThread = new SimulatorThread(1_000);
+        this.simThread = new SimulatorThread(1_000_000);
         
         this.simThread.start();
         
         // start seconds clock
-        
+        /*
         this.scheduler.scheduleAtFixedRate(() -> {
             this.sim.fireMaskableInterrupt((byte) 1);
             this.halter.clear();
             notifySimulatorThread();
         }, 1_000_000l, 10_000l, TimeUnit.MICROSECONDS);
-        
+        */
         // 100 hz
         
         //this.halter.writeByte(0l, (byte) 0);
@@ -619,14 +619,14 @@ public class NotSoTinyUI extends Application {
                         sim.getRegIP(), sim.getRegBP(), sim.getRegSP());
                 
                 try {
-                    state += dis.disassemble(this.programRAM, sim.getRegIP() - (int) PROGRAM_START) + "\n";
+                    state += dis.disassemble(this.mmu, Integer.toUnsignedLong(sim.getRegIP())) + "\n";
                 } catch(ArrayIndexOutOfBoundsException e) {}
                 
                 for(int j = 0; j < dis.getLastInstructionLength(); j++) {
-                    state += String.format("%02X ", this.programRAM[sim.getRegIP() + j - (int) PROGRAM_START]);
+                    state += String.format("%02X ", this.stackRAM[(int)(Integer.toUnsignedLong(sim.getRegIP()) + (long) j - STACK_START)]);
                 }
                 
-                state += "\n\n" + this.relocator.getAddressName(sim.getRegIP());
+                state += "\n\n" + this.relocator.getAddressName(Integer.toUnsignedLong(sim.getRegIP()));
                 
                 this.infoProcessorState.setText(state);
                 

@@ -5,14 +5,14 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.logging.Logger;
 
 import asmlib.util.relocation.ExecLoader;
 import asmlib.util.relocation.Relocator;
+import notsotiny.asm.Disassembler;
+import notsotiny.sim.memory.FlatMemoryController;
+import notsotiny.sim.memory.MemoryManager;
 
 /**
  * Linker for NotSoTiny
@@ -34,8 +34,8 @@ public class Linker {
         if(args.length < 1 || args.length > 6) {
             System.out.println("Usage: Linker [flags] <relocator buffer size (hex)> <exec file> [<output file>]");
             System.out.println("Flags:");
-            System.out.println("\t-o\t\tOrigin: Start address to be relocated to, in hexadecimal");
-            System.out.println("\t-s [names]\tSymbols: Comma-separated list of symbols to output to a listing file");
+            System.out.println("\t-o [origin]\tOrigin: Start address to be relocated to, in hexadecimal");
+            System.out.println("\t-l \t\tList: output a listing file");
             System.exit(0);
         }
         
@@ -43,7 +43,7 @@ public class Linker {
         int flagIndex = 0;
         
         int origin = 0;
-        List<String> symbols = new ArrayList<>();
+        boolean outputListing = false;
         
         out:
         while(true) {
@@ -51,11 +51,15 @@ public class Linker {
                 case "-o":
                     origin = (int) Long.parseLong(args[flagIndex + 1], 16);
                     flagIndex += 2;
+                    
+                    LOG.fine(String.format("Origin set to %08X", origin));
                     break;
                 
-                case "-s":
-                    symbols.addAll(Arrays.asList(args[flagIndex + 1].split(",")));
-                    flagIndex += 2;
+                case "-l":
+                    outputListing = true;
+                    flagIndex += 1;
+                    
+                    LOG.fine("Listing file will be output");
                     break;
                 
                 default:
@@ -72,7 +76,9 @@ public class Linker {
         Relocator relocator = (Relocator) relocatorPair.get(0);
         String entrySymbol = (String) relocatorPair.get(1);
         
-        int entry = ExecLoader.loadRelocator(relocator, entrySymbol, data, (int) origin, 0);
+        long entry = ExecLoader.loadRelocator(relocator, entrySymbol, data, Integer.toUnsignedLong(origin), 0);
+        
+        LOG.finest(String.format("Entry symbol %s relocated to %08X", entrySymbol, entry));
         
         // write data to file
         String outputFileName = "";
@@ -83,21 +89,43 @@ public class Linker {
             outputFileName = inputFileName.substring(0, inputFileName.lastIndexOf('.')) + ".dat";
         }
         
+        LOG.fine("Writing to output file " + outputFileName);
+        
         Files.write(new File(outputFileName).toPath(), data, StandardOpenOption.CREATE);
         
-        // write requested symbols
-        if(symbols.size() > 0) {
+        // write listing file
+        if(outputListing) {
             String listFileName = outputFileName.substring(0, outputFileName.lastIndexOf('.')) + ".lst";
+            LOG.fine("Writing listing file " + listFileName);
             
             try(PrintWriter listWriter = new PrintWriter(listFileName)) {
-                listWriter.println("SYMBOL LISTING");
+                Disassembler dis = new Disassembler();
+                MemoryManager mm = new MemoryManager();
+                FlatMemoryController fmc = new FlatMemoryController(data);
                 
-                int maxSymbolLength = Collections.max(symbols, (a, b) -> (a.length() - b.length())).length();
+                mm.registerSegment(fmc, 0, data.length);
                 
-                listWriter.println(String.format("%" + maxSymbolLength + "s  %08X", "ENTRY", entry));
-                
-                for(String symbol : symbols) {
-                    listWriter.println(String.format("%" + maxSymbolLength + "s  %08X", symbol, relocator.getReference(symbol)));
+                for(int address = 0; address < data.length;) {
+                    try {
+                    String dsm = dis.disassemble(mm, address);
+                    int len = dis.getLastInstructionLength();
+                    
+                    String label = relocator.getAddressName(Integer.toUnsignedLong(address + origin));
+                        
+                    StringBuilder bytes = new StringBuilder();
+                    
+                    for(int i = 0; i < len; i++) {
+                        bytes.append(String.format("%02X ", data[address + i]));
+                    }
+                    
+                    String listString = String.format("%-32s%08X: %-24s %s", label, address + origin, bytes, dsm);
+                    listWriter.println(listString);
+                    LOG.finer(listString);
+                    
+                    address += len;
+                    } catch(IndexOutOfBoundsException e) {
+                        // ignore end
+                    }
                 }
             }
         }
