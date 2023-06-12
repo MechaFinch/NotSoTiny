@@ -100,4 +100,16 @@ public class ResolvableMemory implements Resolvable {
     public int getScale() { return this.scale; }
     public ResolvableValue getOffset() { return this.offset; }
     
+    @Override
+    public boolean equals(Object o) {
+        if(o instanceof ResolvableMemory rm) {
+            return this.base == rm.base &&
+                   this.index == rm.index &&
+                   this.scale == rm.scale &&
+                   this.offset.equals(rm.offset);
+        } else {
+            return false;
+        }
+    }
+    
 }

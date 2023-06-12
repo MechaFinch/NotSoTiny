@@ -71,6 +71,23 @@ public class Assembler {
     }
     
     /**
+     * A record with all the information needed to assemble an object
+     * 
+     * @param allInstructions List<Component>
+     * @param labelIndexMap Map<String, Integer>
+     * @param libraryName String
+     * @param libraryNamesMap HashMap<File, String>
+     * @param incomingReferences HahsMap<String, List<Integer>>
+     * @param outgoingReferences HashMap<String, Integer>
+     * @param incomingReferenceWidths HashMap<String, Integer>
+     * @param outgoingReferenceWidths HashMap<String, Integer>
+     * @author Mechafinch
+     */
+    public record AssemblyObject(List<Component> allInstructions, Map<String, Integer> labelIndexMap, String libraryName, HashMap<File, String> libraryNamesMap, HashMap<String, List<Integer>> incomingReferences, HashMap<String, Integer> outgoingReferences, HashMap<String, Integer> incomingReferenceWidths, HashMap<String, Integer> outgoingReferenceWidths) {
+        
+    }
+    
+    /**
      * Main for running the assembler standalone
      * 
      * @param args
@@ -144,6 +161,32 @@ public class Assembler {
     }
     
     /**
+     * Assemble from a list of AssemblyObjects (objects made from components).
+     * This function does not unify library names or otherwise modify relocation symbol names
+     * 
+     * @param objects
+     * @param optimizeInstructionWidth
+     * @param debugFriendlyOutput
+     * @param entrySymbolName
+     * @return
+     * @throws IOException
+     */
+    public static List<RelocatableObject> assemble(List<AssemblyObject> assemblyObjects, boolean optimizeInstructionWidth) throws IOException {
+        LOG.info("Assembling from object list");
+        
+        ArrayList<RelocatableObject> objects = new ArrayList<>();
+        
+        for(AssemblyObject ao : assemblyObjects) {
+            List<Component> unresolved = new ArrayList<>(ao.allInstructions);
+            unresolved.removeIf(c -> c.isResolved());
+            
+            objects.add(assembleObjectFromComponents(ao.libraryName, ao.libraryNamesMap, ao.incomingReferences, ao.outgoingReferences, ao.incomingReferenceWidths, ao.outgoingReferenceWidths, ao.allInstructions, unresolved, ao.labelIndexMap, optimizeInstructionWidth));
+        }
+        
+        return objects;
+    }
+    
+    /**
      * Assembles a file and its dependencies
      * 
      * @param f
@@ -184,7 +227,7 @@ public class Assembler {
                     symbols = lexer.lex(Tokenizer.tokenize(br.lines().toList()));
                 }
                 
-                obj = assembleObject(symbols, files, file, optimizeInstructionWidth);
+                obj = assembleObjectFromSource(symbols, files, file, optimizeInstructionWidth);
             }
             
             libraryMap.put(obj.getName(), file);
@@ -235,7 +278,7 @@ public class Assembler {
      * @return
      * @throws IOException
      */
-    private static RenameableRelocatableObject assembleObject(List<Symbol> symbols, List<String> includedFiles, File file, boolean optimizeInstructionWidth) throws IOException {
+    private static RenameableRelocatableObject assembleObjectFromSource(List<Symbol> symbols, List<String> includedFiles, File file, boolean optimizeInstructionWidth) throws IOException {
         LOG.fine("Assembling file: " + file);
         
         int line = 0; // line in file
@@ -246,8 +289,6 @@ public class Assembler {
         
         String libraryName = workingDirectory.substring(libNameIndex + 1, workingDirectory.lastIndexOf('.'));
         workingDirectory = workingDirectory.substring(0, libNameIndex) + "\\";
-        
-        ArrayList<Byte> objectCode = new ArrayList<>();
         
         // relocation info
         // we'll need this later
@@ -418,6 +459,30 @@ public class Assembler {
             throw new IllegalStateException("Encountered error(s)");
         }
         
+        // pass information to the component assembler
+        return assembleObjectFromComponents(libraryName, libraryNamesMap, incomingReferences, outgoingReferences, incomingReferenceWidths, outgoingReferenceWidths, allInstructions, unresolvedInstructions, labelIndexMap, optimizeInstructionWidth);
+    }
+    
+    /**
+     * Assembles a file parsed Components. This performs instruction width optimization, constant resolution, and final relocatable object creation
+     * 
+     * @param libraryName
+     * @param libraryNamesMap
+     * @param incomingReferences
+     * @param outgoingReferences
+     * @param incomingReferenceWidths
+     * @param outgoingReferenceWidths
+     * @param allInstructions
+     * @param unresolvedInstructions
+     * @param labelIndexMap
+     * @param optimizeInstructionWidth
+     * @return
+     */
+    private static RenameableRelocatableObject assembleObjectFromComponents(String libraryName, HashMap<File, String> libraryNamesMap, HashMap<String, List<Integer>> incomingReferences, HashMap<String, Integer> outgoingReferences, HashMap<String, Integer> incomingReferenceWidths, HashMap<String, Integer> outgoingReferenceWidths,
+                                                                            List<Component> allInstructions, List<Component> unresolvedInstructions, Map<String, Integer> labelIndexMap, boolean optimizeInstructionWidth) {    
+        LOG.fine("Assembling from components");
+        ArrayList<Byte> objectCode = new ArrayList<>();
+        
         /*
          * CONSTANT RESOLUTION
          */
@@ -484,12 +549,15 @@ public class Assembler {
                  * JMP [i32, i16] -> JMP [i8, i16]
                  * JMP rim -> JMP [i32, i16, i8]
                  * JMPA rim -> JMPA i32
+                 * CALL [i32, i16] -> CALL [i32, i16, i8]
                  * CALL rim -> CALL i16
                  * CALLA rim -> CALLA i32
                  * CMP rim16 -> CMP rim, i8
                  * CMP rim -> CMP rim, 0
                  * Jcc rim -> Jcc i8
                  * INT rim -> INT i8
+                 * PUSH rim -> PUSH [A, B, C, D, I, J, K, L]
+                 * POP rim -> POP [A, B, C, D, I, J, K, L]
                  */
                 
                 // change value sizes if possible
@@ -501,8 +569,41 @@ public class Assembler {
                         ResolvableLocationDescriptor src = inst.getSourceDescriptor(),
                                                      dst = inst.getDestinationDescriptor();
                         
+                        // PUSH/POP optimization
+                        if(inst.getOpcode() == Opcode.PUSH_RIM && src.getType() == LocationType.REGISTER && src.getSize() == 2) {
+                            inst.setOpcode(switch(src.getRegister()) {
+                                case A  -> Opcode.PUSH_A;
+                                case B  -> Opcode.PUSH_B;
+                                case C  -> Opcode.PUSH_C;
+                                case D  -> Opcode.PUSH_D;
+                                case I  -> Opcode.PUSH_I;
+                                case J  -> Opcode.PUSH_J;
+                                case K  -> Opcode.PUSH_K;
+                                case L  -> Opcode.PUSH_L;
+                                default -> Opcode.PUSH_RIM;
+                            });
+                            
+                            changedValueSizes = true;
+                        }
+                        
+                        else if(inst.getOpcode() == Opcode.PUSH_RIM && dst.getType() == LocationType.REGISTER && dst.getSize() == 2) {
+                            inst.setOpcode(switch(dst.getRegister()) {
+                                case A  -> Opcode.POP_A;
+                                case B  -> Opcode.POP_B;
+                                case C  -> Opcode.POP_C;
+                                case D  -> Opcode.POP_D;
+                                case I  -> Opcode.POP_I;
+                                case J  -> Opcode.POP_J;
+                                case K  -> Opcode.POP_K;
+                                case L  -> Opcode.POP_L;
+                                default -> Opcode.POP_RIM;
+                            });
+                            
+                            changedValueSizes = true;
+                        }
+                        
                         // Optimize source immediates
-                        if(src.getType() == LocationType.IMMEDIATE && src.isResolved() && !inst.hasFixedSize()) {
+                        else if(src.getType() == LocationType.IMMEDIATE && src.isResolved() && !inst.hasFixedSize()) {
                             long val = src.getImmediate().value();
                             int width = getValueWidth(val, true, true),
                                 dstWidth = dst.getSize();
@@ -887,10 +988,34 @@ public class Assembler {
                                     changedValueSizes = true;
                                     break;
                                 
-                                // CALL rim -> CALL i16
+                                // CALL I16 -> CALL I8
+                                case CALL_I16:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.CALL_I8);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                    
+                                // JMP I32 -> JMP [I16, I8]
+                                case CALL_I32:
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.CALL_I8);
+                                        changedValueSizes = true;
+                                    } else if(width == 2) {
+                                        inst.setOpcode(Opcode.CALL_I16);
+                                        changedValueSizes = true;
+                                    }
+                                    break;
+                                
+                                // CALL rim -> CALL [i16, i8]
                                 case CALL_RIM:
-                                    inst.setOpcode(Opcode.CALL_I16);
-                                    changedValueSizes = true;
+                                    if(width == 1) {
+                                        inst.setOpcode(Opcode.CALL_I8);
+                                        changedValueSizes = true;
+                                    } else {
+                                        inst.setOpcode(Opcode.CALL_I16);
+                                        changedValueSizes = true;
+                                    }
                                     break;
                                 
                                 // CALLA rim -> CALLA i32
@@ -1133,8 +1258,9 @@ public class Assembler {
         for(int i = 0; i < allInstructions.size(); i++) {
             Component c = allInstructions.get(i);
             List<Byte> objCode = c.getObjectCode();
+            int l = objectCode.size();
             
-            StringBuilder sb = new StringBuilder(String.format("%04X: ", objectCode.size()));
+            StringBuilder sb = new StringBuilder(String.format("%04X_%04X: ", l >> 16, l & 0xFFFF));
             
             if(objCode.size() <= 8) {
                 objCode.forEach(b -> sb.append(String.format("%02X ", b)));
@@ -1142,7 +1268,7 @@ public class Assembler {
             
             objectCode.addAll(objCode);
             
-            LOG.finest(String.format("%-30s %-48s %d bytes", sb, c, objectCode.size()));
+            LOG.finest(String.format("%-34s %-48s %d bytes", sb, c, objectCode.size()));
         }
         
         // convert object code to array
@@ -1618,7 +1744,7 @@ public class Assembler {
                     
                         // 8, 16, 32 bit immediates
                     case JMP:
-                        if(type == LocationType.IMMEDIATE) {
+                        if(isImmediate) {
                             opcode = switch(firstOperand.getSize()) {
                                 case 1  -> Opcode.JMP_I8;
                                 case 2  -> Opcode.JMP_I16;
@@ -1641,7 +1767,11 @@ public class Assembler {
                         // 16 bit immediates
                     case CALL:
                         if(isImmediate) {
-                            opcode = Opcode.CALL_I16;
+                            opcode = switch(firstOperand.getSize()) {
+                                case 1  -> Opcode.CALL_I8;
+                                case 2  -> Opcode.CALL_I16;
+                                default -> Opcode.CALL_I32;
+                            };
                         } else {
                             opcode = Opcode.CALL_RIM;
                         }
@@ -1675,7 +1805,7 @@ public class Assembler {
                             case "JGE", "JNL"           -> isByteImmediate ? Opcode.JGE_I8 : Opcode.JGE_RIM;
                             case "JL", "JNGE"           -> isByteImmediate ? Opcode.JL_I8 : Opcode.JL_RIM;
                             case "JLE", "JNG"           -> isByteImmediate ? Opcode.JLE_I8 : Opcode.JLE_RIM;
-                            default -> throw new IllegalArgumentException("Invalid mnemonic " + m.name());
+                            default -> throw new IllegalArgumentException("Invalid conditional jump mnemonic " + m.name());
                         };
                         break;
                     
@@ -2162,7 +2292,30 @@ public class Assembler {
                         break;
                 }
                 
-                return new Instruction(opcode, firstOperand, secondOperand, hasFixedOperandSize);
+                // CMOVCC uses its own constructor
+                if(opcode == Opcode.CMOVCC_RIM) {
+                    Opcode conditionOp = switch(m.name()) {
+                        case "CMOVC", "CMOVB", "CMOVNAE"    -> Opcode.JC_RIM;
+                        case "CMOVNC", "CMOVAE", "CMOVNB"   -> Opcode.JNC_RIM;
+                        case "CMOVS"                        -> Opcode.JS_RIM;
+                        case "CMOVNS"                       -> Opcode.JNS_RIM;
+                        case "CMOVO"                        -> Opcode.JO_RIM;
+                        case "CMOVNO"                       -> Opcode.JNO_RIM;
+                        case "CMOVZ", "CMOVE"               -> Opcode.JZ_RIM;
+                        case "CMOVNZ", "CMOVNE"             -> Opcode.JNZ_RIM;
+                        case "CMOVA", "CMOVNBE"             -> Opcode.JA_RIM;
+                        case "CMOVBE", "CMOVNA"             -> Opcode.JBE_RIM;
+                        case "CMOVG", "CMOVNLE"             -> Opcode.JG_RIM;
+                        case "CMOVGE", "CMOVNL"             -> Opcode.JGE_RIM;
+                        case "CMOVL", "CMOVNGE"             -> Opcode.JL_RIM;
+                        case "CMOVLE", "CMOVNG"             -> Opcode.JLE_RIM;
+                        default -> throw new IllegalArgumentException("Invalid conditional move mnemonic " + m.name());
+                    };
+                    
+                    return new Instruction(opcode, firstOperand, secondOperand, conditionOp.getOp(), hasFixedOperandSize);
+                } else {
+                    return new Instruction(opcode, firstOperand, secondOperand, hasFixedOperandSize);
+                }
             }
         }
     }

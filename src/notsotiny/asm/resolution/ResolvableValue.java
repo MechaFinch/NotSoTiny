@@ -16,4 +16,7 @@ public interface ResolvableValue extends Resolvable {
      * @return A deep copy of this ResolvableValue
      */
     public ResolvableValue copy();
+    
+    @Override
+    public boolean equals(Object o);
 }

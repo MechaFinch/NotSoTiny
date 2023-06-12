@@ -4,6 +4,7 @@ import java.util.LinkedList;
 import java.util.List;
 
 import notsotiny.asm.Register;
+import notsotiny.asm.resolution.ResolvableConstant;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor.LocationType;
 import notsotiny.asm.resolution.ResolvableMemory;
@@ -23,9 +24,11 @@ public class Instruction implements Component {
     
     private int cachedAddressOffset = -1,
                 cachedImmediateOffset = -1,
-                immediateWidth = -1;
+                immediateWidth = -1,
+                ei8 = -1;
     
-    private boolean hasFixedSize;
+    private boolean hasFixedSize,
+                    hasEI8;
     
     /**
      * Create an instruction with source and destination
@@ -41,6 +44,7 @@ public class Instruction implements Component {
         this.destination = destination;
         this.source = source;
         this.hasFixedSize = hasFixedSize;
+        this.hasEI8 = false;
     }
     
     /**
@@ -63,6 +67,24 @@ public class Instruction implements Component {
      */
     public Instruction(Opcode op, boolean hasFixedSize) {
         this(op, ResolvableLocationDescriptor.NONE, ResolvableLocationDescriptor.NONE, hasFixedSize);
+    }
+    
+    /**
+     * Create an instruction with source, destination, and EI8
+     * 
+     * @param op
+     * @param destination
+     * @param source
+     * @param ei8
+     * @param hasFixedSize
+     */
+    public Instruction(Opcode op, ResolvableLocationDescriptor destination, ResolvableLocationDescriptor source, int ei8, boolean hasFixedSize) {
+        this.op = op;
+        this.destination = destination;
+        this.source = source;
+        this.hasFixedSize = hasFixedSize;
+        this.ei8 = ei8;
+        this.hasEI8 = true;
     }
     
     @Override
@@ -89,7 +111,7 @@ public class Instruction implements Component {
             // 8 bit immediate only
             case MOVS_A_I8, MOVS_B_I8, MOVS_C_I8, MOVS_D_I8, ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADC_A_I8,
                  ADC_B_I8, ADC_C_I8, ADC_D_I8, SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SBB_A_I8, SBB_B_I8,
-                 SBB_C_I8, SBB_D_I8, ADD_SP_I8, SUB_SP_I8, JMP_I8, INT_I8, JC_I8, JNC_I8, JS_I8, JNS_I8,
+                 SBB_C_I8, SBB_D_I8, ADD_SP_I8, SUB_SP_I8, JMP_I8, CALL_I8, INT_I8, JC_I8, JNC_I8, JS_I8, JNS_I8,
                  JO_I8, JNO_I8, JZ_I8, JNZ_I8, JA_I8, JBE_I8, JG_I8, JGE_I8, JL_I8, JLE_I8:
                 this.cachedImmediateOffset = 1;
                 data.addAll(getImmediateData(this.source.getImmediate(), 1));
@@ -105,7 +127,7 @@ public class Instruction implements Component {
                 break;
             
             // 32 bit immediate only
-            case MOV_SP_I32, MOV_BP_I32, PUSH_I32, JMP_I32, JMPA_I32, CALLA_I32:
+            case MOV_SP_I32, MOV_BP_I32, PUSH_I32, JMP_I32, JMPA_I32, CALL_I32, CALLA_I32:
                 this.cachedImmediateOffset = 1;
                 data.addAll(getImmediateData(this.source.getImmediate(), 4));
                 break;
@@ -143,7 +165,13 @@ public class Instruction implements Component {
             case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8:
                 data.addAll(getRIMData(true, false, false, false, false));
                 this.cachedImmediateOffset = data.size();
-                data.addAll(getImmediateData(this.source.getImmediate(), 1));
+                data.addAll(getImmediateData(this.hasEI8 ? new ResolvableConstant(this.ei8) : this.source.getImmediate(), 1));
+                break;
+            
+            // RIM + 8 bit with source
+            case CMOVCC_RIM:
+                data.addAll(getRIMData(true, true, false, false, false));
+                data.addAll(getImmediateData(this.hasEI8 ? new ResolvableConstant(this.ei8) : this.source.getImmediate(), 1));
                 break;
                  
             // packed
@@ -651,6 +679,12 @@ public class Instruction implements Component {
         String src = this.source.toString(),
                dst = this.destination.toString(),
                str = this.op.toString();
+        
+        if(this.op == Opcode.CMOVCC_RIM) {
+            str = "CMOV";
+            
+            str += Opcode.fromOp((byte) this.ei8).toString().substring(1);
+        }
         
         if(!dst.equals("")) {
             str += " " + dst;

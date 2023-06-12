@@ -85,9 +85,6 @@ public class NotSoTinySimulator {
             return;
         }
         
-        // TODO
-        // memory manager may be slow. consider an instruction cache
-        
         InstructionDescriptor desc = new InstructionDescriptor();
         desc.op = Opcode.fromOp(this.memory.readByte(this.reg_ip++));
         
@@ -150,6 +147,10 @@ public class NotSoTinySimulator {
         switch(desc.op.getType()) {
             case HLT:
                 this.halted = true;
+                break;
+            
+            case LEA:
+                runLEA(desc);
                 break;
             
             case NOP: // just NOP
@@ -735,10 +736,6 @@ public class NotSoTinySimulator {
                 runINT(desc);
                 break;
             
-            case LEA:
-                runLEA(desc);
-                break;
-            
             case CMP:
                 runCMP(desc);
                 break;
@@ -809,11 +806,22 @@ public class NotSoTinySimulator {
         int target = 0;
         
         switch(desc.op) {
+            case CALL_I8:
+                desc.hasImmediateValue = true;
+                desc.immediateWidth = 1;
+                target = this.memory.readByte(this.reg_ip);
+                break;
+                
             case CALL_I16:
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 2;
                 target = this.memory.read2Bytes(this.reg_ip);
                 break;
+                
+            case CALL_I32:
+                desc.hasImmediateValue = true;
+                desc.immediateWidth = 4;
+                target = this.memory.read4Bytes(this.reg_ip);
             
             case CALLA_I32:
                 desc.hasImmediateValue = true;
@@ -900,7 +908,7 @@ public class NotSoTinySimulator {
         this.memory.write2Bytes(this.reg_sp, this.reg_pf);
         
         // get vector & jump
-        this.reg_ip = this.memory.read4Bytes(((long) num) << 2);
+        this.reg_ip = this.memory.read4Bytes((num & 0x00FFl) << 2);
     }
     
     /**
@@ -941,6 +949,48 @@ public class NotSoTinySimulator {
         
         // subtract and discard
         add(a, b, dest.size(), true, false);
+    }
+    
+    /**
+     * Executes CMOV
+     * 
+     * @param desc
+     */
+    private void runCMOV(InstructionDescriptor desc) {
+        // make sure RIM is read properly
+        LocationDescriptor srcDesc = getNormalRIMSourceDescriptor(desc),
+                           dstDesc = getNormalRIMDestinationDescriptor(desc);
+        
+        // add EI8
+        int offset = 1;
+        if(desc.hasBIOByte) offset++;
+        if(desc.hasImmediateAddress || desc.hasImmediateValue) offset += desc.immediateWidth;
+        
+        desc.hasImmediateValue = true;
+        desc.immediateWidth++;
+        
+        // copied from JCC below
+        boolean condition = switch(Opcode.fromOp(this.memory.readByte(this.reg_ip + offset))) {
+            case JC_I8, JC_RIM      -> (this.reg_f & 0x01) != 0;    // carry - carry set
+            case JNC_I8, JNC_RIM    -> (this.reg_f & 0x01) == 0;    // not carry - carry clear
+            case JS_I8, JS_RIM      -> (this.reg_f & 0x02) != 0;    // sign - sign set
+            case JNS_I8, JNS_RIM    -> (this.reg_f & 0x02) == 0;    // not sign - sign clear
+            case JO_I8, JO_RIM      -> (this.reg_f & 0x04) != 0;    // overflow - overflow set
+            case JNO_I8, JNO_RIM    -> (this.reg_f & 0x04) == 0;    // not overflow - overflow clear
+            case JZ_I8, JZ_RIM      -> (this.reg_f & 0x08) != 0;    // zero - zero set
+            case JNZ_I8, JNZ_RIM    -> (this.reg_f & 0x08) == 0;    // not zero - zero clear
+            case JA_I8, JA_RIM      -> (this.reg_f & 0x09) == 0;    // above - carry clear and zero clear 
+            case JBE_I8, JBE_RIM    -> (this.reg_f & 0x09) != 0;    // below equal - carry set or zero set
+            case JG_I8, JG_RIM      -> ((this.reg_f & 0x08) == 0) && (((this.reg_f & 0x04) >>> 1) == (this.reg_f & 0x02));   // greater - zero clear and sign = overflow
+            case JGE_I8, JGE_RIM    -> (((this.reg_f & 0x04) >>> 1) == (this.reg_f & 0x02));                                 // greater equal - sign = overflow
+            case JL_I8, JL_RIM      -> (((this.reg_f & 0x04) >>> 1) != (this.reg_f & 0x02));                                 // less - sign != overflow
+            case JLE_I8, JLE_RIM    -> ((this.reg_f & 0x08) != 0) || (((this.reg_f & 0x04) >>> 1) != (this.reg_f & 0x02));   // less equal - zero set or sign != overflow
+            default                 -> false;
+        };
+        
+        if(condition) {
+            writeLocation(dstDesc, readLocation(srcDesc));
+        }
     }
     
     /**
@@ -1013,6 +1063,10 @@ public class NotSoTinySimulator {
             case MOVS:
             case MOVZ:
                 runMOV(desc);
+                break;
+            
+            case CMOVCC:
+                runCMOV(desc);
                 break;
             
             case XCHG:
@@ -1372,6 +1426,7 @@ public class NotSoTinySimulator {
             
             case MOVZ_RIM:
                 // zero extend
+                //System.out.println("MOVZ Source Width: " + desc.sourceWidth);
                 if(desc.sourceWidth == 1) { // 1 byte
                     putWideRIMDestination(desc, src & 0x0000_00FF);
                 } else { // 2 byte
@@ -2259,9 +2314,16 @@ public class NotSoTinySimulator {
      * @param val
      */
     private void putWideRIMDestination(LocationDescriptor normalDesc, int val) {
-        if(normalDesc.size() < 4) {
+        int size = normalDesc.size();
+        
+        if(size < 4) {
             // correct r16 -> pair by rim
             LocationType type = switch(normalDesc.type()) {
+                case REG_A  -> normalDesc.address() == 1 ? LocationType.REG_I : LocationType.REG_A;
+                case REG_B  -> normalDesc.address() == 1 ? LocationType.REG_J : LocationType.REG_B;
+                case REG_C  -> normalDesc.address() == 1 ? LocationType.REG_K : LocationType.REG_C;
+                case REG_D  -> normalDesc.address() == 1 ? LocationType.REG_L : LocationType.REG_D;
+                case REG_I  -> LocationType.REG_I;
                 case REG_J  -> LocationType.REG_K;
                 case REG_K  -> LocationType.REG_BP;
                 case REG_L  -> LocationType.REG_SP;
@@ -2269,7 +2331,7 @@ public class NotSoTinySimulator {
             };
             
             // size < 4, double it
-            writeLocation(new LocationDescriptor(type, normalDesc.size() * 2, normalDesc.address()), val);
+            writeLocation(new LocationDescriptor(type, size * 2, normalDesc.address()), val);
         } else {
             // size is 4 write as normal
             writeLocation(normalDesc, val);
@@ -2454,7 +2516,9 @@ public class NotSoTinySimulator {
      * @return
      */
     private int getNormalRIMSource(InstructionDescriptor desc) {
-        return readLocation(getNormalRIMSourceDescriptor(desc));
+        LocationDescriptor locDesc = getNormalRIMSourceDescriptor(desc); 
+        desc.sourceWidth = getNormalRIMSourceWidth(desc);
+        return readLocation(locDesc);
     }
     
     /**
@@ -2468,6 +2532,8 @@ public class NotSoTinySimulator {
         if(desc.hasImmediateValue) {
             desc.immediateWidth = 4;
         }
+        
+        desc.sourceWidth = 4;
         
         // convert to pairs properly
         LocationType type = switch(normalDesc.type()) {
@@ -2489,7 +2555,8 @@ public class NotSoTinySimulator {
      */
     private int getPackedRIMSource(LocationDescriptor normalDesc, InstructionDescriptor idesc) {
         // override immediate size
-        if(idesc.hasImmediateValue) idesc.immediateWidth = 2; 
+        if(idesc.hasImmediateValue) idesc.immediateWidth = 2;
+        idesc.sourceWidth = 2;
         
         return readLocation(new LocationDescriptor(normalDesc.type(), 2, normalDesc.address()));
     }
@@ -2501,6 +2568,8 @@ public class NotSoTinySimulator {
      * @return
      */
     private int getWidePackedRIMSource(LocationDescriptor normalDesc, InstructionDescriptor idesc) {
+        if(idesc.hasImmediateValue) idesc.immediateWidth = 4;
+        idesc.sourceWidth = 4;
         return readLocation(new LocationDescriptor(normalDesc.type(), 4, normalDesc.address()));
     }
     

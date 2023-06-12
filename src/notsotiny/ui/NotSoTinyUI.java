@@ -62,24 +62,30 @@ public class NotSoTinyUI extends Application {
      * == SIMULATION ==
      */
     
-    // RAM segment constants
-    private static final long //IVT_START = 0x0000_0000l,
-                              //IVT_END = 0x0000_0400l,
-                              PROGRAM_START = 0x0000_0000l,
-                              PROGRAM_END = 0x00F0_0000l,
-                              HEAP_START = 0x8000_0000l,
-                              HEAP_END = 0x8004_0000l,
-                              VIDEO_START = 0xC000_0000l,
-                              VIDEO_END = 0xC001_5000l,
-                              CHARACTER_SET_START = 0xC001_3000l,
-                              STACK_START = 0xFFFE_0000l,
-                              STACK_END = 0x1_0000_0000l;
+    // memory map constants
+    private static final long LOWRAM_START =    0x0000_0000,
+                              SPI_START =       0x8000_0000,
+                              KEYPAD_START =    0x8001_0000,
+                              CC_START =        0x8002_0000,
+                              KEYBOARD_START =  0xF000_0000,
+                              SOUND_START =     0xF001_0000,
+                              VIDEO_START =     0xF002_0000,
+                              RANDOM_START =    0xF004_0000,
+                              BOOTROM_START =   0xFFFF_FC00;
     
-    // MMIO constants
-    private static final long HALTER_ADDRESS = 0xF000_0000l,
-                              SIC_ADDRESS = 0xF000_0002l,
-                              KEYBOARD_BUFFER_ADDRESS = 0xF000_0006l,
-                              RAND_ADDRESS = 0xF000_0008l;
+    private static final int LOWRAM_SIZE =      0x0010_0000,
+                             SPI_SIZE =         0x0000_0004,
+                             KEYPAD_SIZE =      0x0000_0008,
+                             CC_SIZE =          0x0000_0002,
+                             KEYBOARD_SIZE =    0x0000_0002,
+                             SOUND_SIZE =       0x0000_0004,
+                             VIDEO_SIZE =       0x0002_0000,
+                             RANDOM_SIZE =      0x0000_0004,
+                             BOOTROM_SIZE =     0x0000_0400;
+    
+    private static final int VIDEO_BUFFER_SIZE =    0x0001_4000,
+                             VIDEO_CHARSET_SIZE =   0x0000_1000,
+                             VIDEO_OTHER_SIZE =     0x0002_0000 - (VIDEO_BUFFER_SIZE + VIDEO_CHARSET_SIZE);
     
     // other constants
     /*
@@ -88,9 +94,9 @@ public class NotSoTinyUI extends Application {
                                 TEXT_FONT_FILE = "text.dat";
     */
     
-    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\mandelbrot\\",
-                                PROGRAM_EXEC_FILE = "mandelbrot.oex",
-                                TEXT_FONT_FILE = "text.dat";
+    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\",
+                                PROGRAM_EXEC_FILE = "test.oex",
+                                TEXT_FONT_FILE = "textsmall.dat";
     
     
     // sim vars
@@ -98,29 +104,33 @@ public class NotSoTinyUI extends Application {
     
     private MemoryManager mmu;
     
-    private FlatMemoryController //ivtRAMController,          // 0x0000_0000 - 0x0000_03FF
-                                 programRAMController,      // 0x0000_0000 - 0x000F_FFFF
-                                 heapRAMController,         // 0x8000_0000 - 0x8003_FFFF
-                                 videoRAMController,        // 0xC000_0000 - 0xC001_33FF
-                                 stackRAMController,        // 0xFFFC_0000 - 0xFFFF_FFFF
-                                 keyboardBufferController;  // 0xF000_0006 - 0xF000_0007
+    private FlatMemoryController lowramController,
+                                 placeholder_spiController,
+                                 placeholder_cacheController,
+                                 keyboardBufferController,
+                                 videoBufferController,
+                                 videoCharsetController,
+                                 videoOtherController,
+                                 bootromController;
     
-    // halter is deprecated by a HLT instruction but legacy programs yadda yadda
-    private Halter halter;                              // 0xF000_0000 - 0xF000_0001
+    // halter is deprecated by a HLT instruction but legacy code
+    private Halter halter;  
     
-    private SoundInterfaceController sic;               // 0xF000_0002 - 0xF000_0005
+    private SoundInterfaceController sic;
     
-    private RandomController rand;                      // 0xF000_0008 - 0xF000_000B
+    private RandomController rand;
     
     private Relocator relocator;
     
     // actual memory arrays
-    private byte[] //ivtRAM,
-                   programRAM,
-                   heapRAM,
-                   videoRAM,
-                   stackRAM,
-                   keyboardBuffer;
+    private byte[] lowramArray,
+                   placeholder_spiArray,
+                   placeholder_cacheArray,
+                   keyboardBufferArray,
+                   videoBufferArray,
+                   videoCharsetArray,
+                   videoOtherArray,
+                   bootromArray;
     
     // real time clock stuff
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
@@ -235,20 +245,24 @@ public class NotSoTinyUI extends Application {
      * @throws IOException 
      */
     private void initSimulator() throws MidiUnavailableException, IOException {
-        // initialize flat memory segments
-        //ivtRAM = new byte[(int)(IVT_END - IVT_START)];
-        programRAM = new byte[(int)(PROGRAM_END - PROGRAM_START)];
-        heapRAM = new byte[(int)(HEAP_END - HEAP_START)];
-        videoRAM = new byte[(int)(VIDEO_END - VIDEO_START)];
-        stackRAM = new byte[(int)(STACK_END - STACK_START)];
-        keyboardBuffer = new byte[4];
+        // initialize flat memory segments]
+        lowramArray = new byte[LOWRAM_SIZE];
+        placeholder_spiArray = new byte[SPI_SIZE];
+        placeholder_cacheArray = new byte[CC_SIZE];
+        keyboardBufferArray = new byte[KEYBOARD_SIZE];
+        videoBufferArray = new byte[VIDEO_BUFFER_SIZE];
+        videoCharsetArray = new byte[VIDEO_CHARSET_SIZE];
+        videoOtherArray = new byte[VIDEO_OTHER_SIZE];
+        bootromArray = new byte[BOOTROM_SIZE];
         
-        //ivtRAMController = new FlatMemoryController(ivtRAM);
-        programRAMController = new FlatMemoryController(programRAM);
-        heapRAMController = new FlatMemoryController(heapRAM);
-        videoRAMController = new FlatMemoryController(videoRAM);
-        stackRAMController = new FlatMemoryController(stackRAM);
-        keyboardBufferController = new FlatMemoryController(keyboardBuffer);
+        lowramController = new FlatMemoryController(lowramArray);
+        placeholder_spiController = new FlatMemoryController(placeholder_spiArray);
+        placeholder_cacheController = new FlatMemoryController(placeholder_cacheArray);
+        keyboardBufferController = new FlatMemoryController(keyboardBufferArray);
+        videoBufferController = new FlatMemoryController(videoBufferArray);
+        videoCharsetController = new FlatMemoryController(videoCharsetArray);
+        videoOtherController = new FlatMemoryController(videoOtherArray);
+        bootromController = new FlatMemoryController(bootromArray);
         
         // initialize other segments
         halter = new Halter();
@@ -258,20 +272,23 @@ public class NotSoTinyUI extends Application {
         // initialize memory manager
         this.mmu = new MemoryManager();
         
-        //this.mmu.registerSegment(ivtRAMController, IVT_START, IVT_END - IVT_START);
-        this.mmu.registerSegment(programRAMController, PROGRAM_START, PROGRAM_END - PROGRAM_START);
-        this.mmu.registerSegment(heapRAMController, HEAP_START, HEAP_END - HEAP_START);
-        this.mmu.registerSegment(videoRAMController, VIDEO_START, VIDEO_END - VIDEO_START);
-        this.mmu.registerSegment(stackRAMController, STACK_START, STACK_END - STACK_START);
+        this.mmu.registerSegment(lowramController, LOWRAM_START, LOWRAM_SIZE);
+        this.mmu.registerSegment(placeholder_spiController, SPI_START, SPI_SIZE);
+        this.mmu.registerSegment(placeholder_cacheController, CC_START, CC_SIZE);
+        this.mmu.registerSegment(keyboardBufferController, KEYBOARD_START, KEYBOARD_SIZE);
+        this.mmu.registerSegment(videoBufferController, VIDEO_START, VIDEO_BUFFER_SIZE);
+        this.mmu.registerSegment(videoCharsetController, VIDEO_START + VIDEO_BUFFER_SIZE, VIDEO_CHARSET_SIZE);
+        this.mmu.registerSegment(videoOtherController, VIDEO_START + VIDEO_BUFFER_SIZE + VIDEO_CHARSET_SIZE, VIDEO_OTHER_SIZE);
+        this.mmu.registerSegment(bootromController, BOOTROM_START, BOOTROM_SIZE);
         
-        this.mmu.registerSegment(halter, HALTER_ADDRESS, 2);
-        this.mmu.registerSegment(sic, SIC_ADDRESS, 4);
-        this.mmu.registerSegment(keyboardBufferController, KEYBOARD_BUFFER_ADDRESS, 2);
-        this.mmu.registerSegment(rand, RAND_ADDRESS, 16);
+        this.mmu.registerSegment(sic, SOUND_START, SOUND_SIZE);
+        this.mmu.registerSegment(rand, RANDOM_START, RANDOM_SIZE);
+        
+        //this.mmu.printMap();
         
         // load text font
         byte[] font = Files.readAllBytes(new File(PROGRAM_DATA_FOLDER + TEXT_FONT_FILE).toPath());
-        System.arraycopy(font, 0, this.videoRAM, (int)(CHARACTER_SET_START - VIDEO_START), font.length);
+        System.arraycopy(font, 0, videoCharsetArray, 0, font.length);
         
         // Load program into memory
         List<Object> relocatorPair = ExecLoader.loadExecFileToRelocator(new File(PROGRAM_DATA_FOLDER + PROGRAM_EXEC_FILE));
@@ -279,7 +296,7 @@ public class NotSoTinyUI extends Application {
         this.relocator = (Relocator) relocatorPair.get(0);
         String entrySymbol = (String) relocatorPair.get(1);
         
-        long entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, stackRAM, 0x0000_0000_0000_0000l, 0);
+        long entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, lowramArray, 0, 0);
         
         // write entry vector
         this.mmu.write4Bytes(0, (int) entry);
@@ -288,7 +305,7 @@ public class NotSoTinyUI extends Application {
         this.sim = new NotSoTinySimulator(this.mmu);
         
         // timing stuff
-        this.simThread = new SimulatorThread(1_000_000);
+        this.simThread = new SimulatorThread(1_000_0);
         
         this.simThread.start();
         
@@ -601,7 +618,7 @@ public class NotSoTinyUI extends Application {
             
             this.buttonToggleRunning.setText(this.sim.getHalted() ? "Start CPU" : "Stop CPU");
             
-            this.screen.update(this.videoRAM, 0);
+            this.screen.update(this.videoBufferArray, 0);
             
             // advanced info
             if(this.advancedViewVisisble) {
@@ -620,10 +637,11 @@ public class NotSoTinyUI extends Application {
                 
                 try {
                     state += dis.disassemble(this.mmu, Integer.toUnsignedLong(sim.getRegIP())) + "\n";
-                } catch(ArrayIndexOutOfBoundsException e) {}
+                } catch(IndexOutOfBoundsException e) {}
                 
                 for(int j = 0; j < dis.getLastInstructionLength(); j++) {
-                    state += String.format("%02X ", this.stackRAM[(int)(Integer.toUnsignedLong(sim.getRegIP()) + (long) j - STACK_START)]);
+                    byte b = this.mmu.readByte(Integer.toUnsignedLong(sim.getRegIP()) + ((long) j));
+                    state += String.format("%02X ", b);
                 }
                 
                 state += "\n\n" + this.relocator.getAddressName(Integer.toUnsignedLong(sim.getRegIP()));

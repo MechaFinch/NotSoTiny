@@ -1,6 +1,7 @@
 package notsotiny.sim.memory;
 
 import java.util.HashMap;
+import java.util.Map.Entry;
 import java.util.TreeSet;
 
 /**
@@ -36,8 +37,8 @@ public class MemoryManager implements MemoryController {
      * @throws IllegalArgumentException if the specified range overlaps with an existing segment
      */
     public void registerSegment(MemoryController mc, long start, long size) {
-        start &= 0xFFFF_FFFF; // stop sign extending plz
-        size &= 0xFFFF_FFFF;
+        start &= 0xFFFF_FFFFl; // stop sign extending plz
+        size &= 0xFFFF_FFFFl;
         
         // check for overlap
         if(this.segmentControllers.size() != 0) {
@@ -64,10 +65,19 @@ public class MemoryManager implements MemoryController {
      * @param address Start address of the segment to remove
      */
     public void removeSegment(long address) {
-        address &= 0xFFFF_FFFF;
+        address &= 0xFFFF_FFFFl;
         this.startAddresses.remove(address);
         this.endAddresses.remove(address);
         this.segmentControllers.remove(address);
+    }
+    
+    /**
+     * Prints the memory mappings
+     */
+    public void printMap() {
+        for(Entry<Long, MemoryController> e : segmentControllers.entrySet()) {
+            System.out.printf("%08X: %s%n", e.getKey() & 0xFFFF_FFFFl, e.getValue().getClass().toString());
+        }
     }
     
     /**

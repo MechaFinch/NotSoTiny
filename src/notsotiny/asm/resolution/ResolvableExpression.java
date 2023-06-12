@@ -127,6 +127,15 @@ public class ResolvableExpression implements ResolvableValue {
         }
     }
     
+    @Override
+    public boolean equals(Object o) {
+        if(o instanceof ResolvableExpression re) {
+            return this.operation == re.operation && this.left.equals(re.left) && this.right.equals(re.right);
+        } else {
+            return false;
+        }
+    }
+    
     public ResolvableValue getLeft() { return this.left; }
     public ResolvableValue getRight() { return this.right; }
     public Operator getOperation() { return this.operation; }

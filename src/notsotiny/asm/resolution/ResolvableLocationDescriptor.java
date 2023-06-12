@@ -133,6 +133,20 @@ public class ResolvableLocationDescriptor implements Resolvable {
         };
     }
     
+    @Override
+    public boolean equals(Object o) {
+        if(o instanceof ResolvableLocationDescriptor rld) {
+            return this.type == rld.type && switch(this.type) {
+                case IMMEDIATE  -> this.immediate.equals(rld.immediate);
+                case MEMORY     -> this.memory.equals(rld.memory);
+                case NULL       -> true; 
+                case REGISTER   -> this.register == rld.register;
+            };
+        } else {
+            return false;
+        }
+    }
+    
     public int getSize() { return this.size; }
     public void setSize(int s) { this.size = s; }
     public LocationType getType() { return this.type; }

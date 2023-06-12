@@ -83,5 +83,14 @@ public class ResolvableConstant implements ResolvableValue {
         }
     }
     
+    @Override
+    public boolean equals(Object o) {
+        if(o instanceof ResolvableConstant rc) {
+            return (this.resolved == rc.resolved) && (resolved ? this.val == rc.val : this.name.equals(rc.name));
+        } else {
+            return false;
+        }
+    }
+    
     public String getName() { return this.name; }
 }

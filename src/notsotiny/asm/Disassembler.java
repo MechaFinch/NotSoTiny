@@ -67,7 +67,7 @@ public class Disassembler {
             // 8 bit immediates
             case MOVS_A_I8, MOVS_B_I8, MOVS_C_I8, MOVS_D_I8, ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADC_A_I8,
                  ADC_B_I8, ADC_C_I8, ADC_D_I8, SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SBB_A_I8, SBB_B_I8,
-                 SBB_C_I8, SBB_D_I8, ADD_SP_I8, SUB_SP_I8, JMP_I8, INT_I8, JC_I8, JNC_I8, JS_I8, JNS_I8,
+                 SBB_C_I8, SBB_D_I8, ADD_SP_I8, SUB_SP_I8, JMP_I8, CALL_I8, INT_I8, JC_I8, JNC_I8, JS_I8, JNS_I8,
                  JO_I8, JNO_I8, JZ_I8, JNZ_I8, JA_I8, JBE_I8, JG_I8, JGE_I8, JL_I8, JLE_I8:
                      s += disassembleImmediateShortcut(memory, op, 1);
                 break;
@@ -81,7 +81,7 @@ public class Disassembler {
                 break;
             
             // 32 bit immediate
-            case MOV_SP_I32, MOV_BP_I32, PUSH_I32, JMP_I32, JMPA_I32, CALLA_I32:
+            case MOV_SP_I32, MOV_BP_I32, PUSH_I32, JMP_I32, JMPA_I32, CALL_I32, CALLA_I32:
                 s += disassembleImmediateShortcut(memory, op, 4);
                 break;
             

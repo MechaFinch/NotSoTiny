@@ -8,11 +8,13 @@ package notsotiny.sim.ops;
 public enum Operation {
     NOP     (Family.MISC),
     HLT     (Family.MISC),
+    LEA     (Family.MISC),
     
     MOV     (Family.MOVE),
     MOVW    (Family.MOVE),
     MOVS    (Family.MOVE),
     MOVZ    (Family.MOVE),
+    CMOVCC  (Family.MOVE),
     XCHG    (Family.MOVE),
     PUSH    (Family.MOVE),
     PUSHA   (Family.MOVE),
@@ -76,7 +78,6 @@ public enum Operation {
     RET     (Family.JUMP),
     IRET    (Family.JUMP),
     INT     (Family.JUMP),
-    LEA     (Family.JUMP),
     
     CMP     (Family.JUMP),
     JCC     (Family.JUMP),
@@ -115,6 +116,12 @@ public enum Operation {
                      "JA", "JNA", "JAE", "JNAE", "JB", "JNB", "JBE", "JNBE",
                      "JG", "JNG", "JGE", "JNGE", "JL", "JNL", "JLE", "JNLE":
                          return Operation.JCC;
+                
+                // CMOVCC
+                case "CMOVC", "CMOVNC", "CMOVS", "CMOVNS", "CMOVO", "CMOVNO", "CMOVZ", "CMOVNZ", "CMOVE", "CMOVNE",
+                     "CMOVA", "CMOVNA", "CMOVAE", "CMOVNAE", "CMOVB", "CMOVNB", "CMOVBE", "CMOVNBE",
+                     "CMOVG", "CMOVNG", "CMOVGE", "CMOVNGE", "CMOVL", "CMOVNL", "CMOVLE", "CMOVNLE":
+                         return Operation.CMOVCC;
                 
                 // alias MULS to MUL cause they're the same
                 case "MULS":
