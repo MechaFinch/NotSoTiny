@@ -3,9 +3,11 @@ package notsotiny.asm;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,6 +36,7 @@ import asmlib.lex.symbols.SpecialCharacterSymbol;
 import asmlib.lex.symbols.StringSymbol;
 import asmlib.lex.symbols.Symbol;
 import asmlib.token.Tokenizer;
+import asmlib.util.FileLocator;
 import asmlib.util.relocation.RelocatableObject;
 import asmlib.util.relocation.RelocatableObject.Endianness;
 import notsotiny.asm.components.Component;
@@ -60,7 +63,7 @@ public class Assembler {
     
     private static Logger LOG = Logger.getLogger(Assembler.class.getName());
     
-    private static Lexer lexer;
+    public static final Lexer lexer;
     
     static {
         try {
@@ -76,14 +79,14 @@ public class Assembler {
      * @param allInstructions List<Component>
      * @param labelIndexMap Map<String, Integer>
      * @param libraryName String
-     * @param libraryNamesMap HashMap<File, String>
+     * @param libraryFilesMap HashMap<File, String>
      * @param incomingReferences HahsMap<String, List<Integer>>
      * @param outgoingReferences HashMap<String, Integer>
      * @param incomingReferenceWidths HashMap<String, Integer>
      * @param outgoingReferenceWidths HashMap<String, Integer>
      * @author Mechafinch
      */
-    public record AssemblyObject(List<Component> allInstructions, Map<String, Integer> labelIndexMap, String libraryName, HashMap<File, String> libraryNamesMap, HashMap<String, List<Integer>> incomingReferences, HashMap<String, Integer> outgoingReferences, HashMap<String, Integer> incomingReferenceWidths, HashMap<String, Integer> outgoingReferenceWidths) {
+    public record AssemblyObject(List<Component> allInstructions, Map<String, Integer> labelIndexMap, String libraryName, HashMap<File, String> libraryFilesMap, HashMap<String, List<Integer>> incomingReferences, HashMap<String, Integer> outgoingReferences, HashMap<String, Integer> incomingReferenceWidths, HashMap<String, Integer> outgoingReferenceWidths) {
         
     }
     
@@ -126,7 +129,7 @@ public class Assembler {
         }
         
         // from the VeryTinyAssembler
-        List<RelocatableObject> objects = assemble(new File(args[flagCount]), optimize, debug, (args.length > flagCount + 2) ? args[flagCount + 2] : "");
+        List<RenameableRelocatableObject> objects = assemble(Paths.get(args[flagCount]), optimize, debug, (args.length > flagCount + 2) ? args[flagCount + 2] : "");
         
         // write object files
         String directory = new File(args[flagCount]).getAbsolutePath();
@@ -171,16 +174,16 @@ public class Assembler {
      * @return
      * @throws IOException
      */
-    public static List<RelocatableObject> assemble(List<AssemblyObject> assemblyObjects, boolean optimizeInstructionWidth) throws IOException {
+    public static List<RenameableRelocatableObject> assemble(List<AssemblyObject> assemblyObjects, boolean optimizeInstructionWidth) throws IOException {
         LOG.info("Assembling from object list");
         
-        ArrayList<RelocatableObject> objects = new ArrayList<>();
+        ArrayList<RenameableRelocatableObject> objects = new ArrayList<>();
         
         for(AssemblyObject ao : assemblyObjects) {
             List<Component> unresolved = new ArrayList<>(ao.allInstructions);
             unresolved.removeIf(c -> c.isResolved());
             
-            objects.add(assembleObjectFromComponents(ao.libraryName, ao.libraryNamesMap, ao.incomingReferences, ao.outgoingReferences, ao.incomingReferenceWidths, ao.outgoingReferenceWidths, ao.allInstructions, unresolved, ao.labelIndexMap, optimizeInstructionWidth));
+            objects.add(assembleObjectFromComponents(ao.libraryName, ao.libraryFilesMap, ao.incomingReferences, ao.outgoingReferences, ao.incomingReferenceWidths, ao.outgoingReferenceWidths, ao.allInstructions, unresolved, ao.labelIndexMap, optimizeInstructionWidth));
         }
         
         return objects;
@@ -193,41 +196,34 @@ public class Assembler {
      * @return
      * @throws IOException
      */
-    public static List<RelocatableObject> assemble(File f, boolean optimizeInstructionWidth, boolean debugFriendlyOutput, String entrySymbolName) throws IOException {
-        LOG.info("Assembling from main file: " + f);
+    public static List<RenameableRelocatableObject> assemble(Path file, boolean optimizeInstructionWidth, boolean debugFriendlyOutput, String entrySymbolName) throws IOException {
+        LOG.info("Assembling from main file: " + file);
         
         ArrayList<RenameableRelocatableObject> objects = new ArrayList<>();
-        ArrayList<String> files = new ArrayList<>(); // dependencies
-        files.add(f.getAbsolutePath());
+        Path standardLibPath = Paths.get("C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\standard library");
+        FileLocator locator = new FileLocator(file.toAbsolutePath().getParent(), standardLibPath, List.of());
+        locator.addFile(file);
         
-        HashMap<String, File> libraryMap = new HashMap<>();
+        HashMap<String, Path> libraryMap = new HashMap<>();
         
-        String directory = f.getAbsolutePath();
-        directory = directory.substring(0, directory.lastIndexOf("\\")) + "\\";
-        
-        // until all dependencies are dealt with
-        for(int i = 0; i < files.size(); i++) {
-            File file = new File(files.get(i));
+        while(locator.hasUnconsumed()) {
+            Path workingFile = locator.consume();
             
-            if(!file.isAbsolute()) {
-                file = new File(directory + files.get(i));
-            }
-            
-            // load or assemble
             RenameableRelocatableObject obj;
             
-            if(file.getPath().endsWith(".obj")) {
-                // load
-                obj = new RenameableRelocatableObject(file, null);
+            if(workingFile.toString().endsWith(".obj")) {
+                // object file, load it
+                obj = new RenameableRelocatableObject(workingFile.toFile(), null);
             } else {
-                // assemble
+                // assembly file, assemble it
                 List<Symbol> symbols;
                 
-                try(BufferedReader br = new BufferedReader(new FileReader(file))) {
+                try(BufferedReader br = Files.newBufferedReader(workingFile)) {
                     symbols = lexer.lex(Tokenizer.tokenize(br.lines().toList()));
                 }
                 
-                obj = assembleObjectFromSource(symbols, files, file, optimizeInstructionWidth);
+                locator.setWorkingDirectory(workingFile);
+                obj = assembleObjectFromSource(symbols, workingFile, locator, optimizeInstructionWidth);
             }
             
             libraryMap.put(obj.getName(), file);
@@ -236,10 +232,10 @@ public class Assembler {
         
         // unify library names
         for(String name : libraryMap.keySet()) {
-            File file = libraryMap.get(name);
+            Path p = libraryMap.get(name);
             
             for(RenameableRelocatableObject obj : objects) {
-                obj.renameLibrary(file, name);
+                obj.renameLibrary(p.toFile(), name);
             }
         }
         
@@ -266,7 +262,7 @@ public class Assembler {
         }
         
         LOG.info("Done.");
-        return new ArrayList<RelocatableObject>(objects);
+        return new ArrayList<RenameableRelocatableObject>(objects);
     }
     
     /**
@@ -278,13 +274,13 @@ public class Assembler {
      * @return
      * @throws IOException
      */
-    private static RenameableRelocatableObject assembleObjectFromSource(List<Symbol> symbols, List<String> includedFiles, File file, boolean optimizeInstructionWidth) throws IOException {
+    public static RenameableRelocatableObject assembleObjectFromSource(List<Symbol> symbols, Path file, FileLocator locator, boolean optimizeInstructionWidth) throws IOException {
         LOG.fine("Assembling file: " + file);
         
         int line = 0; // line in file
         
         // these variables are from the verytiny implementation
-        String workingDirectory = file.getAbsolutePath();
+        String workingDirectory = file.toAbsolutePath().toString();
         int libNameIndex = workingDirectory.lastIndexOf("\\");
         
         String libraryName = workingDirectory.substring(libNameIndex + 1, workingDirectory.lastIndexOf('.'));
@@ -367,17 +363,14 @@ public class Assembler {
                                 } else throw new IllegalArgumentException("Invalid library description " + es.symbols().get(2));
                             } else throw new IllegalArgumentException("Invalid library description");
                             
-                            // working directory
-                            if(!new File(fileName).isAbsolute()) fileName = workingDirectory + fileName;
-                            
                             // add library
-                            if(!includedFiles.contains(fileName)) {
-                                LOG.finer("Added file " + fileName + " as " + libName);
-                                includedFiles.add(fileName);
-                            }
+                            Path p = Paths.get(fileName);
+                            if(!locator.addFile(p)) throw new IllegalArgumentException("Could not find library file " + p);
+                            Path fp = locator.getSourceFile(p);
                             
-                            libraryNamesMap.put(new File(fileName), libName);
+                            LOG.finer("Added file " + fileName + " as " + libName);
                             
+                            libraryNamesMap.put(fp.toFile(), libName);
                             handled = true;
                             break;
                             
@@ -467,7 +460,7 @@ public class Assembler {
      * Assembles a file parsed Components. This performs instruction width optimization, constant resolution, and final relocatable object creation
      * 
      * @param libraryName
-     * @param libraryNamesMap
+     * @param libraryFilesMap
      * @param incomingReferences
      * @param outgoingReferences
      * @param incomingReferenceWidths
@@ -478,7 +471,7 @@ public class Assembler {
      * @param optimizeInstructionWidth
      * @return
      */
-    private static RenameableRelocatableObject assembleObjectFromComponents(String libraryName, HashMap<File, String> libraryNamesMap, HashMap<String, List<Integer>> incomingReferences, HashMap<String, Integer> outgoingReferences, HashMap<String, Integer> incomingReferenceWidths, HashMap<String, Integer> outgoingReferenceWidths,
+    private static RenameableRelocatableObject assembleObjectFromComponents(String libraryName, HashMap<File, String> libraryFilesMap, HashMap<String, List<Integer>> incomingReferences, HashMap<String, Integer> outgoingReferences, HashMap<String, Integer> incomingReferenceWidths, HashMap<String, Integer> outgoingReferenceWidths,
                                                                             List<Component> allInstructions, List<Component> unresolvedInstructions, Map<String, Integer> labelIndexMap, boolean optimizeInstructionWidth) {    
         LOG.fine("Assembling from components");
         ArrayList<Byte> objectCode = new ArrayList<>();
@@ -489,7 +482,7 @@ public class Assembler {
         
         NavigableMap<String, Integer> labelAddressMap = new TreeMap<>();        // label -> address
         NavigableMap<Integer, Integer> instructionAddressMap = new TreeMap<>(); // index in allInstructions -> address
-        Set<String> libNames = new HashSet<>(libraryNamesMap.values());
+        Set<String> libNames = new HashSet<>(libraryFilesMap.values());
         int addr = 0, lastInstructionAddr = -1;
         
         // build initial address map
@@ -1294,7 +1287,7 @@ public class Assembler {
         LOG.finest("OUTGOING REFERENCES: " + outgoingReferences);
         LOG.finest("INCOMING REFERENCES: " + incomingReferences);
         
-        return new RenameableRelocatableObject(Endianness.LITTLE, libraryName, 4, incomingReferences, outgoingReferences, incomingReferenceWidths, outgoingReferenceWidths, objectCodeArray, false, libraryNamesMap);
+        return new RenameableRelocatableObject(Endianness.LITTLE, libraryName, 4, incomingReferences, outgoingReferences, incomingReferenceWidths, outgoingReferenceWidths, objectCodeArray, false, libraryFilesMap);
     }
     
     /**
@@ -1642,20 +1635,11 @@ public class Assembler {
                             };
                             
                             case IMMEDIATE  -> {
-                                // this is the only single operand instruction that needs the full immediate treatment, others can assume higher and cut down later
+                                // assuming the immediate size of a push is ill advised
                                 ResolvableValue imm = firstOperand.getImmediate();
-                                firstOperand.getSize();
-                                int immediateSize;
+                                int immediateSize = firstOperand.getSize();
                                 
-                                if(imm.isResolved()) {
-                                    if(firstOperand.getSize() == -1) {
-                                        immediateSize = getValueWidth(imm.value(), true, false);
-                                    } else {
-                                        immediateSize = firstOperand.getSize();
-                                    }
-                                } else {
-                                    immediateSize = 4;
-                                }
+                                if(immediateSize == -1) throw new IllegalArgumentException("Cannot infer push size for immedate " + imm);
                                 
                                 yield immediateSize == 4 ? Opcode.PUSH_I32 : Opcode.PUSH_RIM;
                             }

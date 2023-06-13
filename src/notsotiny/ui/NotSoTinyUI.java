@@ -4,6 +4,7 @@ import java.awt.KeyboardFocusManager;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -94,9 +95,9 @@ public class NotSoTinyUI extends Application {
                                 TEXT_FONT_FILE = "text.dat";
     */
     
-    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\",
-                                PROGRAM_EXEC_FILE = "test.oex",
-                                TEXT_FONT_FILE = "textsmall.dat";
+    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\test\\",
+                                PROGRAM_EXEC_FILE = "test1.oex",
+                                TEXT_FONT_FILE = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\textsmall.dat";
     
     
     // sim vars
@@ -287,7 +288,7 @@ public class NotSoTinyUI extends Application {
         //this.mmu.printMap();
         
         // load text font
-        byte[] font = Files.readAllBytes(new File(PROGRAM_DATA_FOLDER + TEXT_FONT_FILE).toPath());
+        byte[] font = Files.readAllBytes(Paths.get(TEXT_FONT_FILE));
         System.arraycopy(font, 0, videoCharsetArray, 0, font.length);
         
         // Load program into memory
@@ -303,9 +304,10 @@ public class NotSoTinyUI extends Application {
         
         // simulator
         this.sim = new NotSoTinySimulator(this.mmu);
+        this.sim.setRegSP((int)(LOWRAM_START + LOWRAM_SIZE));
         
         // timing stuff
-        this.simThread = new SimulatorThread(1_000_0);
+        this.simThread = new SimulatorThread(10_000);
         
         this.simThread.start();
         
