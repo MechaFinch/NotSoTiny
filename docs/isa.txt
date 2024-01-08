@@ -108,12 +108,15 @@
 	are zero. The sign flag is set according to the quotient. Quotient goes in the low half and
 	remainder goes in the high half
 	
-	Interrupts push IP, then flags, then jump to the address at [arg * 4]
+	Interrupts push IP, then flags, then jump to the address at [arg * 4]. The IE bit of PF is cleared.
 	Made for interrupts, PUSHA pushes, in order, A, B, C, D, I, J, K, L, BP. POPA pops the equivalent.
-	The HLT instruction halts execution until an interrupt is received
+	The HLT instruction halts execution until an interrupt is received. Execution will continue after
+	the HLT instruction upon returning from the interrupt handler.
 		
 	Conditions match x86
 	
+	CMOV will always read its source, and conditionally write its destination.
+	PCMOV will always read its source, and always read and write its destination.
 	
 	Packed division returns the packed quotients in the lower register and packed remainders in the
 	upper register.

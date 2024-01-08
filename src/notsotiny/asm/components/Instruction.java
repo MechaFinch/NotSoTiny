@@ -105,29 +105,32 @@ public class Instruction implements Component {
                  PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L, PUSH_BP, PUSH_F,
                  PUSH_PF, POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L, POP_BP, POP_F,
                  POP_PF, NOT_F, INC_I, INC_J, INC_K, INC_L, ICC_I, ICC_J, ICC_K, ICC_L, DEC_I, DEC_J,
+                 ICC_A, ICC_B, ICC_C, ICC_D, DCC_A, DCC_B, DCC_C, DCC_D,
                  DEC_K, DEC_L, DCC_I, DCC_J, DCC_K, DCC_L, RET, IRET, PUSHA, POPA, HLT:
                 break;
             
             // 8 bit immediate only
-            case MOVS_A_I8, MOVS_B_I8, MOVS_C_I8, MOVS_D_I8, ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADC_A_I8,
-                 ADC_B_I8, ADC_C_I8, ADC_D_I8, SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SBB_A_I8, SBB_B_I8,
-                 SBB_C_I8, SBB_D_I8, ADD_SP_I8, SUB_SP_I8, JMP_I8, CALL_I8, INT_I8, JC_I8, JNC_I8, JS_I8, JNS_I8,
-                 JO_I8, JNO_I8, JZ_I8, JNZ_I8, JA_I8, JBE_I8, JG_I8, JGE_I8, JL_I8, JLE_I8:
+            case MOVS_A_I8, MOVS_B_I8, MOVS_C_I8, MOVS_D_I8,
+                 ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADD_I_I8, ADD_J_I8, ADD_K_I8, ADD_L_I8,
+                 SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SUB_I_I8, SUB_J_I8, SUB_K_I8, SUB_L_I8,
+                 ADC_A_I8, ADC_B_I8, ADC_C_I8, ADC_D_I8, SBB_A_I8, SBB_B_I8, SBB_C_I8, SBB_D_I8,
+                 ADD_SP_I8, ADD_BP_I8, SUB_SP_I8, SUB_BP_I8,
+                 JMP_I8, CALL_I8, INT_I8,
+                 JC_I8, JNC_I8, JS_I8, JNS_I8, JO_I8, JNO_I8, JZ_I8,
+                 JNZ_I8, JA_I8, JBE_I8, JG_I8, JGE_I8, JL_I8, JLE_I8:
                 this.cachedImmediateOffset = 1;
                 data.addAll(getImmediateData(this.source.getImmediate(), 1));
                 break;
             
             // 16 bit immediate only
             case MOV_I_I16, MOV_J_I16, MOV_K_I16, MOV_L_I16, MOV_A_I16, MOV_B_I16, MOV_C_I16, MOV_D_I16,
-                 ADD_A_I16, ADD_B_I16, ADD_C_I16, ADD_D_I16, ADC_A_I16, ADC_B_I16, ADC_C_I16, ADC_D_I16,
-                 SUB_A_I16, SUB_B_I16, SUB_C_I16, SUB_D_I16, SBB_A_I16, SBB_B_I16, SBB_C_I16, SBB_D_I16,
                  JMP_I16, CALL_I16:
                 this.cachedImmediateOffset = 1;
                 data.addAll(getImmediateData(this.source.getImmediate(), 2));
                 break;
             
             // 32 bit immediate only
-            case MOV_SP_I32, MOV_BP_I32, PUSH_I32, JMP_I32, JMPA_I32, CALL_I32, CALLA_I32:
+            case PUSH_I32, JMP_I32, JMPA_I32, CALL_I32, CALLA_I32:
                 this.cachedImmediateOffset = 1;
                 data.addAll(getImmediateData(this.source.getImmediate(), 4));
                 break;
@@ -173,9 +176,14 @@ public class Instruction implements Component {
                 data.addAll(getRIMData(true, true, false, false, false));
                 data.addAll(getImmediateData(this.hasEI8 ? new ResolvableConstant(this.ei8) : this.source.getImmediate(), 1));
                 break;
+            
+            case PCMOVCC_RIMP:
+                data.addAll(getRIMData(true, true, true, false, false));
+                data.addAll(getImmediateData(this.hasEI8 ? new ResolvableConstant(this.ei8) : this.source.getImmediate(), 1));
+                break;
                  
             // packed
-            case PADD_RIMP, PADC_RIMP, PSUB_RIMP, PSBB_RIMP, PMUL_RIMP, PDIV_RIMP, PDIVS_RIMP:
+            case PADD_RIMP, PADC_RIMP, PSUB_RIMP, PSBB_RIMP, PMUL_RIMP, PDIV_RIMP, PDIVS_RIMP, PCMP_RIMP:
                 data.addAll(getRIMData(true, true, true, false, false));
                 break;
             
@@ -211,6 +219,7 @@ public class Instruction implements Component {
             
             // w i d e
             case MOVW_RIM:
+            case XCHGW_RIM:
                 data.addAll(getRIMData(true, true, false, true, true));
                 break;
             
@@ -255,10 +264,10 @@ public class Instruction implements Component {
                     break;
                     
                 default:
-                    throw new IllegalArgumentException("Invalid RIM destination: " + this.destination);
+                    throw new IllegalArgumentException("Invalid RIM destination: " + this.destination + " in " + this);
             }
         } else if(includeSource) {
-            if(sourceType == LocationType.NULL) throw new IllegalArgumentException("Invalid RIM source: " + this.source);
+            if(sourceType == LocationType.NULL) throw new IllegalArgumentException("Invalid RIM source: " + this.source + " in " + this);
         }
         
         // determine operand sizes
@@ -274,12 +283,12 @@ public class Instruction implements Component {
                     break;
                 
                 // destination only 16 bit
-                case AND_RIM_F, OR_RIM_F, XOR_RIM_F, MOV_RIM_F:
+                case AND_RIM_F, OR_RIM_F, XOR_RIM_F, MOV_RIM_F, MOV_RIM_PF:
                     destSize = 2;
                     break;
                 
                 // source only 16 bit
-                case AND_F_RIM, OR_F_RIM, XOR_F_RIM, MOV_F_RIM, INT_RIM:
+                case AND_F_RIM, OR_F_RIM, XOR_F_RIM, MOV_F_RIM, MOV_PF_RIM, INT_RIM:
                     sourceSize = 2;
                     break;
                 
@@ -479,6 +488,9 @@ public class Instruction implements Component {
                 case NONE   -> 0b000_100;
                 default     -> throw new IllegalArgumentException("Invalid IP-relative index: " + rm.getIndex());
             };
+            
+            // IP relative can't do scale
+            if(rm.getScale() != 1) throw new IllegalArgumentException("Invalid IP-relative scale: " + rm.getScale());
         }
         
         int offsetSize = 4;
@@ -609,7 +621,7 @@ public class Instruction implements Component {
         if(this.source.getType() == LocationType.REGISTER && this.source.getSize() == 4) {
             switch(this.op) {
                 // opcodes that allow wide sources
-                case MOVW_RIM, CALLA_RIM32, JMPA_RIM32, PUSH_BP:
+                case MOVW_RIM, XCHGW_RIM, CALLA_RIM32, JMPA_RIM32, PUSH_BP:
                     break;
                 
                 default:
@@ -620,9 +632,9 @@ public class Instruction implements Component {
         if(this.destination.getType() == LocationType.REGISTER && this.destination.getSize() == 4) {
             switch(this.op) {
                 // opcodes that allow wide destiantions
-                case MOVW_RIM, MOVS_RIM, MOVZ_RIM, LEA_RIM, MOV_BP_I32, MOV_SP_I32,
+                case MOVW_RIM, MOVS_RIM, MOVZ_RIM, XCHGW_RIM, LEA_RIM,
                      POP_BP,
-                     ADD_SP_I8, SUB_SP_I8,
+                     ADD_SP_I8, SUB_SP_I8, ADD_BP_I8, SUB_BP_I8,
                      MULH_RIM, MULSH_RIM, PMULH_RIMP, PMULSH_RIMP,
                      DIVM_RIM, DIVMS_RIM, PDIVM_RIMP, PDIVMS_RIMP:
                     break;
@@ -680,8 +692,8 @@ public class Instruction implements Component {
                dst = this.destination.toString(),
                str = this.op.toString();
         
-        if(this.op == Opcode.CMOVCC_RIM) {
-            str = "CMOV";
+        if(this.op == Opcode.CMOVCC_RIM || this.op == Opcode.PCMOVCC_RIMP) {
+            str = this.op == Opcode.CMOVCC_RIM ? "CMOV" : "PCMOV";
             
             str += Opcode.fromOp((byte) this.ei8).toString().substring(1);
         }

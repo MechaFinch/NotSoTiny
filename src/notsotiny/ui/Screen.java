@@ -3,6 +3,7 @@ package notsotiny.ui;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
+import notsotiny.sim.memory.ScreenBuffer;
 
 /**
  * Greyscale bytemap of a section of memory
@@ -15,13 +16,49 @@ public class Screen extends Canvas {
                 screenHeight,
                 pixelSize;
     
+    private boolean enabled;
+    
     public Screen(int screenWidth, int screenHeight, int pixelSize) {
         this.screenWidth = screenWidth;
         this.screenHeight = screenHeight;
         this.pixelSize = pixelSize;
+        this.enabled = true;
         
         this.setWidth(screenWidth * pixelSize);
         this.setHeight(screenHeight * pixelSize);
+    }
+    
+    /**
+     * Enables screen rendering
+     */
+    public void enable() {
+        this.enabled = true;
+    }
+    
+    /**
+     * Disables screen rendering
+     */
+    public void disable() {
+        this.enabled = false;
+    }
+    
+    /**
+     * @param enabled
+     */
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+    
+    /**
+     * @return true if rendering enabled
+     */
+    public boolean getEnabled() {
+        return this.enabled;
+    }
+    
+    public void update(ScreenBuffer sb, int startAddress) {
+        //System.out.println(sb.isBuffered() ? "buferred" : "unbuffered");
+        update(sb.getScreen(), startAddress);
     }
     
     /**
@@ -31,7 +68,10 @@ public class Screen extends Canvas {
      * @param startAddress
      */
     public void update(byte[] mem, int startAddress) {
+        if(!this.enabled) return;
+        
         GraphicsContext g = this.getGraphicsContext2D();
+        int paletteAddress = startAddress + (screenWidth * screenHeight);
         
         // clear
         g.clearRect(0, 0, screenWidth * pixelSize, screenHeight * pixelSize);
@@ -41,6 +81,11 @@ public class Screen extends Canvas {
         for(int y = 0; y < this.screenHeight; y++) {
             for(int x = 0; x < this.screenWidth; x++) {
                 byte b = mem[startAddress + x + (y * this.screenWidth)];
+                
+                // palette
+                int red = mem[paletteAddress + 3*(b & 0xFF) + 2] & 0xFF,
+                    green = mem[paletteAddress + 3*(b & 0xFF) + 1] & 0xFF,
+                    blue = mem[paletteAddress + 3*(b & 0xFF) + 0] & 0xFF;
                 
                 /*
                 // 332
@@ -58,10 +103,11 @@ public class Screen extends Canvas {
                 
                 
                 // 233
+                /*
                 int red = ((b >> 6) & 0x03) * (256 / 3),
                     green = ((b >> 3) & 0x07) * (256 / 7),
                     blue = (b & 0x07) * (256 / 7);
-                
+                */
                 
                 /*
                 // greyscale

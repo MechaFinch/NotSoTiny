@@ -8,6 +8,7 @@ import asmlib.lex.symbols.ConstantSymbol;
 import asmlib.lex.symbols.ExpressionSymbol;
 import asmlib.lex.symbols.NameSymbol;
 import asmlib.lex.symbols.SpecialCharacterSymbol;
+import asmlib.lex.symbols.StringSymbol;
 import asmlib.lex.symbols.Symbol;
 import notsotiny.asm.resolution.ResolvableConstant;
 import notsotiny.asm.resolution.ResolvableExpression;
@@ -129,6 +130,8 @@ public class ConstantExpressionParser {
      *              -> '&' subExpr [subExprRight]
      *              -> '|' subExpr [subExprRight]
      *              -> '^' subExpr [subExprRight]
+     *              -> '<<' subExpr [subExprRight]
+     *              -> '>>' subExpr [subExprRight]
      *              
      * @param queue
      * @param left
@@ -140,6 +143,21 @@ public class ConstantExpressionParser {
         
         if(s instanceof SpecialCharacterSymbol scs) {
             Operator op = Operator.convertSpecialCharacter(scs);
+            
+            // shifts use 2 op chars
+            if(op == Operator.LEFT || op == Operator.RIGHT) { 
+                if(queue.peek() instanceof SpecialCharacterSymbol scs2) {
+                    Operator op2 = Operator.convertSpecialCharacter(scs2);
+                    
+                    if(op != op2) {
+                        throw new IllegalArgumentException("Invalid operator in expression parse: " + scs);
+                    }
+                    
+                    queue.poll();
+                } else {
+                    throw new IllegalArgumentException("Invalid operator in expression parse: " + scs);
+                }
+            }
             
             // check for dangling operators, just add 0 to do nothing
             if(queue.peek() == null) return new ResolvableExpression(left, new ResolvableConstant(0), Operator.ADD);
@@ -194,6 +212,12 @@ public class ConstantExpressionParser {
         } else if(s instanceof NameSymbol ns) {
             queue.poll();
             return new ResolvableConstant(ns.name());
+        } else if(s instanceof StringSymbol ss) {
+            // handle characters
+            if(ss.value().length() == 1) {
+                queue.poll();
+                return new ResolvableConstant(ss.value().charAt(0));
+            }
         }
         
         throw new IllegalArgumentException("Unexpected symbol in expression parse: " + s);

@@ -31,7 +31,7 @@ public enum Register {
             case CD         -> "C:D";
             case JI         -> "J:I";
             case LK         -> "L:K";
-            case default    -> super.toString();
+            default    		-> super.toString();
         };
     }
 }

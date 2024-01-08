@@ -43,7 +43,7 @@ public class SoundInterfaceController implements MemoryController {
         this.noteVelocity = 0;
         
         this.synth.open();
-        this.channel.programChange(80);
+        this.channel.programChange(15);
     }
 
     @Override
@@ -72,6 +72,14 @@ public class SoundInterfaceController implements MemoryController {
                 } catch(Exception e) {
                     e.printStackTrace();
                 }
+                break;
+            
+            case 3:
+                break;
+            
+            case 4:
+                // all off
+                this.channel.allNotesOff();
                 break;
         }
     }

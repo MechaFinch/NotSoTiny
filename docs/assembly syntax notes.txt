@@ -8,7 +8,7 @@
 	@<label> evaluates to (label address) - (previous instruction end address)
 	
 	e.g. 
-	JMP byte [IP + $jumptable + I]
+	JMP byte [IP + I]
 jumptable:
 	db @dest_0
 	db @dest_1

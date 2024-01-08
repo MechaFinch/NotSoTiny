@@ -122,6 +122,7 @@ public class Assembler {
                 case "-d":
                     flagCount++;
                     debug = true;
+                    break;
                 
                 default:
                     break out;
@@ -200,8 +201,8 @@ public class Assembler {
         LOG.info("Assembling from main file: " + file);
         
         ArrayList<RenameableRelocatableObject> objects = new ArrayList<>();
-        Path standardLibPath = Paths.get("C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\standard library");
-        FileLocator locator = new FileLocator(file.toAbsolutePath().getParent(), standardLibPath, List.of());
+        Path standardLibPath = Paths.get("C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\");
+        FileLocator locator = new FileLocator(file.toAbsolutePath().getParent(), standardLibPath, List.of(), List.of());
         locator.addFile(file);
         
         HashMap<String, Path> libraryMap = new HashMap<>();
@@ -226,25 +227,32 @@ public class Assembler {
                 obj = assembleObjectFromSource(symbols, workingFile, locator, optimizeInstructionWidth);
             }
             
-            libraryMap.put(obj.getName(), file);
+            libraryMap.put(obj.getName(), workingFile);
             objects.add(obj);
         }
         
         // unify library names
+        LOG.fine("Unifying library names");
         for(String name : libraryMap.keySet()) {
             Path p = libraryMap.get(name);
             
+            LOG.finest("Mapping " + p + " to " + name);
+            
             for(RenameableRelocatableObject obj : objects) {
-                obj.renameLibrary(p.toFile(), name);
+                obj.renameLibraryFile(p.toFile(), name);
             }
         }
         
         // compactify library names
         if(!debugFriendlyOutput) {
-            Map<String, String> nameIDMap = new HashMap<>();
-            int id = 0;
+            Map<String, String> nameIDMap = new HashMap<>(),
+                                libraryIDMap = new HashMap<>();
+            int id = 0,
+                lid = 0;
             
             for(RenameableRelocatableObject obj : objects) {
+                libraryIDMap.put(obj.getName(), Integer.toHexString(lid++));
+                
                 for(String s : obj.getOutgoingReferenceNames()) {
                     String n = obj.getName() + ".";
                     
@@ -257,6 +265,12 @@ public class Assembler {
             for(RenameableRelocatableObject obj : objects) {
                 for(String old : nameIDMap.keySet()) {
                     obj.renameGlobal(old, nameIDMap.get(old));
+                }
+            }
+            
+            for(RenameableRelocatableObject obj : objects) {
+                for(String old : libraryIDMap.keySet()) {
+                    obj.renameLibrary(old, libraryIDMap.get(old));
                 }
             }
         }
@@ -676,45 +690,20 @@ public class Assembler {
                                         }
                                     }
                                     break;
-                                
-                                // ADD [A, B, C, D], I16 -> ADD [A, B, C, D], I8
-                                case ADD_A_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.ADD_A_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
                                     
-                                case ADD_B_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.ADD_B_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
-                                    
-                                case ADD_C_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.ADD_C_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
-                                    
-                                case ADD_D_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.ADD_D_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
-                                    
-                                // ADD RIM -> ADD [A, B, C, D], [I16, I8]
+                                // ADD RIM -> ADD [A, B, C, D, I, J, K, L], I8
                                 // ADD RIM -> ADD RIM, I8
                                 case ADD_RIM:
-                                    if(dst.getType() == LocationType.REGISTER) {
+                                    if(dst.getType() == LocationType.REGISTER && width == 1) {
                                         switch(dst.getRegister()) {
-                                            case A:     inst.setOpcode(width == 1 ? Opcode.ADD_A_I8 : Opcode.ADD_A_I16); changedValueSizes = true; break;
-                                            case B:     inst.setOpcode(width == 1 ? Opcode.ADD_B_I8 : Opcode.ADD_B_I16); changedValueSizes = true; break;
-                                            case C:     inst.setOpcode(width == 1 ? Opcode.ADD_C_I8 : Opcode.ADD_C_I16); changedValueSizes = true; break;
-                                            case D:     inst.setOpcode(width == 1 ? Opcode.ADD_D_I8 : Opcode.ADD_D_I16); changedValueSizes = true; break;
+                                            case A:     inst.setOpcode(Opcode.ADD_A_I8); changedValueSizes = true; break;
+                                            case B:     inst.setOpcode(Opcode.ADD_B_I8); changedValueSizes = true; break;
+                                            case C:     inst.setOpcode(Opcode.ADD_C_I8); changedValueSizes = true; break;
+                                            case D:     inst.setOpcode(Opcode.ADD_D_I8); changedValueSizes = true; break;
+                                            case I:     inst.setOpcode(Opcode.ADD_I_I8); changedValueSizes = true; break;
+                                            case J:     inst.setOpcode(Opcode.ADD_J_I8); changedValueSizes = true; break;
+                                            case K:     inst.setOpcode(Opcode.ADD_K_I8); changedValueSizes = true; break;
+                                            case L:     inst.setOpcode(Opcode.ADD_L_I8); changedValueSizes = true; break;
                                             default:    if(width == 1) { inst.setOpcode(Opcode.ADD_RIM_I8); changedValueSizes = true; } break;
                                         }
                                     } else if(dst.getSize() != 1 && width == 1) {
@@ -731,44 +720,15 @@ public class Assembler {
                                     }
                                     break;
                                     
-                                // ADC [A, B, C, D], I16 -> ADC [A, B, C, D], I8
-                                case ADC_A_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.ADC_A_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
-                                    
-                                case ADC_B_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.ADC_B_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
-                                    
-                                case ADC_C_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.ADC_C_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
-                                    
-                                case ADC_D_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.ADC_D_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
-                                    
-                                // ADC RIM -> ADC [A, B, C, D], [I16, I8]
+                                // ADC RIM -> ADC [A, B, C, D], I8
                                 // ADC RIM -> ADC RIM, I8
                                 case ADC_RIM:
-                                    if(dst.getType() == LocationType.REGISTER) {
+                                    if(dst.getType() == LocationType.REGISTER && width == 1) {
                                         switch(dst.getRegister()) {
-                                            case A:     inst.setOpcode(width == 1 ? Opcode.ADC_A_I8 : Opcode.ADC_A_I16); changedValueSizes = true; break;
-                                            case B:     inst.setOpcode(width == 1 ? Opcode.ADC_B_I8 : Opcode.ADC_B_I16); changedValueSizes = true; break;
-                                            case C:     inst.setOpcode(width == 1 ? Opcode.ADC_C_I8 : Opcode.ADC_C_I16); changedValueSizes = true; break;
-                                            case D:     inst.setOpcode(width == 1 ? Opcode.ADC_D_I8 : Opcode.ADC_D_I16); changedValueSizes = true; break;
+                                            case A:     inst.setOpcode(Opcode.ADC_A_I8); changedValueSizes = true; break;
+                                            case B:     inst.setOpcode(Opcode.ADC_B_I8); changedValueSizes = true; break;
+                                            case C:     inst.setOpcode(Opcode.ADC_C_I8); changedValueSizes = true; break;
+                                            case D:     inst.setOpcode(Opcode.ADC_D_I8); changedValueSizes = true; break;
                                             default:    if(width == 1) { inst.setOpcode(Opcode.ADC_RIM_I8); changedValueSizes = true; } break;
                                         }
                                     } else if(dst.getSize() != 1 && width == 1) {
@@ -784,45 +744,20 @@ public class Assembler {
                                         changedValueSizes = true;
                                     }
                                     break;
-                                    
-                                // SUB [A, B, C, D], I16 -> SUB [A, B, C, D], I8
-                                case SUB_A_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.SUB_A_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
-                                    
-                                case SUB_B_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.SUB_B_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
-                                    
-                                case SUB_C_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.SUB_C_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
-                                    
-                                case SUB_D_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.SUB_D_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
                                 
-                                // SUB RIM -> SUB [A, B, C, D], [I16, I8]
+                                // SUB RIM -> SUB [A, B, C, D, I, J, K, L], I8
                                 // SUB RIM -> SUB RIM, I8
                                 case SUB_RIM:
                                     if(dst.getType() == LocationType.REGISTER) {
                                         switch(dst.getRegister()) {
-                                            case A:     inst.setOpcode(width == 1 ? Opcode.SUB_A_I8 : Opcode.SUB_A_I16); changedValueSizes = true; break;
-                                            case B:     inst.setOpcode(width == 1 ? Opcode.SUB_B_I8 : Opcode.SUB_B_I16); changedValueSizes = true; break;
-                                            case C:     inst.setOpcode(width == 1 ? Opcode.SUB_C_I8 : Opcode.SUB_C_I16); changedValueSizes = true; break;
-                                            case D:     inst.setOpcode(width == 1 ? Opcode.SUB_D_I8 : Opcode.SUB_D_I16); changedValueSizes = true; break;
+                                            case A:     inst.setOpcode(Opcode.SUB_A_I8); changedValueSizes = true; break;
+                                            case B:     inst.setOpcode(Opcode.SUB_B_I8); changedValueSizes = true; break;
+                                            case C:     inst.setOpcode(Opcode.SUB_C_I8); changedValueSizes = true; break;
+                                            case D:     inst.setOpcode(Opcode.SUB_D_I8); changedValueSizes = true; break;
+                                            case I:     inst.setOpcode(Opcode.SUB_I_I8); changedValueSizes = true; break;
+                                            case J:     inst.setOpcode(Opcode.SUB_J_I8); changedValueSizes = true; break;
+                                            case K:     inst.setOpcode(Opcode.SUB_K_I8); changedValueSizes = true; break;
+                                            case L:     inst.setOpcode(Opcode.SUB_L_I8); changedValueSizes = true; break;
                                             default:    if(width == 1) { inst.setOpcode(Opcode.SUB_RIM_I8); changedValueSizes = true; } break;
                                         }
                                     } else if(dst.getSize() != 1 && width == 1) {
@@ -838,45 +773,16 @@ public class Assembler {
                                         changedValueSizes = true;
                                     }
                                     break;
-                                    
-                                // SBB [A, B, C, D], I16 -> SBB [A, B, C, D], I8
-                                case SBB_A_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.SBB_A_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
-                                    
-                                case SBB_B_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.SBB_B_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
-                                    
-                                case SBB_C_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.SBB_C_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
-                                    
-                                case SBB_D_I16:
-                                    if(width == 1) {
-                                        inst.setOpcode(Opcode.SBB_D_I8);
-                                        changedValueSizes = true;
-                                    }
-                                    break;
                                 
-                                // SBB RIM -> SBB [A, B, C, D], [I16, I8]
+                                // SBB RIM -> SBB [A, B, C, D], I8
                                 // SBB RIM -> SBB RIM, I8
                                 case SBB_RIM:
                                     if(dst.getType() == LocationType.REGISTER) {
                                         switch(dst.getRegister()) {
-                                            case A:     inst.setOpcode(width == 1 ? Opcode.SBB_A_I8 : Opcode.SBB_A_I16); changedValueSizes = true; break;
-                                            case B:     inst.setOpcode(width == 1 ? Opcode.SBB_B_I8 : Opcode.SBB_B_I16); changedValueSizes = true; break;
-                                            case C:     inst.setOpcode(width == 1 ? Opcode.SBB_C_I8 : Opcode.SBB_C_I16); changedValueSizes = true; break;
-                                            case D:     inst.setOpcode(width == 1 ? Opcode.SBB_D_I8 : Opcode.SBB_D_I16); changedValueSizes = true; break;
+                                            case A:     inst.setOpcode(Opcode.SBB_A_I8); changedValueSizes = true; break;
+                                            case B:     inst.setOpcode(Opcode.SBB_B_I8); changedValueSizes = true; break;
+                                            case C:     inst.setOpcode(Opcode.SBB_C_I8); changedValueSizes = true; break;
+                                            case D:     inst.setOpcode(Opcode.SBB_D_I8); changedValueSizes = true; break;
                                             default:    if(width == 1) { inst.setOpcode(Opcode.SBB_RIM_I8); changedValueSizes = true; } break;
                                         }
                                     } else if(dst.getSize() != 1 && width == 1) {
@@ -906,10 +812,14 @@ public class Assembler {
                                     }
                                     break;
                                     
-                                // ICC RIM -> ICC [I, J, K, L]
+                                // ICC RIM -> ICC [A, B, C, D, I, J, K, L]
                                 case ICC_RIM:
                                     if(dst.getType() == LocationType.REGISTER) {
                                         switch(dst.getRegister()) {
+                                            case A:     inst.setOpcode(Opcode.ICC_A); changedValueSizes = true; break;
+                                            case B:     inst.setOpcode(Opcode.ICC_B); changedValueSizes = true; break;
+                                            case C:     inst.setOpcode(Opcode.ICC_C); changedValueSizes = true; break;
+                                            case D:     inst.setOpcode(Opcode.ICC_D); changedValueSizes = true; break;
                                             case I:     inst.setOpcode(Opcode.ICC_I); changedValueSizes = true; break;
                                             case J:     inst.setOpcode(Opcode.ICC_J); changedValueSizes = true; break;
                                             case K:     inst.setOpcode(Opcode.ICC_K); changedValueSizes = true; break;
@@ -932,10 +842,14 @@ public class Assembler {
                                     }
                                     break;
                                     
-                                // DCC RIM -> DCC [I, J, K, L]
+                                // DCC RIM -> DCC [A, B, C, D, I, J, K, L]
                                 case DCC_RIM:
                                     if(dst.getType() == LocationType.REGISTER) {
                                         switch(dst.getRegister()) {
+                                            case A:     inst.setOpcode(Opcode.DCC_A); changedValueSizes = true; break;
+                                            case B:     inst.setOpcode(Opcode.DCC_B); changedValueSizes = true; break;
+                                            case C:     inst.setOpcode(Opcode.DCC_C); changedValueSizes = true; break;
+                                            case D:     inst.setOpcode(Opcode.DCC_D); changedValueSizes = true; break;
                                             case I:     inst.setOpcode(Opcode.DCC_I); changedValueSizes = true; break;
                                             case J:     inst.setOpcode(Opcode.DCC_J); changedValueSizes = true; break;
                                             case K:     inst.setOpcode(Opcode.DCC_K); changedValueSizes = true; break;
@@ -1253,10 +1167,10 @@ public class Assembler {
             List<Byte> objCode = c.getObjectCode();
             int l = objectCode.size();
             
-            StringBuilder sb = new StringBuilder(String.format("%04X_%04X: ", l >> 16, l & 0xFFFF));
+            StringBuilder sb = new StringBuilder(String.format("%04X_%04X:", l >> 16, l & 0xFFFF));
             
             if(objCode.size() <= 8) {
-                objCode.forEach(b -> sb.append(String.format("%02X ", b)));
+                objCode.forEach(b -> sb.append(String.format(" %02X", b)));
             }
             
             objectCode.addAll(objCode);
@@ -1687,6 +1601,10 @@ public class Assembler {
                     case ICC:
                         opcode = switch(type) {
                             case REGISTER   -> switch(register) {
+                                case A  -> Opcode.ICC_A;
+                                case B  -> Opcode.ICC_B;
+                                case C  -> Opcode.ICC_C;
+                                case D  -> Opcode.ICC_D;
                                 case I  -> Opcode.ICC_I;
                                 case J  -> Opcode.ICC_J;
                                 case K  -> Opcode.ICC_K;
@@ -1715,6 +1633,10 @@ public class Assembler {
                     case DCC:
                         opcode = switch(type) {
                             case REGISTER   -> switch(register) {
+                                case A  -> Opcode.DCC_A;
+                                case B  -> Opcode.DCC_B;
+                                case C  -> Opcode.DCC_C;
+                                case D  -> Opcode.DCC_D;
                                 case I  -> Opcode.DCC_I;
                                 case J  -> Opcode.DCC_J;
                                 case K  -> Opcode.DCC_K;
@@ -1914,15 +1836,7 @@ public class Assembler {
                         
                         // MOVW stuff
                         if(firstSize == 4) {
-                            // BP/SP immediate shortcut
-                            if(firstRegister == Register.BP && secondType == LocationType.IMMEDIATE) {
-                                opcode = Opcode.MOV_BP_I32;
-                            } else if(firstRegister == Register.SP && secondType == LocationType.IMMEDIATE) {
-                                opcode = Opcode.MOV_SP_I32;
-                            } else {
-                                opcode = Opcode.MOVW_RIM;
-                            }
-                            
+                            opcode = Opcode.MOVW_RIM;
                             break;
                         } else if(secondSize == 4) {
                             // wide -> memory
@@ -2140,16 +2054,25 @@ public class Assembler {
                         // no more shortcuts for xchg
                         opcode = Opcode.XCHG_RIM;
                         break;
+                    
+                    case XCHGW:
+                        opcode = Opcode.XCHGW_RIM;
+                        break;
                         
                         // register-immediate shortcuts
                     case ADD:
                         if(isImmediate) {
                             opcode = switch(firstRegister) {
-                                case A  -> (immediateSize == 1) ? Opcode.ADD_A_I8 : Opcode.ADD_A_I16;
-                                case B  -> (immediateSize == 1) ? Opcode.ADD_B_I8 : Opcode.ADD_B_I16;
-                                case C  -> (immediateSize == 1) ? Opcode.ADD_C_I8 : Opcode.ADD_C_I16;
-                                case D  -> (immediateSize == 1) ? Opcode.ADD_D_I8 : Opcode.ADD_D_I16;
+                                case A  -> (immediateSize == 1) ? Opcode.ADD_A_I8 : Opcode.ADD_RIM;
+                                case B  -> (immediateSize == 1) ? Opcode.ADD_B_I8 : Opcode.ADD_RIM;
+                                case C  -> (immediateSize == 1) ? Opcode.ADD_C_I8 : Opcode.ADD_RIM;
+                                case D  -> (immediateSize == 1) ? Opcode.ADD_D_I8 : Opcode.ADD_RIM;
+                                case I  -> (immediateSize == 1) ? Opcode.ADD_I_I8 : Opcode.ADD_RIM;
+                                case J  -> (immediateSize == 1) ? Opcode.ADD_J_I8 : Opcode.ADD_RIM;
+                                case K  -> (immediateSize == 1) ? Opcode.ADD_K_I8 : Opcode.ADD_RIM;
+                                case L  -> (immediateSize == 1) ? Opcode.ADD_L_I8 : Opcode.ADD_RIM;
                                 case SP -> Opcode.ADD_SP_I8;
+                                case BP -> Opcode.ADD_BP_I8;
                                 default -> (immediateSize == 1) ? Opcode.ADD_RIM_I8 : Opcode.ADD_RIM;
                             };
                         } else {
@@ -2160,10 +2083,10 @@ public class Assembler {
                     case ADC:
                         if(isImmediate) {
                             opcode = switch(firstRegister) {
-                                case A  -> (immediateSize == 1) ? Opcode.ADC_A_I8 : Opcode.ADC_A_I16;
-                                case B  -> (immediateSize == 1) ? Opcode.ADC_B_I8 : Opcode.ADC_B_I16;
-                                case C  -> (immediateSize == 1) ? Opcode.ADC_C_I8 : Opcode.ADC_C_I16;
-                                case D  -> (immediateSize == 1) ? Opcode.ADC_D_I8 : Opcode.ADC_D_I16;
+                                case A  -> (immediateSize == 1) ? Opcode.ADC_A_I8 : Opcode.ADC_RIM;
+                                case B  -> (immediateSize == 1) ? Opcode.ADC_B_I8 : Opcode.ADC_RIM;
+                                case C  -> (immediateSize == 1) ? Opcode.ADC_C_I8 : Opcode.ADC_RIM;
+                                case D  -> (immediateSize == 1) ? Opcode.ADC_D_I8 : Opcode.ADC_RIM;
                                 default -> (immediateSize == 1) ? Opcode.ADC_RIM_I8 : Opcode.ADC_RIM;
                             };
                         } else {
@@ -2174,11 +2097,16 @@ public class Assembler {
                     case SUB:
                         if(isImmediate) {
                             opcode = switch(firstRegister) {
-                                case A  -> (immediateSize == 1) ? Opcode.SUB_A_I8 : Opcode.SUB_A_I16;
-                                case B  -> (immediateSize == 1) ? Opcode.SUB_B_I8 : Opcode.SUB_B_I16;
-                                case C  -> (immediateSize == 1) ? Opcode.SUB_C_I8 : Opcode.SUB_C_I16;
-                                case D  -> (immediateSize == 1) ? Opcode.SUB_D_I8 : Opcode.SUB_D_I16;
+                                case A  -> (immediateSize == 1) ? Opcode.SUB_A_I8 : Opcode.SUB_RIM;
+                                case B  -> (immediateSize == 1) ? Opcode.SUB_B_I8 : Opcode.SUB_RIM;
+                                case C  -> (immediateSize == 1) ? Opcode.SUB_C_I8 : Opcode.SUB_RIM;
+                                case D  -> (immediateSize == 1) ? Opcode.SUB_D_I8 : Opcode.SUB_RIM;
+                                case I  -> (immediateSize == 1) ? Opcode.SUB_I_I8 : Opcode.SUB_RIM;
+                                case J  -> (immediateSize == 1) ? Opcode.SUB_J_I8 : Opcode.SUB_RIM;
+                                case K  -> (immediateSize == 1) ? Opcode.SUB_K_I8 : Opcode.SUB_RIM;
+                                case L  -> (immediateSize == 1) ? Opcode.SUB_L_I8 : Opcode.SUB_RIM;
                                 case SP -> Opcode.SUB_SP_I8;
+                                case BP -> Opcode.SUB_BP_I8;
                                 default -> (immediateSize == 1) ? Opcode.SUB_RIM_I8 : Opcode.SUB_RIM;
                             };
                         } else {
@@ -2189,10 +2117,10 @@ public class Assembler {
                     case SBB:
                         if(isImmediate) {
                             opcode = switch(firstRegister) {
-                                case A  -> (immediateSize == 1) ? Opcode.SBB_A_I8 : Opcode.SBB_A_I16;
-                                case B  -> (immediateSize == 1) ? Opcode.SBB_B_I8 : Opcode.SBB_B_I16;
-                                case C  -> (immediateSize == 1) ? Opcode.SBB_C_I8 : Opcode.SBB_C_I16;
-                                case D  -> (immediateSize == 1) ? Opcode.SBB_D_I8 : Opcode.SBB_D_I16;
+                                case A  -> (immediateSize == 1) ? Opcode.SBB_A_I8 : Opcode.SBB_RIM;
+                                case B  -> (immediateSize == 1) ? Opcode.SBB_B_I8 : Opcode.SBB_RIM;
+                                case C  -> (immediateSize == 1) ? Opcode.SBB_C_I8 : Opcode.SBB_RIM;
+                                case D  -> (immediateSize == 1) ? Opcode.SBB_D_I8 : Opcode.SBB_RIM;
                                 default -> (immediateSize == 1) ? Opcode.SBB_RIM_I8 : Opcode.SBB_RIM;
                             };
                         } else {
@@ -2277,22 +2205,24 @@ public class Assembler {
                 }
                 
                 // CMOVCC uses its own constructor
-                if(opcode == Opcode.CMOVCC_RIM) {
-                    Opcode conditionOp = switch(m.name()) {
-                        case "CMOVC", "CMOVB", "CMOVNAE"    -> Opcode.JC_RIM;
-                        case "CMOVNC", "CMOVAE", "CMOVNB"   -> Opcode.JNC_RIM;
-                        case "CMOVS"                        -> Opcode.JS_RIM;
-                        case "CMOVNS"                       -> Opcode.JNS_RIM;
-                        case "CMOVO"                        -> Opcode.JO_RIM;
-                        case "CMOVNO"                       -> Opcode.JNO_RIM;
-                        case "CMOVZ", "CMOVE"               -> Opcode.JZ_RIM;
-                        case "CMOVNZ", "CMOVNE"             -> Opcode.JNZ_RIM;
-                        case "CMOVA", "CMOVNBE"             -> Opcode.JA_RIM;
-                        case "CMOVBE", "CMOVNA"             -> Opcode.JBE_RIM;
-                        case "CMOVG", "CMOVNLE"             -> Opcode.JG_RIM;
-                        case "CMOVGE", "CMOVNL"             -> Opcode.JGE_RIM;
-                        case "CMOVL", "CMOVNGE"             -> Opcode.JL_RIM;
-                        case "CMOVLE", "CMOVNG"             -> Opcode.JLE_RIM;
+                if(opcode == Opcode.CMOVCC_RIM || opcode == Opcode.PCMOVCC_RIMP) {
+                    String condition = m.name().substring(m.name().startsWith("C") ? 4 : 6);
+                    
+                    Opcode conditionOp = switch(condition) {
+                        case "C", "B", "NAE"	-> Opcode.JC_RIM;
+                        case "NC", "AE", "NB"	-> Opcode.JNC_RIM;
+                        case "S"                -> Opcode.JS_RIM;
+                        case "NS"               -> Opcode.JNS_RIM;
+                        case "O"                -> Opcode.JO_RIM;
+                        case "NO"               -> Opcode.JNO_RIM;
+                        case "Z", "E"           -> Opcode.JZ_RIM;
+                        case "NZ", "NE"         -> Opcode.JNZ_RIM;
+                        case "A", "NBE"         -> Opcode.JA_RIM;
+                        case "BE", "NA"         -> Opcode.JBE_RIM;
+                        case "G", "NLE"         -> Opcode.JG_RIM;
+                        case "GE", "NL"         -> Opcode.JGE_RIM;
+                        case "L", "NGE"         -> Opcode.JL_RIM;
+                        case "LE", "NG"         -> Opcode.JLE_RIM;
                         default -> throw new IllegalArgumentException("Invalid conditional move mnemonic " + m.name());
                     };
                     
@@ -2349,6 +2279,14 @@ public class Assembler {
                 }
                 
                 throw new IllegalArgumentException("Invalid symbol while parsing operand: " + scs);
+            
+            case StringSymbol sts:
+                // if it's one character its good
+                if(sts.value().length() == 1) {
+                    return new ResolvableLocationDescriptor(LocationType.IMMEDIATE, -1, new ResolvableConstant(sts.value().charAt(0)));
+                }
+                
+                throw new IllegalArgumentException("Invalid symbol while parsing operand: " + sts);
                 
             case Symbol s:
                 throw new IllegalArgumentException("Invalid symbol while parsing operand: " + s);
@@ -2548,17 +2486,20 @@ public class Assembler {
                           symbols.get(index + 2) instanceof RegisterSymbol rs) {
                     String n2 = rs.name();
                     
-                    yield switch(name) {
-                        case "A"    -> n2.equals("B") ? Register.AB : Register.A;
-                        case "B"    -> n2.equals("C") ? Register.BC : Register.B;
-                        case "C"    -> n2.equals("D") ? Register.CD : Register.C;
-                        case "D"    -> n2.equals("A") ? Register.DA : Register.D;
-                        case "I"    -> Register.I;
-                        case "J"    -> n2.equals("I") ? Register.JI : Register.J;
-                        case "K"    -> Register.K;
-                        case "L"    -> n2.equals("K") ? Register.LK :  Register.L;
-                        default     -> Register.valueOf(name);
+                    Register reg = switch(name) {
+                        case "A"    -> n2.equals("B") ? Register.AB : null;
+                        case "B"    -> n2.equals("C") ? Register.BC : null;
+                        case "C"    -> n2.equals("D") ? Register.CD : null;
+                        case "D"    -> n2.equals("A") ? Register.DA : null;
+                        case "I"    -> null;
+                        case "J"    -> n2.equals("I") ? Register.JI : null;
+                        case "K"    -> null;
+                        case "L"    -> n2.equals("K") ? Register.LK :  null;
+                        default     -> null;
                     };
+                    
+                    if(reg == null) throw new IllegalArgumentException("Invalid register pair: " + name + ":" + rs.name());
+                    yield reg;
                 } else {
                     yield Register.valueOf(name);
                 }

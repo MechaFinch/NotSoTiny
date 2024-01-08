@@ -1,12 +1,12 @@
 
 	0x00	NOP
-	0x01	MOVW rim		wide source & destination
-	0x02	MOVS rim		sign extended, wide destination
-	0x03	MOVZ rim		zero extended, wide destination
-	0x04	MOVS A, i8		sign extended
-	0x05	MOVS B, i8		sign extended
-	0x06	MOVS C, i8		sign extended
-	0x07	MOVS D, i8		sign extended
+	0x01	HLT
+	0x02	MOVS rim			sign extended, wide destination
+	0x03	MOVZ rim			zero extended, wide destination
+	0x04	MOVS A, i8			sign extended
+	0x05	MOVS B, i8			sign extended
+	0x06	MOVS C, i8			sign extended
+	0x07	MOVS D, i8			sign extended
 	0x08	MOV A, i16
 	0x09	MOV B, i16
 	0x0A	MOV C, i16
@@ -42,10 +42,10 @@
 	0x26	MOV offset, C
 	0x27	MOV offset, D
 	
-	0x28	MOV SP, i32
-	0x29	MOV BP, i32
+	0x28	XCHG rim
+	0x29	XCHGW rim			wide source & destination
 	0x2A	MOV rim
-	0x2B	XCHG rim
+	0x2B	MOVW rim			wide source & destination
 	
 	0x2C	MOV A, B
 	0x2D	MOV A, C
@@ -82,14 +82,14 @@
 	0x4A	PUSH K
 	0x4B	PUSH L
 	0x4C	PUSH BP
-	0x4D	PUSH SP
-	0x4E	PUSH F
-	0x4F	PUSH rim		source only
+	0x4D	PUSH F
+	0x4E	PUSH PF
+	0x4F	PUSH rim			source only
 	
 	0x50	PUSH i32
 	0x51	PUSHA
 	0x52	POPA
-	0x53	
+	0x53	hardware-specific extensions (for special registers and the like)
 	0x54	POP A
 	0x55	POP B
 	0x56	POP C
@@ -99,96 +99,96 @@
 	0x5A	POP K
 	0x5B	POP L
 	0x5C	POP BP
-	0x5D	POP SP
-	0x5E	POP F
-	0x5F	POP rim			destination only
+	0x5D	POP F
+	0x5E	POP PF
+	0x5F	POP rim				destination only
 	
-	0x60	AND F, rim		source only
-	0x61	AND rim, F		destination only, doesn't affect flags
-	0x62	OR F, rim		source only
-	0x63	OR rim, F		destination only, doesn't affect flags
-	0x64	XOR F, rim		source only
-	0x65	XOR rim, F		destination only, doesn't affect flags
+	0x60	AND F, rim			source only
+	0x61	AND rim, F			destination only, doesn't affect flags
+	0x62	OR F, rim			source only
+	0x63	OR rim, F			destination only, doesn't affect flags
+	0x64	XOR F, rim			source only
+	0x65	XOR rim, F			destination only, doesn't affect flags
 	0x66	NOT F
-	0x67	MOV F, rim		source only
-	0x68	MOV rim, F		destination only
-	0x69	MOV PF, rim		source only
-	0x6A	MOV rim, PF		destination only
-	0x6B	LEA rim			wide destination, destination must be a register, source must be memory
+	0x67	MOV F, rim			source only
+	0x68	MOV rim, F			destination only
+	0x69	MOV PF, rim			source only
+	0x6A	MOV rim, PF			destination only
+	0x6B	LEA rim				wide destination, destination must be a register, source must be memory
 	0x6C	CMP rim
-	0x6D	CMP rim, i8		destination only, sign extended
-	0x6E	CMP rim, 0		destination only
-	0x6F	HLT
+	0x6D	CMP rim, i8			destination only, sign extended
+	0x6E	CMP rim, 0			destination only
+	0x6F	PCMP rimp
 	
-	0x70	ADD A, i8		sign extended
-	0x71	ADD B, i8		sign extended
-	0x72	ADD C, i8		sign exnteded
-	0x73	ADD D, i8		sign extended
-	0x74	ADD A, i16
-	0x75	ADD B, i16
-	0x76	ADD C, i16
-	0x77	ADD D, i16
-	0x78	ADC A, i8		sign extended
-	0x79	ADC B, i8		sign extended
-	0x7A	ADC C, i8		sign extended
-	0x7B	ADC D, i8		sign extended
-	0x7C	ADC A, i16
-	0x7D	ADC B, i16
-	0x7E	ADC C, i16
-	0x7F	ADC D, i16
+	0x70	ADD A, i8			sign extended
+	0x71	ADD B, i8			sign extended
+	0x72	ADD C, i8			sign extended
+	0x73	ADD D, i8			sign extended
+	0x74	ADD I, i8			sign extended
+	0x75	ADD J, i8			sign extended
+	0x76	ADD K, i8			sign extended
+	0x77	ADD L, i8			sign extended
+	0x78	ADC A, i8			sign extended
+	0x79	ADC B, i8			sign extended
+	0x7A	ADC C, i8			sign extended
+	0x7B	ADC D, i8			sign extended
+	0x7C	ICC A
+	0x7D	ICC B
+	0x7E	ICC C
+	0x7F	ICC D
 	
-	0x80	SUB A, i8		sign extended
-	0x81	SUB B, i8		sign extended
-	0x82	SUB C, i8		sign extended
-	0x83	SUB D, i8		sign extended
-	0x84	SUB A, i16
-	0x85	SUB B, i16
-	0x86	SUB C, i16
-	0x87	SUB D, i16
-	0x88	SBB A, i8		sign extended
-	0x89	SBB B, i8		sign extended
-	0x8A	SBB C, i8		sign extended
-	0x8B	SBB D, i8		sign extended
-	0x8C	SBB A, i16
-	0x8D	SBB B, i16
-	0x8E	SBB C, i16
-	0x8F	SBB D, i16
+	0x80	SUB A, i8			sign extended
+	0x81	SUB B, i8			sign extended
+	0x82	SUB C, i8			sign extended
+	0x83	SUB D, i8			sign extended
+	0x84	SUB I, i8			sign extended
+	0x85	SUB J, i8			sign extended
+	0x86	SUB K, i8			sign extended
+	0x87	SUB L, i8			sign extended
+	0x88	SBB A, i8			sign extended
+	0x89	SBB B, i8			sign extended
+	0x8A	SBB C, i8			sign extended
+	0x8B	SBB D, i8			sign extended
+	0x8C	DCC A
+	0x8D	DCC B
+	0x8E	DCC C
+	0x8F	DCC D
 	
 	0x90	ADD rim
-	0x91	ADD rim, i8		destination only, sign extended
+	0x91	ADD rim, i8			destination only, sign extended
 	0x92	ADC rim
-	0x93	ADC rim, i8		destination only, sign extended
+	0x93	ADC rim, i8			destination only, sign extended
 	0x94	PADD rimp
 	0x95	PADC rimp
 	0x96	ADD SP, i8
-	0x97	
+	0x97	ADD BP, i8
 	
 	0x98	SUB rim
-	0x99	SUB rim, i8		destination only, sign extended
+	0x99	SUB rim, i8			destination only, sign extended
 	0x9A	SBB rim
-	0x9B	SBB rim, i8		destination only, sign extended
+	0x9B	SBB rim, i8			destination only, sign extended
 	0x9C	PSUB rimp
 	0x9D	PSBB rimp
 	0x9E	SUB SP, i8
-	0x9F	
+	0x9F	SUB BP, i8
 	
 	0xA0	MUL rim
-	0xA1	
-	0xA2	MULH rim		wide destination, uses lower half of dest.
-	0xA3	MULSH rim		wide destination, uses lower half of dest.
+	0xA1	MULH rim			wide destination, uses lower half of dest.
+	0xA2	MULSH rim			wide destination, uses lower half of dest.
+	0xA3	CMOVcc rim, i8		Uses RIM as normal. I8 specifies condition by conditional jump opcodes.
 	0xA4	PMUL rimp
-	0xA5	
-	0xA6	PMULH rimp		wide destination, uses lower half of dest.
-	0xA7	PMULSH rimp		wide destination, uses lower half of dest.
+	0xA5	PMULH rimp			wide destination, uses lower half of dest.
+	0xA6	PMULSH rimp			wide destination, uses lower half of dest.
+	0xA7	PCMOVcc rimp, i8	Uses RIM as normal. I8 specifies condition by conditional jump opcodes.
 	
 	0xA8	DIV rim
 	0xA9	DIVS rim
-	0xAA	DIVM rim		wide destination, uses full value of dest.
-	0xAB	DIVMS rim		wide destination, uses full value of dest.
+	0xAA	DIVM rim			wide destination, uses full value of dest.
+	0xAB	DIVMS rim			wide destination, uses full value of dest.
 	0xAC	PDIV rimp
 	0xAD	PDIVS rimp
-	0xAE	PDIVM rimp		wide destination, uses full value of dest.
-	0xAF	PDIVMS rimp		wide destination, uses full value of dest.
+	0xAE	PDIVM rimp			wide destination, uses full value of dest.
+	0xAF	PDIVMS rimp			wide destination, uses full value of dest.
 	
 	0xB0	INC I
 	0xB1	INC J
@@ -207,74 +207,74 @@
 	0xBE	DCC K
 	0xBF	DCC L
 	
-	0xC0	INC rim			destination only
-	0xC1	ICC rim			destination only
-	0xC2	PINC rimp		destination only
-	0xC3	PICC rimp		destination only
-	0xC4	DEC rim			destination only
-	0xC5	DCC rim			destination only
-	0xC6	PDEC rimp		destination only
-	0xC7	PDCC rimp		destination only
+	0xC0	INC rim				destination only
+	0xC1	ICC rim				destination only
+	0xC2	PINC rimp			destination only
+	0xC3	PICC rimp			destination only
+	0xC4	DEC rim				destination only
+	0xC5	DCC rim				destination only
+	0xC6	PDEC rimp			destination only
+	0xC7	PDCC rimp			destination only
 	
-	0xC8	SHL rim			alias SAL rim
+	0xC8	SHL rim				alias SAL rim
 	0xC9	SHR rim
 	0xCA	SAR rim
 	0xCB	ROL rim
 	0xCC	ROR rim
 	0xCD	RCL rim
 	0xCE	RCR rim
-	0xCF	NEG rim			destination only
+	0xCF	NEG rim				destination only
 	
 	0xD0	AND rim
 	0xD1	OR rim
 	0xD2	XOR rim
-	0xD3	NOT rim			destination only
+	0xD3	NOT rim				destination only
 	
-	0xD4	CALL i16
-	0xD5	CALL rim		source only
-	0xD6	CALLA i32
-	0xD7	CALLA rim32		source only, wide
+	0xD4	CALL i8
+	0xD5	CALL i16
+	0xD6	CALL i32
+	0xD7	CALL rim			source only
+	0xD8	CALLA i32
+	0xD9	CALLA rim32			source only, wide
 	
-	0xD8	JMP i8
-	0xD9	JMP i16
-	0xDA	JMP i32
-	0xDB	JMP rim			source only
-	0xDC	JMPA i32
-	0xDD	JMPA rim32
-	0xDE	
-	0xDF	
+	0xDA	JMP i8
+	0xDB	JMP i16
+	0xDC	JMP i32
+	0xDD	JMP rim
+	0xDE	JMPA i32			source only
+	0xDF	JMPA rim32			souce only, side
 	
 	0xE0	RET
 	0xE1	IRET
 	0xE2	INT i8
-	0xE3	INT rim			source only, ignores upper byte if present
+	0xE3	INT rim				source only, upper byte is read if present but not used
 	
-	0xE4	JC i8			alias JB i8			alias JNAE i8
-	0xE5	JC rim			alias JB rim		alias JNAE rim		source only
-	0xE6	JNC i8			alias JAE i8		alias JNB i8
-	0xE7	JNC rim			alias JAE rim		alias JNB rim		source only
+	0xE4	JC i8				alias JB i8			alias JNAE i8
+	0xE5	JC rim				alias JB rim		alias JNAE rim		source only
+	0xE6	JNC i8				alias JAE i8		alias JNB i8
+	0xE7	JNC rim				alias JAE rim		alias JNB rim		source only
 	0xE8	JS i8
-	0xE9	JS rim			source only
+	0xE9	JS rim				source only
 	0xEA	JNS i8
-	0xEB	JNS rim			source only
+	0xEB	JNS rim				source only
 	0xEC	JO i8
-	0xED	JO rim			source only
+	0xED	JO rim				source only
 	0xEE	JNO i8
-	0xEF	JNO rim			source only
+	0xEF	JNO rim				source only
 	
-	0xF0	JZ i8			alias JE i8
-	0xF1	JZ rim			alias JE rim		source only
-	0xF2	JNZ i8			alias JNE i8
-	0xF3	JNZ rim			alias JNE rim		source only
-	0xF4	JA i8			alias JNBE i8
-	0xF5	JA rim			alias JNBE rim		source only
-	0xF6	JBE i8			alias JNA i8
-	0xF7	JBE rim			alias JNA rim		source only
-	0xF8	JG i8			alias JNLE i8
-	0xF9	JG rim			alias JNLE rim		source only
-	0xFA	JGE i8			alias JNL i8
-	0xFB	JGE rim			alias JNL rim		source only
-	0xFC	JL i8			alias JNGE i8
-	0xFD	JL rim			alias JNGE rim		source only
-	0xFE	JLE i8			alias JNG i8
-	0xFF	JLE rim			alias JNG rim		source only
+	0xF0	JZ i8				alias JE i8
+	0xF1	JZ rim				alias JE rim		source only
+	0xF2	JNZ i8				alias JNE i8
+	0xF3	JNZ rim				alias JNE rim		source only
+	0xF4	JA i8				alias JNBE i8						C NOR Z
+	0xF5	JA rim				alias JNBE rim		source only		C NOR Z
+	0xF6	JBE i8				alias JNA i8						C OR Z
+	0xF7	JBE rim				alias JNA rim		source only		C OR Z
+	0xF8	JG i8				alias JNLE i8						!Z AND (S XNOR O)
+	0xF9	JG rim				alias JNLE rim		source only		!Z AND (S XNOR O)
+	0xFA	JGE i8				alias JNL i8						S XNOR O
+	0xFB	JGE rim				alias JNL rim		source only		S XNOR O
+	0xFC	JL i8				alias JNGE i8						S XOR O
+	0xFD	JL rim				alias JNGE rim		source only		S XOR O
+	0xFE	JLE i8				alias JNG i8						Z AND (S XOR O)
+	0xFF	JLE rim				alias JNG rim		source only		Z AND (S XOR O)

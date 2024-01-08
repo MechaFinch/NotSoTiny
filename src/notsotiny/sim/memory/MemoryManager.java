@@ -2,6 +2,7 @@ package notsotiny.sim.memory;
 
 import java.util.HashMap;
 import java.util.Map.Entry;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
@@ -11,11 +12,12 @@ import java.util.TreeSet;
  */
 public class MemoryManager implements MemoryController {
     
-    private HashMap<Long, MemoryController> segmentControllers; // maps starting address to controller
+    // maps starting address to controller, treemap for searching
+    private TreeMap<Long, MemoryController> segmentControllerMap;
     
-    private TreeSet<Long> startAddresses; // good old tree for finding the right memory segment fast
-    
-    private HashMap<Long, Long> endAddresses; // maps starting address to ending address
+    // maps starting address to ending address
+    // long hash should be basically free
+    private HashMap<Long, Long> endAddressMap;
     
     private static final boolean DEBUG = false;
     
@@ -23,9 +25,8 @@ public class MemoryManager implements MemoryController {
      * Create an empty MemoryManager
      */
     public MemoryManager() {
-        this.segmentControllers = new HashMap<>();
-        this.startAddresses = new TreeSet<>();
-        this.endAddresses = new HashMap<>();
+        this.segmentControllerMap = new TreeMap<>();
+        this.endAddressMap = new HashMap<>();
     }
     
     /**
@@ -41,11 +42,11 @@ public class MemoryManager implements MemoryController {
         size &= 0xFFFF_FFFFl;
         
         // check for overlap
-        if(this.segmentControllers.size() != 0) {
-            Long closestSegmentStart = this.startAddresses.floor(start + size - 1);
+        if(this.segmentControllerMap.size() != 0) {
+            Long closestSegmentStart = this.segmentControllerMap.floorKey(start + size - 1);
             
             if(closestSegmentStart != null) {
-                long closestSegmentEnd = this.endAddresses.get(closestSegmentStart);
+                long closestSegmentEnd = this.endAddressMap.get(closestSegmentStart);
                 
                 if(closestSegmentStart > start || closestSegmentEnd > start) {
                     throw new IllegalArgumentException("Memory segments cannot overlap");
@@ -54,9 +55,8 @@ public class MemoryManager implements MemoryController {
         }
         
         // add
-        this.startAddresses.add(start);
-        this.endAddresses.put(start, start + size - 1);
-        this.segmentControllers.put(start, mc);
+        this.segmentControllerMap.put(start, mc);
+        this.endAddressMap.put(start, start + size - 1);
     }
     
     /**
@@ -66,16 +66,15 @@ public class MemoryManager implements MemoryController {
      */
     public void removeSegment(long address) {
         address &= 0xFFFF_FFFFl;
-        this.startAddresses.remove(address);
-        this.endAddresses.remove(address);
-        this.segmentControllers.remove(address);
+        this.segmentControllerMap.remove(address);
+        this.endAddressMap.remove(address);
     }
     
     /**
      * Prints the memory mappings
      */
     public void printMap() {
-        for(Entry<Long, MemoryController> e : segmentControllers.entrySet()) {
+        for(Entry<Long, MemoryController> e : segmentControllerMap.entrySet()) {
             System.out.printf("%08X: %s%n", e.getKey() & 0xFFFF_FFFFl, e.getValue().getClass().toString());
         }
     }
@@ -88,18 +87,20 @@ public class MemoryManager implements MemoryController {
      * @throws IndexOutOfBoundsException when trying to access out-of-bounds memory
      * @throws NullPointerException if no segments have been registered
      */
-    private long getSegment(long startAddress, long endAddress) {
+    private Entry<Long, MemoryController> getSegment(long startAddress, long endAddress) {
         startAddress &= 0xFFFF_FFFFl;
         endAddress &= 0xFFFF_FFFFl;
-        Long start = this.startAddresses.floor(startAddress);
         
-        if(start == null || this.endAddresses.get(start) < startAddress) {
+        Entry<Long, MemoryController> segment = this.segmentControllerMap.floorEntry(startAddress);
+        Long start = segment.getKey();
+        
+        if(start == null || this.endAddressMap.get(start) < startAddress) {
             throw new IndexOutOfBoundsException(String.format("Attempted to access non-registered address: %08X", startAddress));
         } else if(endAddress < startAddress) {
             throw new IndexOutOfBoundsException(String.format("Multi-byte access overflowed: %08X", startAddress));
         }
         
-        return start; 
+        return segment;
     }
 
     @Override
@@ -107,10 +108,9 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 1 byte: %08X\n", address);
         
-        long seg = getSegment(address, address);
-        MemoryController sc = this.segmentControllers.get(seg);
+        Entry<Long, MemoryController> seg = getSegment(address, address);
         
-        return sc.readByte(address - seg);
+        return seg.getValue().readByte(address - seg.getKey());
     }
     
     @Override
@@ -118,10 +118,9 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 2 bytes: %08X\n", address);
         
-        long seg = getSegment(address, address + 1);
-        MemoryController sc = this.segmentControllers.get(seg);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 1);
         
-        return sc.read2Bytes(address - seg);
+        return seg.getValue().read2Bytes(address - seg.getKey());
     }
     
     @Override
@@ -129,10 +128,9 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 3 bytes: %08X\n", address);
         
-        long seg = getSegment(address, address + 2);
-        MemoryController sc = this.segmentControllers.get(seg);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 2);
         
-        return sc.read3Bytes(address - seg);
+        return seg.getValue().read3Bytes(address - seg.getKey());
     }
     
     @Override
@@ -140,10 +138,39 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 4 bytes: %08X\n", address);
         
-        long seg = getSegment(address, address + 3);
-        MemoryController sc = this.segmentControllers.get(seg);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 3);
         
-        return sc.read4Bytes(address - seg);
+        return seg.getValue().read4Bytes(address - seg.getKey());
+    }
+    
+    @Override
+    public byte[] read2ByteArray(long address) {
+        address &= 0xFFFF_FFFFl;
+        if(DEBUG) System.out.printf("reading 4 bytes (array): %08X\n", address);
+        
+        Entry<Long, MemoryController> seg = getSegment(address, address + 1);
+        
+        return seg.getValue().read2ByteArray(address - seg.getKey());
+    }
+    
+    @Override
+    public byte[] read3ByteArray(long address) {
+        address &= 0xFFFF_FFFFl;
+        if(DEBUG) System.out.printf("reading 4 bytes (array): %08X\n", address);
+        
+        Entry<Long, MemoryController> seg = getSegment(address, address + 2);
+        
+        return seg.getValue().read3ByteArray(address - seg.getKey());
+    }
+    
+    @Override
+    public byte[] read4ByteArray(long address) {
+        address &= 0xFFFF_FFFFl;
+        if(DEBUG) System.out.printf("reading 4 bytes (array): %08X\n", address);
+        
+        Entry<Long, MemoryController> seg = getSegment(address, address + 3);
+        
+        return seg.getValue().read4ByteArray(address - seg.getKey());
     }
 
     @Override
@@ -151,10 +178,9 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 1 byte: %08X\n", address);
         
-        long seg = getSegment(address, address);
-        MemoryController sc = this.segmentControllers.get(seg);
+        Entry<Long, MemoryController> seg = getSegment(address, address);
         
-        sc.writeByte(address - seg, value);
+        seg.getValue().writeByte(address - seg.getKey(), value);
     }
     
     @Override
@@ -162,10 +188,9 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 2 bytes: %08X\n", address);
         
-        long seg = getSegment(address, address + 1);
-        MemoryController sc = this.segmentControllers.get(seg);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 1);
         
-        sc.write2Bytes(address - seg, value);
+        seg.getValue().write2Bytes(address - seg.getKey(), value);
     }
     
     @Override
@@ -173,10 +198,9 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 3 bytes: %08X\n", address);
         
-        long seg = getSegment(address, address + 2);
-        MemoryController sc = this.segmentControllers.get(seg);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 2);
         
-        sc.write3Bytes(address - seg, value);
+        seg.getValue().write3Bytes(address - seg.getKey(), value);
     }
     
     @Override
@@ -184,10 +208,9 @@ public class MemoryManager implements MemoryController {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 4 bytes: %08X\n", address);
         
-        long seg = getSegment(address, address + 3);
-        MemoryController sc = this.segmentControllers.get(seg);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 3);
         
-        sc.write4Bytes(address - seg, value);
+        seg.getValue().write4Bytes(address - seg.getKey(), value);
     }
     
 }

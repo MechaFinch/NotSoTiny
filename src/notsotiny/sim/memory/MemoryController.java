@@ -46,6 +46,48 @@ public interface MemoryController {
     }
     
     /**
+     * Gets 2 bytes as an array
+     * 
+     * @param address
+     * @return
+     */
+    public default byte[] read2ByteArray(long address) {
+        return new byte[] {
+            this.readByte(address + 0),
+            this.readByte(address + 1)
+        };
+    }
+    
+    /**
+     * Gets 3 bytes as an array 
+     * 
+     * @param address
+     * @return
+     */
+    public default byte[] read3ByteArray(long address) {
+        return new byte[] {
+            this.readByte(address + 0),
+            this.readByte(address + 1),
+            this.readByte(address + 2)
+        };
+    }
+    
+    /**
+     * Gets 4 bytes as an array
+     * 
+     * @param address
+     * @return
+     */
+    public default byte[] read4ByteArray(long address) {
+        return new byte[] {
+            this.readByte(address + 0),
+            this.readByte(address + 1),
+            this.readByte(address + 2),
+            this.readByte(address + 3)
+        };
+    }
+    
+    /**
      * Set 1 byte at an address
      * 
      * @param address

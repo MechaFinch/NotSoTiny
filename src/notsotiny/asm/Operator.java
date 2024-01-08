@@ -18,7 +18,9 @@ public enum Operator {
     AND         ('&'),
     OR          ('|'),
     XOR         ('^'),
-    NOT         ('~');
+    NOT         ('~'),
+    LEFT        ('<'),
+    RIGHT       ('>');
     
     // character for conversion from a SpecialCharacter symbol
     private char c;

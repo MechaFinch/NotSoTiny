@@ -15,7 +15,7 @@ public class NotSoTinySimulator {
     
     private MemoryController memory;
     
-    // 16 bit
+    // 16 bit regs
     private short reg_a,
                   reg_b,
                   reg_c,
@@ -27,15 +27,19 @@ public class NotSoTinySimulator {
                   reg_f,
                   reg_pf;
     
-    // 32 bit
+    // 32 bit regs
     private int reg_ip,
                 reg_sp,
                 reg_bp;
     
+    // state
     private boolean halted,
                     externalInterrupt;
     
     private byte externalInterruptVector;
+    
+    private int prev_ip;
+    private byte[] fetchBuffer;
     
     /**
      * Start the simulator at the given address
@@ -60,6 +64,8 @@ public class NotSoTinySimulator {
         this.halted = false;
         this.externalInterrupt = false;
         this.externalInterruptVector = 0;
+        this.fetchBuffer = new byte[8];
+        this.prev_ip = this.reg_ip;
     }
     
     /**
@@ -85,8 +91,125 @@ public class NotSoTinySimulator {
             return;
         }
         
+        // fetch
+        byte[] readArr;
+        int ipDiff = this.reg_ip - this.prev_ip;
+        
+        switch(ipDiff) {
+            case 1:
+                this.fetchBuffer[0] = this.fetchBuffer[1];
+                this.fetchBuffer[1] = this.fetchBuffer[2];
+                this.fetchBuffer[2] = this.fetchBuffer[3];
+                this.fetchBuffer[3] = this.fetchBuffer[4];
+                this.fetchBuffer[4] = this.fetchBuffer[5];
+                this.fetchBuffer[5] = this.fetchBuffer[6];
+                this.fetchBuffer[6] = this.fetchBuffer[7];
+                this.fetchBuffer[7] = this.memory.readByte(this.reg_ip + 7);
+                break;
+                
+            case 2:
+                this.fetchBuffer[0] = this.fetchBuffer[2];
+                this.fetchBuffer[1] = this.fetchBuffer[3];
+                this.fetchBuffer[2] = this.fetchBuffer[4];
+                this.fetchBuffer[3] = this.fetchBuffer[5];
+                this.fetchBuffer[4] = this.fetchBuffer[6];
+                this.fetchBuffer[5] = this.fetchBuffer[7];
+                
+                readArr = this.memory.read2ByteArray(this.reg_ip + 6);
+                this.fetchBuffer[6] = readArr[0];
+                this.fetchBuffer[7] = readArr[1];
+                break;
+            
+            case 3:
+                this.fetchBuffer[0] = this.fetchBuffer[3];
+                this.fetchBuffer[1] = this.fetchBuffer[4];
+                this.fetchBuffer[2] = this.fetchBuffer[5];
+                this.fetchBuffer[3] = this.fetchBuffer[6];
+                this.fetchBuffer[4] = this.fetchBuffer[7];
+                
+                readArr = this.memory.read3ByteArray(this.reg_ip + 5);
+                this.fetchBuffer[5] = readArr[0];
+                this.fetchBuffer[6] = readArr[1];
+                this.fetchBuffer[7] = readArr[2];
+                break;
+            
+            case 4:
+                this.fetchBuffer[0] = this.fetchBuffer[4];
+                this.fetchBuffer[1] = this.fetchBuffer[5];
+                this.fetchBuffer[2] = this.fetchBuffer[6];
+                this.fetchBuffer[3] = this.fetchBuffer[7];
+                
+                readArr = this.memory.read4ByteArray(this.reg_ip + 4);
+                this.fetchBuffer[4] = readArr[0];
+                this.fetchBuffer[5] = readArr[1];
+                this.fetchBuffer[6] = readArr[2];
+                this.fetchBuffer[7] = readArr[3];
+                break;
+            
+            case 5:
+                this.fetchBuffer[0] = this.fetchBuffer[5];
+                this.fetchBuffer[1] = this.fetchBuffer[6];
+                this.fetchBuffer[2] = this.fetchBuffer[7];
+                
+                readArr = this.memory.read4ByteArray(this.reg_ip + 3);
+                this.fetchBuffer[3] = readArr[0];
+                this.fetchBuffer[4] = readArr[1];
+                this.fetchBuffer[5] = readArr[2];
+                this.fetchBuffer[6] = readArr[3];
+                
+                this.fetchBuffer[7] = this.memory.readByte(reg_ip + 7);
+                break;
+                
+            case 6:
+                this.fetchBuffer[0] = this.fetchBuffer[6];
+                this.fetchBuffer[1] = this.fetchBuffer[7];
+                
+                readArr = this.memory.read4ByteArray(this.reg_ip + 2);
+                this.fetchBuffer[2] = readArr[0];
+                this.fetchBuffer[3] = readArr[1];
+                this.fetchBuffer[4] = readArr[2];
+                this.fetchBuffer[5] = readArr[3];
+                
+                readArr = this.memory.read2ByteArray(this.reg_ip + 6);
+                this.fetchBuffer[6] = readArr[0];
+                this.fetchBuffer[7] = readArr[1];
+                break;
+                
+            case 7:
+                this.fetchBuffer[0] = this.fetchBuffer[7];
+                
+                readArr = this.memory.read4ByteArray(this.reg_ip + 1);
+                this.fetchBuffer[1] = readArr[0];
+                this.fetchBuffer[2] = readArr[1];
+                this.fetchBuffer[3] = readArr[2];
+                this.fetchBuffer[4] = readArr[3];
+                
+                readArr = this.memory.read3ByteArray(this.reg_ip + 5);
+                this.fetchBuffer[5] = readArr[0];
+                this.fetchBuffer[6] = readArr[1];
+                this.fetchBuffer[7] = readArr[2];
+                break;
+            
+            default:
+                readArr = this.memory.read4ByteArray(this.reg_ip + 0);
+                this.fetchBuffer[0] = readArr[0];
+                this.fetchBuffer[1] = readArr[1];
+                this.fetchBuffer[2] = readArr[2];
+                this.fetchBuffer[3] = readArr[3];
+                
+                readArr = this.memory.read4ByteArray(this.reg_ip + 4);
+                this.fetchBuffer[4] = readArr[0];
+                this.fetchBuffer[5] = readArr[1];
+                this.fetchBuffer[6] = readArr[2];
+                this.fetchBuffer[7] = readArr[3];
+                
+        }
+        
+        this.prev_ip = this.reg_ip;
+        this.reg_ip++;
+        
         InstructionDescriptor desc = new InstructionDescriptor();
-        desc.op = Opcode.fromOp(this.memory.readByte(this.reg_ip++));
+        desc.op = Opcode.fromOp(this.fetchBuffer[0]);
         
         if(desc.op == Opcode.NOP) return; 
         
@@ -131,7 +254,7 @@ public class NotSoTinySimulator {
         }
         
         // jumps update themselves
-        if(!(desc.op.getType().getFamily() == Family.JUMP && desc.op.getType() != Operation.CMP)) {
+        if(!(desc.op.getType().getFamily() == Family.JUMP && desc.op.getType() != Operation.CMP && desc.op.getType() != Operation.PCMP)) {
             updateIP(desc);
         }
     }
@@ -285,11 +408,17 @@ public class NotSoTinySimulator {
     private void runRotateLogic(InstructionDescriptor desc) {
         LocationDescriptor dst = getNormalRIMDestinationDescriptor(desc);
         
-        int a = readLocation(dst),
-            b = getNormalRIMSource(desc),
+        int mask = switch(dst.size()) {
+            case 1  -> 0x0000_00FF;
+            case 2  -> 0x0000_FFFF;
+            default -> 0xFFFF_FFFF;
+        };
+        
+        int a = readLocation(dst) & mask,
+            b = getNormalRIMSource(desc) & mask,
             c = 0;
         
-        boolean carry = (this.reg_f & 0x01) != 0;
+        boolean carry = (this.reg_f & 0x0001) != 0;
         
         // agh
         switch(desc.op) {
@@ -307,13 +436,23 @@ public class NotSoTinySimulator {
             case SHR_RIM:
                 carry = ((1 << (b - 1)) & a) != 0;
                 
-                c = a >>> b;
+                c = switch(dst.size()) {
+                    case 1  -> ((a << 24) >>> b) >>> 24;
+                    case 2  -> ((a << 16) >>> b) >>> 16;
+                    case 4  -> a >>> b;
+                    default -> 0;
+                };
                 break;
                 
             case SAR_RIM:
                 carry = ((1 << (b - 1)) & a) != 0;
                 
-                c = a >> b;
+                c = switch(dst.size()) {
+                    case 1  -> ((a << 24) >> b) >>> 24;
+                    case 2  -> ((a << 16) >> b) >>> 16;
+                    case 3  -> a >> b;
+                    default -> 0;
+                };
                 break;
                 
             case ROL_RIM:
@@ -435,17 +574,49 @@ public class NotSoTinySimulator {
     private void runMUL(InstructionDescriptor desc) {
         LocationDescriptor thinDst = getNormalRIMDestinationDescriptor(desc);
         
-        int a = getNormalRIMSource(desc),
-            b = readLocation(thinDst);
-        
         boolean high = desc.op == Opcode.MULH_RIM || desc.op == Opcode.MULSH_RIM,
                 signed = desc.op == Opcode.MULSH_RIM;
         
-        int c = multiply(a, b, thinDst.size(), high, signed);
-        
         if(high) {
-            putWideRIMDestination(thinDst, c);
+            LocationType type;
+            
+            if(thinDst.size() == 1) {
+                type = switch(thinDst.type()) {
+                    case REG_A  -> thinDst.address() == 0 ? LocationType.REG_A : LocationType.REG_I;
+                    case REG_B  -> thinDst.address() == 0 ? LocationType.REG_B : LocationType.REG_J;
+                    case REG_C  -> thinDst.address() == 0 ? LocationType.REG_C : LocationType.REG_K;
+                    case REG_D  -> thinDst.address() == 0 ? LocationType.REG_D : LocationType.REG_L;
+                    default     -> thinDst.type();
+                };
+                
+                LocationDescriptor wideDst = new LocationDescriptor(type, 2, 0);
+                int a = getNormalRIMSource(desc),
+                    b = readLocation(wideDst) & 0x0000_00FF;
+                
+                int c = multiply(a, b, 2, high, signed);
+                writeLocation(wideDst, c);
+            } else {
+                type = switch(thinDst.type()) {
+                    case REG_J  -> LocationType.REG_K;
+                    case REG_K  -> LocationType.REG_BP;
+                    case REG_L  -> LocationType.REG_SP;
+                    default     -> thinDst.type();
+                };
+                
+                LocationDescriptor wideDst = new LocationDescriptor(type, 4, 0);
+                int a = getNormalRIMSource(desc),
+                    b = readLocation(wideDst) & 0x0000_FFFF;
+                
+                if(signed) b = (int)((short) b);
+                
+                int c = multiply(a, b, 4, high, signed);
+                writeLocation(wideDst, c);
+            }
         } else {
+            int a = getNormalRIMSource(desc),
+                b = readLocation(thinDst);
+            
+            int c = multiply(a, b, thinDst.size(), high, signed);
             writeLocation(thinDst, c);
         }
     }
@@ -532,7 +703,7 @@ public class NotSoTinySimulator {
         int c = mod ? (((res[1] & 0xFFFF) << 16) | (res[0] & 0xFFFF)) : res[0];
         
         if(mod) {
-            putWideRIMDestination(thinDst, c);
+            writeWideLocation(thinDst, c);
         } else {
             putPackedRIMDestination(thinDst, c);
         }
@@ -587,6 +758,10 @@ public class NotSoTinySimulator {
      */
     private void runINC(InstructionDescriptor desc) {
         LocationDescriptor dst = switch(desc.op) {
+            case ICC_A, DCC_A               -> LocationDescriptor.REGISTER_A;
+            case ICC_B, DCC_B               -> LocationDescriptor.REGISTER_B;
+            case ICC_C, DCC_C               -> LocationDescriptor.REGISTER_C;
+            case ICC_D, DCC_D               -> LocationDescriptor.REGISTER_D;
             case INC_I, ICC_I, DEC_I, DCC_I -> LocationDescriptor.REGISTER_I;
             case INC_J, ICC_J, DEC_J, DCC_J -> LocationDescriptor.REGISTER_J;
             case INC_K, ICC_K, DEC_K, DCC_K -> LocationDescriptor.REGISTER_K;
@@ -595,12 +770,11 @@ public class NotSoTinySimulator {
         };
         
         // unconditional or condition met
-        if(desc.op.getType() == Operation.INC || desc.op.getType() == Operation.DEC || (this.reg_f & 0x01) != 0) {
-            boolean inc = desc.op.getType() == Operation.INC || desc.op.getType() == Operation.ICC;
-            int v = add(readLocation(dst), 1, dst.size(), !inc, false);
-            
-            writeLocation(dst, v);
-        }
+        int incVal = (desc.op.getType() == Operation.INC || desc.op.getType() == Operation.DEC || (this.reg_f & 0x01) != 0) ? 1 : 0;    // are we making a change
+        boolean inc = desc.op.getType() == Operation.INC || desc.op.getType() == Operation.ICC;                                         // are we incrementing or decrementing
+        int v = add(readLocation(dst), incVal, dst.size(), !inc, false); // needs to happen unconditionally to correctly set flags
+        
+        writeLocation(dst, v);
     }
     
     /**
@@ -633,41 +807,43 @@ public class NotSoTinySimulator {
      */
     private void runADD(InstructionDescriptor desc) {
         LocationDescriptor dst = switch(desc.op) {
-            case ADD_A_I8, ADC_A_I8, ADD_A_I16, ADC_A_I16, SUB_A_I8, SBB_A_I8, SUB_A_I16, SBB_A_I16 -> LocationDescriptor.REGISTER_A;
-            case ADD_B_I8, ADC_B_I8, ADD_B_I16, ADC_B_I16, SUB_B_I8, SBB_B_I8, SUB_B_I16, SBB_B_I16 -> LocationDescriptor.REGISTER_B;
-            case ADD_C_I8, ADC_C_I8, ADD_C_I16, ADC_C_I16, SUB_C_I8, SBB_C_I8, SUB_C_I16, SBB_C_I16 -> LocationDescriptor.REGISTER_C;
-            case ADD_D_I8, ADC_D_I8, ADD_D_I16, ADC_D_I16, SUB_D_I8, SBB_D_I8, SUB_D_I16, SBB_D_I16 -> LocationDescriptor.REGISTER_D;
-            case ADD_SP_I8, SUB_SP_I8                                                               -> LocationDescriptor.REGISTER_SP;
-            default                                                                                 -> getNormalRIMDestinationDescriptor(desc);
+            case ADD_A_I8, ADC_A_I8, SUB_A_I8, SBB_A_I8 -> LocationDescriptor.REGISTER_A;
+            case ADD_B_I8, ADC_B_I8, SUB_B_I8, SBB_B_I8 -> LocationDescriptor.REGISTER_B;
+            case ADD_C_I8, ADC_C_I8, SUB_C_I8, SBB_C_I8 -> LocationDescriptor.REGISTER_C;
+            case ADD_D_I8, ADC_D_I8, SUB_D_I8, SBB_D_I8 -> LocationDescriptor.REGISTER_D;
+            case ADD_I_I8, SUB_I_I8                     -> LocationDescriptor.REGISTER_I;
+            case ADD_J_I8, SUB_J_I8                     -> LocationDescriptor.REGISTER_J;
+            case ADD_K_I8, SUB_K_I8                     -> LocationDescriptor.REGISTER_K;
+            case ADD_L_I8, SUB_L_I8                     -> LocationDescriptor.REGISTER_L;
+            case ADD_SP_I8, SUB_SP_I8                   -> LocationDescriptor.REGISTER_SP;
+            case ADD_BP_I8, SUB_BP_I8                   -> LocationDescriptor.REGISTER_BP; 
+            default                                     -> getNormalRIMDestinationDescriptor(desc);
         };
         
         int b = switch(desc.op) {
-            case ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADC_A_I8, ADC_B_I8, ADC_C_I8, ADC_D_I8,
-                 SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SBB_A_I8, SBB_B_I8, SBB_C_I8, SBB_D_I8,
-                 ADD_SP_I8, SUB_SP_I8 -> {
+            case ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADD_I_I8, ADD_J_I8, ADD_K_I8, ADD_L_I8, 
+                 ADC_A_I8, ADC_B_I8, ADC_C_I8, ADC_D_I8,
+                 SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SUB_I_I8, SUB_J_I8, SUB_K_I8, SUB_L_I8,
+                 SBB_A_I8, SBB_B_I8, SBB_C_I8, SBB_D_I8,
+                 ADD_SP_I8, ADD_BP_I8, SUB_SP_I8, SUB_BP_I8 -> {
                      desc.hasImmediateValue = true;
                      desc.immediateWidth = 1;
-                     yield this.memory.readByte(this.reg_ip);
+                     yield this.fetchBuffer[1];
+                     //yield this.memory.readByte(this.reg_ip);
                  }
                  
             case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8 -> {
                 // figure out where our immediate is
-                int offset = 1;                 // rim
+                int offset = 2;                 // rim
                 if(desc.hasBIOByte) offset++;   // bio
                 if(desc.hasImmediateAddress || desc.hasImmediateValue) offset += desc.immediateWidth; // immediate
                 
                 desc.hasImmediateValue = true;
                 desc.immediateWidth++; // our immediate
                 
-                yield this.memory.readByte(this.reg_ip + offset);
+                yield this.fetchBuffer[offset];
+                //yield this.memory.readByte(this.reg_ip + offset);
             }
-                 
-            case ADD_A_I16, ADD_B_I16, ADD_C_I16, ADD_D_I16, ADC_A_I16, ADC_B_I16, ADC_C_I16, ADC_D_I16,
-                 SUB_A_I16, SUB_B_I16, SUB_C_I16, SUB_D_I16, SBB_A_I16, SBB_B_I16, SBB_C_I16, SBB_D_I16 -> {
-                     desc.hasImmediateValue = true;
-                     desc.immediateWidth = 2;
-                     yield this.memory.read2Bytes(this.reg_ip);
-                 }
                  
             default -> getNormalRIMSource(desc);
         };
@@ -740,6 +916,10 @@ public class NotSoTinySimulator {
                 runCMP(desc);
                 break;
             
+            case PCMP:
+                runPCMP(desc);
+                break;
+            
             case JCC:
                 runJCC(desc);
                 break;
@@ -762,20 +942,23 @@ public class NotSoTinySimulator {
             case JMP_I8:
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 1;
-                val = this.memory.readByte(this.reg_ip);
+                val = this.fetchBuffer[1];
+                //val = this.memory.readByte(this.reg_ip);
                 break;
             
             case JMP_I16:
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 2;
-                val = this.memory.read2Bytes(this.reg_ip);
+                val = get2FetchBytes(1);
+                //val = this.memory.read2Bytes(this.reg_ip);
                 break;
             
             case JMP_I32:
             case JMPA_I32:
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 4;
-                val = this.memory.read4Bytes(this.reg_ip);
+                val = get4FetchBytes(1);
+                //val = this.memory.read4Bytes(this.reg_ip);
                 break;
             
             case JMP_RIM:
@@ -809,24 +992,28 @@ public class NotSoTinySimulator {
             case CALL_I8:
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 1;
-                target = this.memory.readByte(this.reg_ip);
+                target = this.fetchBuffer[1];
+                //target = this.memory.readByte(this.reg_ip);
                 break;
                 
             case CALL_I16:
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 2;
-                target = this.memory.read2Bytes(this.reg_ip);
+                target = get2FetchBytes(1);
+                //target = this.memory.read2Bytes(this.reg_ip);
                 break;
                 
             case CALL_I32:
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 4;
-                target = this.memory.read4Bytes(this.reg_ip);
+                target = get4FetchBytes(1);
+                //target = this.memory.read4Bytes(this.reg_ip);
             
             case CALLA_I32:
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 4;
-                target = this.memory.read4Bytes(this.reg_ip);
+                target = get4FetchBytes(1);
+                //target = this.memory.read4Bytes(this.reg_ip);
                 break;
             
             case CALL_RIM:
@@ -882,7 +1069,8 @@ public class NotSoTinySimulator {
         
         // vector
         if(desc.op == Opcode.INT_I8) {
-            b = this.memory.readByte(this.reg_ip);
+            b = this.fetchBuffer[1];
+            //b = this.memory.readByte(this.reg_ip);
             desc.hasImmediateValue = true;
             desc.immediateWidth = 1;
         } else {
@@ -909,6 +1097,7 @@ public class NotSoTinySimulator {
         
         // get vector & jump
         this.reg_ip = this.memory.read4Bytes((num & 0x00FFl) << 2);
+        this.reg_pf &= ~0x0001; // clear IE  
     }
     
     /**
@@ -935,20 +1124,36 @@ public class NotSoTinySimulator {
             case CMP_RIM    -> getNormalRIMSource(desc);
             case CMP_RIM_I8 -> {
                 // figure out where our immediate is
-                int offset = 1;                 // rim
+                int offset = 2;                 // rim
                 if(desc.hasBIOByte) offset++;   // bio
                 if(desc.hasImmediateAddress || desc.hasImmediateValue) offset += desc.immediateWidth; // immediate
                 
                 desc.hasImmediateValue = true;
                 desc.immediateWidth++; // our immediate
                 
-                yield this.memory.readByte(this.reg_ip + offset);
+                yield this.fetchBuffer[offset];
+                //yield this.memory.readByte(this.reg_ip + offset);
             }
             default -> 0; // also CMP_RIM_0
         };
         
         // subtract and discard
         add(a, b, dest.size(), true, false);
+    }
+    
+    /**
+     * Executes PCMP instructions
+     * 
+     * @param desc
+     */
+    private void runPCMP(InstructionDescriptor desc) {
+        LocationDescriptor dest = getNormalRIMDestinationDescriptor(desc);
+        
+        int a = getPackedRIMSource(dest, desc),
+            b = getPackedRIMSource(getNormalRIMSourceDescriptor(desc), desc);
+            
+        
+        addPacked(a, b, dest.size() != 1, true, false);
     }
     
     /**
@@ -962,35 +1167,111 @@ public class NotSoTinySimulator {
                            dstDesc = getNormalRIMDestinationDescriptor(desc);
         
         // add EI8
-        int offset = 1;
+        int offset = 2;
         if(desc.hasBIOByte) offset++;
         if(desc.hasImmediateAddress || desc.hasImmediateValue) offset += desc.immediateWidth;
         
         desc.hasImmediateValue = true;
         desc.immediateWidth++;
         
-        // copied from JCC below
-        boolean condition = switch(Opcode.fromOp(this.memory.readByte(this.reg_ip + offset))) {
-            case JC_I8, JC_RIM      -> (this.reg_f & 0x01) != 0;    // carry - carry set
-            case JNC_I8, JNC_RIM    -> (this.reg_f & 0x01) == 0;    // not carry - carry clear
-            case JS_I8, JS_RIM      -> (this.reg_f & 0x02) != 0;    // sign - sign set
-            case JNS_I8, JNS_RIM    -> (this.reg_f & 0x02) == 0;    // not sign - sign clear
-            case JO_I8, JO_RIM      -> (this.reg_f & 0x04) != 0;    // overflow - overflow set
-            case JNO_I8, JNO_RIM    -> (this.reg_f & 0x04) == 0;    // not overflow - overflow clear
-            case JZ_I8, JZ_RIM      -> (this.reg_f & 0x08) != 0;    // zero - zero set
-            case JNZ_I8, JNZ_RIM    -> (this.reg_f & 0x08) == 0;    // not zero - zero clear
-            case JA_I8, JA_RIM      -> (this.reg_f & 0x09) == 0;    // above - carry clear and zero clear 
-            case JBE_I8, JBE_RIM    -> (this.reg_f & 0x09) != 0;    // below equal - carry set or zero set
-            case JG_I8, JG_RIM      -> ((this.reg_f & 0x08) == 0) && (((this.reg_f & 0x04) >>> 1) == (this.reg_f & 0x02));   // greater - zero clear and sign = overflow
-            case JGE_I8, JGE_RIM    -> (((this.reg_f & 0x04) >>> 1) == (this.reg_f & 0x02));                                 // greater equal - sign = overflow
-            case JL_I8, JL_RIM      -> (((this.reg_f & 0x04) >>> 1) != (this.reg_f & 0x02));                                 // less - sign != overflow
-            case JLE_I8, JLE_RIM    -> ((this.reg_f & 0x08) != 0) || (((this.reg_f & 0x04) >>> 1) != (this.reg_f & 0x02));   // less equal - zero set or sign != overflow
+        boolean condition = conditionTrue(this.fetchBuffer[offset], 0);
+        //boolean condition = conditionTrue(this.memory.readByte(this.reg_ip + offset), 0);
+        
+        // read is unconditional, write is conditional
+        int data = readLocation(srcDesc);
+        if(condition) {
+            writeLocation(dstDesc, data);
+        }
+    }
+    
+    /**
+     * Executes PCMOV
+     * 
+     * @param desc
+     */
+    private void runPCMOV(InstructionDescriptor desc) {
+        // make sure RIM is read properly
+        LocationDescriptor srcDesc = getPackedRIMSourceDescriptor(getNormalRIMSourceDescriptor(desc), desc),
+                           ndstDesc = getNormalRIMDestinationDescriptor(desc),
+                           dstDesc = getPackedRIMSourceDescriptor(ndstDesc, desc);
+        
+        // add EI8
+        int offset = 2;
+        if(desc.hasBIOByte) offset++;
+        if(desc.hasImmediateAddress || desc.hasImmediateValue) offset += desc.immediateWidth;
+        
+        desc.hasImmediateValue = true;
+        desc.immediateWidth++;
+        
+        int sourceData = readLocation(srcDesc),
+            destData = readLocation(dstDesc);
+        
+        Opcode cond = Opcode.fromOp(this.fetchBuffer[offset]);
+        //Opcode cond = Opcode.fromOp(this.memory.readByte(this.reg_ip + offset));
+        
+        // for each condition
+        if(ndstDesc.size() != 1) {
+            // bytes
+            // lower
+            if(conditionTrue(cond, 0)) {
+                destData = (destData & 0xFF00) | (sourceData & 0x00FF);
+            }
+            
+            // upper
+            if(conditionTrue(cond, 2)) {
+                destData = (destData & 0x00FF) | (sourceData & 0xFF00);
+            }
+        } else {
+            // nybbles
+            for(int i = 0; i < 4; i++) {
+                if(conditionTrue(cond, i)) {
+                    int mask = 0x0F << (i * 4);
+                    destData = (destData & ~mask) | (sourceData & mask);
+                }
+            }
+        }
+        
+        putPackedRIMDestination(dstDesc, destData);
+    }
+    
+    /**
+     * Determines if a condition is met
+     * 
+     * @param opcode
+     * @param flagsIndex
+     * @return
+     */
+    private boolean conditionTrue(Opcode op, int flagsIndex) {
+        int flags = this.reg_f >> (4 * flagsIndex);
+        
+        return switch(op) {
+            case JC_I8, JC_RIM      -> (flags & 0x01) != 0;    // carry - carry set
+            case JNC_I8, JNC_RIM    -> (flags & 0x01) == 0;    // not carry - carry clear
+            case JS_I8, JS_RIM      -> (flags & 0x02) != 0;    // sign - sign set
+            case JNS_I8, JNS_RIM    -> (flags & 0x02) == 0;    // not sign - sign clear
+            case JO_I8, JO_RIM      -> (flags & 0x04) != 0;    // overflow - overflow set
+            case JNO_I8, JNO_RIM    -> (flags & 0x04) == 0;    // not overflow - overflow clear
+            case JZ_I8, JZ_RIM      -> (flags & 0x08) != 0;    // zero - zero set
+            case JNZ_I8, JNZ_RIM    -> (flags & 0x08) == 0;    // not zero - zero clear
+            case JA_I8, JA_RIM      -> (flags & 0x09) == 0;    // above - carry clear and zero clear 
+            case JBE_I8, JBE_RIM    -> (flags & 0x09) != 0;    // below equal - carry set or zero set
+            case JG_I8, JG_RIM      -> ((flags & 0x08) == 0) && (((flags & 0x04) >>> 1) == (flags & 0x02));   // greater - zero clear and sign = overflow
+            case JGE_I8, JGE_RIM    -> (((flags & 0x04) >>> 1) == (flags & 0x02));                                 // greater equal - sign = overflow
+            case JL_I8, JL_RIM      -> (((flags & 0x04) >>> 1) != (flags & 0x02));                                 // less - sign != overflow
+            case JLE_I8, JLE_RIM    -> ((flags & 0x08) != 0) || (((flags & 0x04) >>> 1) != (flags & 0x02));   // less equal - zero set or sign != overflow
             default                 -> false;
         };
-        
-        if(condition) {
-            writeLocation(dstDesc, readLocation(srcDesc));
-        }
+    }
+    
+    /**
+     * Determines if a condition is met
+     * 
+     * @param opcode
+     * @param flagsIndex
+     * @return
+     */
+    private boolean conditionTrue(byte opcode, int flagsIndex) {
+        return conditionTrue(Opcode.fromOp(opcode), flagsIndex);
     }
     
     /**
@@ -1014,7 +1295,8 @@ public class NotSoTinySimulator {
             case JL_I8: case JLE_I8:
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 1;
-                offset = this.memory.readByte(this.reg_ip);
+                offset = this.fetchBuffer[1];
+                //offset = this.memory.readByte(this.reg_ip);
                 break;
             
             // rim
@@ -1023,23 +1305,7 @@ public class NotSoTinySimulator {
         }
         
         // check condition
-        boolean condition = switch(desc.op) {
-            case JC_I8, JC_RIM      -> (this.reg_f & 0x01) != 0;    // carry - carry set
-            case JNC_I8, JNC_RIM    -> (this.reg_f & 0x01) == 0;    // not carry - carry clear
-            case JS_I8, JS_RIM      -> (this.reg_f & 0x02) != 0;    // sign - sign set
-            case JNS_I8, JNS_RIM    -> (this.reg_f & 0x02) == 0;    // not sign - sign clear
-            case JO_I8, JO_RIM      -> (this.reg_f & 0x04) != 0;    // overflow - overflow set
-            case JNO_I8, JNO_RIM    -> (this.reg_f & 0x04) == 0;    // not overflow - overflow clear
-            case JZ_I8, JZ_RIM      -> (this.reg_f & 0x08) != 0;    // zero - zero set
-            case JNZ_I8, JNZ_RIM    -> (this.reg_f & 0x08) == 0;    // not zero - zero clear
-            case JA_I8, JA_RIM      -> (this.reg_f & 0x09) == 0;    // above - carry clear and zero clear 
-            case JBE_I8, JBE_RIM    -> (this.reg_f & 0x09) != 0;    // below equal - carry set or zero set
-            case JG_I8, JG_RIM      -> ((this.reg_f & 0x08) == 0) && (((this.reg_f & 0x04) >>> 1) == (this.reg_f & 0x02));   // greater - zero clear and sign = overflow
-            case JGE_I8, JGE_RIM    -> (((this.reg_f & 0x04) >>> 1) == (this.reg_f & 0x02));                                 // greater equal - sign = overflow
-            case JL_I8, JL_RIM      -> (((this.reg_f & 0x04) >>> 1) != (this.reg_f & 0x02));                                 // less - sign != overflow
-            case JLE_I8, JLE_RIM    -> ((this.reg_f & 0x08) != 0) || (((this.reg_f & 0x04) >>> 1) != (this.reg_f & 0x02));   // less equal - zero set or sign != overflow
-            default                 -> false;
-        };
+        boolean condition = conditionTrue(desc.op, 0);
         
         updateIP(desc);
         
@@ -1068,8 +1334,13 @@ public class NotSoTinySimulator {
             case CMOVCC:
                 runCMOV(desc);
                 break;
+                
+            case PCMOVCC:
+                runPCMOV(desc);
+                break;
             
             case XCHG:
+            case XCHGW:
                 runXCHG(desc);
                 break;
             
@@ -1235,7 +1506,8 @@ public class NotSoTinySimulator {
             case MOVS_D_I8:
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 1;
-                src = this.memory.readByte(this.reg_ip);
+                src = this.fetchBuffer[1];
+                //src = this.memory.readByte(this.reg_ip);
                 break;
             
             // immediate 16 moves
@@ -1249,15 +1521,8 @@ public class NotSoTinySimulator {
             case MOV_L_I16:
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 2;
-                src = this.memory.read2Bytes(this.reg_ip);
-                break;
-            
-            // immediate 32 moves
-            case MOV_SP_I32:
-            case MOV_BP_I32:
-                desc.hasImmediateValue = true;
-                desc.immediateWidth = 4;
-                src = this.memory.read4Bytes(this.reg_ip);
+                src = get2FetchBytes(1);
+                //src = this.memory.read2Bytes(this.reg_ip);
                 break;
             
             // offset
@@ -1267,7 +1532,8 @@ public class NotSoTinySimulator {
             case MOV_D_O:
                 desc.hasImmediateAddress = true;
                 desc.immediateWidth = 4;
-                src = this.memory.read2Bytes(this.memory.read4Bytes(this.reg_ip));
+                src = this.memory.read2Bytes(get4FetchBytes(1));
+                //src = this.memory.read2Bytes(this.memory.read4Bytes(this.reg_ip));
                 break;
             
             // BIO w/o offset
@@ -1367,14 +1633,6 @@ public class NotSoTinySimulator {
                 this.reg_l = (short) src;
                 return;
             
-            case MOV_BP_I32:
-                this.reg_bp = src;
-                return;
-            
-            case MOV_SP_I32:
-                this.reg_sp = src;
-                return;
-            
             // offset
             case MOV_O_A:
             case MOV_O_B:
@@ -1382,7 +1640,8 @@ public class NotSoTinySimulator {
             case MOV_O_D:
                 desc.hasImmediateAddress = true;
                 desc.immediateWidth = 4;
-                this.memory.write2Bytes(this.memory.read4Bytes(this.reg_ip), (short) src);
+                this.memory.write2Bytes(get4FetchBytes(1), (short) src);
+                //this.memory.write2Bytes(this.memory.read4Bytes(this.reg_ip), (short) src);
                 return;
             
             // BIO w/o offset
@@ -1454,9 +1713,16 @@ public class NotSoTinySimulator {
         LocationDescriptor srcDesc = getNormalRIMSourceDescriptor(desc),
                            dstDesc = getNormalRIMDestinationDescriptor(desc);
         
-        int tmp = readLocation(srcDesc);
-        writeLocation(srcDesc, readLocation(dstDesc));
-        writeLocation(dstDesc, tmp);
+        if(desc.op == Opcode.XCHG_RIM) {
+            int tmp = readLocation(srcDesc);
+            writeLocation(srcDesc, readLocation(dstDesc));
+            writeLocation(dstDesc, tmp);
+        } else {
+            // XCHGW_RIM
+            int tmp = readWideLocation(desc, srcDesc);
+            writeWideLocation(srcDesc, readWideLocation(desc, dstDesc));
+            writeWideLocation(dstDesc, tmp);
+        }
     }
     
     /**
@@ -1488,8 +1754,6 @@ public class NotSoTinySimulator {
             default -> getNormalRIMSourceWidth(desc);
         };
         
-        this.reg_sp -= opSize;
-        
         // get value
         int val = switch(desc.op) {
             case PUSH_A     -> this.reg_a;
@@ -1506,10 +1770,14 @@ public class NotSoTinySimulator {
             case PUSH_I32   -> {
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 4;
-                yield this.memory.read4Bytes(this.reg_ip);
+                yield get4FetchBytes(1);
+                //yield this.memory.read4Bytes(this.reg_ip);
             }
             default         -> getNormalRIMSource(desc); // rim
         };
+        
+        // update SP
+        this.reg_sp -= opSize;
         
         // write
         if(opSize == 1) {
@@ -1773,6 +2041,7 @@ public class NotSoTinySimulator {
         }
         
         res = al * bl;
+        //System.out.println(al + " * " + bl + " = " + res);
         
         // flags time
         boolean zero = false,
@@ -2075,7 +2344,8 @@ public class NotSoTinySimulator {
         if(desc.hasRIMByte) {
             rim = desc.rimByte;
         } else {
-            rim = this.memory.readByte(this.reg_ip);
+            rim = this.fetchBuffer[1];
+            //rim = this.memory.readByte(this.reg_ip);
             desc.rimByte = rim;
             desc.hasRIMByte = true;
         }
@@ -2124,7 +2394,8 @@ public class NotSoTinySimulator {
                 desc.hasImmediateAddress = true;
                 desc.immediateWidth = 4;
                 
-                addr = this.memory.read4Bytes(this.reg_ip + 1);
+                addr = get4FetchBytes(2);
+                //addr = this.memory.read4Bytes(this.reg_ip + 1);
             } else { // bio address
                 addr = getBIOAddress(desc, true, (rim & 0x01) == 1);
             }
@@ -2303,7 +2574,7 @@ public class NotSoTinySimulator {
     private void putWideRIMDestination(InstructionDescriptor desc, int val) {
         LocationDescriptor normalDesc = getNormalRIMDestinationDescriptor(desc);
         
-        putWideRIMDestination(normalDesc, val);
+        writeWideLocation(normalDesc, val);
     }
     
     /**
@@ -2313,7 +2584,7 @@ public class NotSoTinySimulator {
      * @param normalDesc
      * @param val
      */
-    private void putWideRIMDestination(LocationDescriptor normalDesc, int val) {
+    private void writeWideLocation(LocationDescriptor normalDesc, int val) {
         int size = normalDesc.size();
         
         if(size < 4) {
@@ -2370,7 +2641,8 @@ public class NotSoTinySimulator {
         if(desc.hasRIMByte) {
             rim = desc.rimByte;
         } else {
-            rim = this.memory.readByte(this.reg_ip);
+            rim = this.fetchBuffer[1];
+            //rim = this.memory.readByte(this.reg_ip);
             desc.rimByte = rim;
             desc.hasRIMByte = true;
         }
@@ -2391,7 +2663,8 @@ public class NotSoTinySimulator {
         if(desc.hasRIMByte) {
             rim = desc.rimByte;
         } else {
-            rim = this.memory.readByte(this.reg_ip);
+            rim = this.fetchBuffer[1];
+            //rim = this.memory.readByte(this.reg_ip);
             desc.rimByte = rim;
             desc.hasRIMByte = true;
         }
@@ -2430,7 +2703,8 @@ public class NotSoTinySimulator {
             desc.hasImmediateAddress = true;
             desc.immediateWidth = 4;
             
-            int addr = this.memory.read4Bytes(this.reg_ip + 1);
+            int addr = get4FetchBytes(2);
+            //int addr = this.memory.read4Bytes(this.reg_ip + 1);
             
             return new LocationDescriptor(LocationType.MEMORY, size ? 2 : 1, addr);
         } else {
@@ -2528,12 +2802,21 @@ public class NotSoTinySimulator {
      */
     private int getWideRIMSource(InstructionDescriptor desc) {
         LocationDescriptor normalDesc = getNormalRIMSourceDescriptor(desc);
-        
-        if(desc.hasImmediateValue) {
-            desc.immediateWidth = 4;
-        }
-        
         desc.sourceWidth = 4;
+        
+        return readWideLocation(desc, normalDesc);
+    }
+    
+    /**
+     * Reads a location (wide) 
+     * @param idesc
+     * @param normalDesc
+     * @return
+     */
+    private int readWideLocation(InstructionDescriptor idesc, LocationDescriptor normalDesc) {
+        if(idesc.hasImmediateValue) {
+            idesc.immediateWidth = 4;
+        }
         
         // convert to pairs properly
         LocationType type = switch(normalDesc.type()) {
@@ -2548,17 +2831,28 @@ public class NotSoTinySimulator {
     }
     
     /**
+     * Gets the descriptor for the source of a packed RIM
+     * 
+     * @param normalDesc
+     * @param idesc
+     * @return
+     */
+    private LocationDescriptor getPackedRIMSourceDescriptor(LocationDescriptor normalDesc, InstructionDescriptor idesc) {
+        // override immediate size
+        if(idesc.hasImmediateValue) idesc.immediateWidth = 2;
+        idesc.sourceWidth = 2;
+        
+        return new LocationDescriptor(normalDesc.type(), 2, normalDesc.address());
+    }
+    
+    /**
      * Gets the source of a packed RIM
      * 
      * @param desc
      * @return
      */
     private int getPackedRIMSource(LocationDescriptor normalDesc, InstructionDescriptor idesc) {
-        // override immediate size
-        if(idesc.hasImmediateValue) idesc.immediateWidth = 2;
-        idesc.sourceWidth = 2;
-        
-        return readLocation(new LocationDescriptor(normalDesc.type(), 2, normalDesc.address()));
+        return readLocation(getPackedRIMSourceDescriptor(normalDesc, idesc));
     }
     
     /**
@@ -2574,7 +2868,11 @@ public class NotSoTinySimulator {
     }
     
     /**
-     * Gets the address from BIO
+     * Gets the address from BIO (switch table version)
+     * 
+     * 64 mdbt iterations test
+     * Old: 54 seconds
+     * New: 53 seconds
      * 
      * @param desc
      * @param hasRIM
@@ -2582,6 +2880,924 @@ public class NotSoTinySimulator {
      * @return
      */
     private int getBIOAddress(InstructionDescriptor desc, boolean hasRIM, boolean hasOffset) {
+        byte bio = this.fetchBuffer[hasRIM ? 2 : 1];
+        //byte bio = this.memory.readByte(this.reg_ip + (hasRIM ? 1 : 0));
+        
+        desc.hasBIOByte = true;
+        
+        int address = 0,
+            immediateWidth = 4,
+            ipOffset = 0;
+        
+        if(desc.hasRIMByte) {
+            if(desc.hasRIMI8) { 
+                ipOffset = 3;
+            } else {
+                ipOffset = 2;
+            }
+        } else {
+            if(desc.hasRIMI8) { 
+                ipOffset = 2;
+            } else {
+                ipOffset = 1;
+            }
+        }
+        
+        //System.out.printf("%08X   ", (int) bio);
+            
+        // base, index, scale
+        switch(bio & 0xFF) { 
+            case 0x00, 0x01, 0x02, 0x03: // D:A
+                immediateWidth = bio + 1;
+                address = (this.reg_d << 16) | (this.reg_a & 0xFFFF);
+                break;
+            
+            case 0x04, 0x05, 0x06, 0x07: // IP
+                immediateWidth = bio - 0x03;
+                address = this.reg_ip + ipOffset + immediateWidth;
+                break;
+            
+            case 0x08, 0x09, 0x0A, 0x0B: // A:B
+                immediateWidth = bio - 0x07;
+                address = (this.reg_a << 16) | (this.reg_b & 0xFFFF);
+                break;
+            
+            case 0x0C, 0x0D, 0x0E, 0x0F: // IP
+                immediateWidth = bio - 0x0B;
+                address = this.reg_ip + ipOffset + immediateWidth;
+                break;
+            
+            case 0x10, 0x11, 0x12, 0x13: // B:C
+                immediateWidth = bio - 0x0F;
+                address = (this.reg_b << 16) | (this.reg_c & 0xFFFF);
+                break;
+            
+            case 0x14, 0x15, 0x16, 0x17: // IP
+                immediateWidth = bio - 0x13;
+                address = this.reg_ip + ipOffset + immediateWidth;
+                break;
+            
+            case 0x18, 0x19, 0x1A, 0x1B: // C:D
+                immediateWidth = bio - 0x17;
+                address = (this.reg_c << 16) | (this.reg_d & 0xFFFF);
+                break;
+            
+            case 0x1C, 0x1D, 0x1E, 0x1F: // IP
+                immediateWidth = bio - 0x1B;
+                address = this.reg_ip + ipOffset + immediateWidth;
+                break;
+            
+            case 0x20, 0x21, 0x22, 0x23: // J:I
+                immediateWidth = bio - 0x1F;
+                address = (this.reg_j << 16) | (this.reg_i & 0xFFFF);
+                break;
+            
+            case 0x24, 0x25, 0x26, 0x27: // IP + I
+                immediateWidth = bio - 0x23;
+                address = this.reg_ip + this.reg_i + ipOffset + immediateWidth;
+                break;
+            
+            case 0x28, 0x29, 0x2A, 0x2B: // L:K
+                immediateWidth = bio - 0x27;
+                address = (this.reg_l << 16) | (this.reg_k & 0xFFFF);
+                break;
+            
+            case 0x2C, 0x2D, 0x2E, 0x2F: // IP + J
+                immediateWidth = bio - 0x2B;
+                address = this.reg_ip + this.reg_j + ipOffset + immediateWidth;
+                break;
+            
+            case 0x30, 0x31, 0x32, 0x33: // BP
+                immediateWidth = bio - 0x2F;
+                address = this.reg_bp;
+                break;
+            
+            case 0x34, 0x35, 0x36, 0x37: // IP + K
+                immediateWidth = bio - 0x33;
+                address = this.reg_ip + this.reg_k + ipOffset + immediateWidth;
+                break;
+            
+            case 0x38, 0x39, 0x3A, 0x3B: // SP
+                immediateWidth = bio - 0x37;
+                address = this.reg_sp;
+                break;
+            
+            case 0x3C, 0x3D, 0x3E, 0x3F: // IP + L
+                immediateWidth = bio - 0x3B;
+                address = this.reg_ip + this.reg_l + ipOffset + immediateWidth;
+                break;
+            
+            case 0x40: // D:A + A
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + this.reg_a;
+                break;
+            
+            case 0x41: // D:A + B
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + this.reg_b;
+                break;
+            
+            case 0x42: // D:A + C
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + this.reg_c;
+                break;
+            
+            case 0x43: // D:A + D
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + this.reg_d;
+                break;
+            
+            case 0x44: // D:A + I
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + this.reg_i;
+                break;
+            
+            case 0x45: // D:A + J
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + this.reg_j;
+                break;
+            
+            case 0x46: // D:A + K
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + this.reg_k;
+                break;
+            
+            case 0x47: // D:A + L
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + this.reg_l;
+                break;
+            
+            case 0x48: // A:B + A
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + this.reg_a;
+                break;
+            
+            case 0x49: // A:B + B
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + this.reg_b;
+                break;
+            
+            case 0x4A: // A:B + C
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + this.reg_c;
+                break;
+            
+            case 0x4B: // A:B + D
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + this.reg_d;
+                break;
+            
+            case 0x4C: // A:B + I
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + this.reg_i;
+                break;
+            
+            case 0x4D: // A:B + J
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + this.reg_j;
+                break;
+            
+            case 0x4E: // A:B + K
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + this.reg_k;
+                break;
+            
+            case 0x4F: // A:B + L
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + this.reg_l;
+                break;
+            
+            case 0x50: // B:C + A
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + this.reg_a;
+                break;
+            
+            case 0x51: // B:C + B
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + this.reg_b;
+                break;
+            
+            case 0x52: // B:C + C
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + this.reg_c;
+                break;
+            
+            case 0x53: // B:C + D
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + this.reg_d;
+                break;
+            
+            case 0x54: // B:C + I
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + this.reg_i;
+                break;
+            
+            case 0x55: // B:C + J
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + this.reg_j;
+                break;
+            
+            case 0x56: // B:C + K
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + this.reg_k;
+                break;
+            
+            case 0x57: // B:C + L
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + this.reg_l;
+                break;
+            
+            case 0x58: // C:D + A
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + this.reg_a;
+                break;
+            
+            case 0x59: // C:D + B
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + this.reg_b;
+                break;
+            
+            case 0x5A: // C:D + C
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + this.reg_c;
+                break;
+            
+            case 0x5B: // C:D + D
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + this.reg_d;
+                break;
+            
+            case 0x5C: // C:D + I
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + this.reg_i;
+                break;
+            
+            case 0x5D: // C:D + J
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + this.reg_j;
+                break;
+            
+            case 0x5E: // C:D + K
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + this.reg_k;
+                break;
+            
+            case 0x5F: // C:D + L
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + this.reg_l;
+                break;
+            
+            case 0x60: // J:I + A
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + this.reg_a;
+                break;
+            
+            case 0x61: // J:I + B
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + this.reg_b;
+                break;
+            
+            case 0x62: // J:I + C
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + this.reg_c;
+                break;
+            
+            case 0x63: // J:I + D
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + this.reg_d;
+                break;
+            
+            case 0x64: // J:I + I
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + this.reg_i;
+                break;
+            
+            case 0x65: // J:I + J
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + this.reg_j;
+                break;
+            
+            case 0x66: // J:I + K
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + this.reg_k;
+                break;
+            
+            case 0x67: // J:I + L
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + this.reg_l;
+                break;
+            
+            case 0x68: // L:K + A
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + this.reg_a;
+                break;
+            
+            case 0x69: // L:K + B
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + this.reg_b;
+                break;
+            
+            case 0x6A: // L:K + C
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + this.reg_c;
+                break;
+            
+            case 0x6B: // L:K + D
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + this.reg_d;
+                break;
+            
+            case 0x6C: // L:K + I
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + this.reg_i;
+                break;
+            
+            case 0x6D: // L:K + J
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + this.reg_j;
+                break;
+            
+            case 0x6E: // L:K + K
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + this.reg_k;
+                break;
+            
+            case 0x6F: // L:K + L
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + this.reg_l;
+                break;
+            
+            case 0x70: // BP + A
+                address = this.reg_bp + this.reg_a;
+                break;
+                
+            case 0x71: // BP + B
+                address = this.reg_bp + this.reg_b;
+                break;
+            
+            case 0x72: // BP + C
+                address = this.reg_bp + this.reg_c;
+                break;
+                
+            case 0x73: // BP + D
+                address = this.reg_bp + this.reg_d;
+                break;
+                
+            case 0x74: // BP + I
+                address = this.reg_bp + this.reg_i;
+                break;
+                
+            case 0x75: // BP + J
+                address = this.reg_bp + this.reg_j;
+                break;
+            
+            case 0x76: // BP + K
+                address = this.reg_bp + this.reg_k;
+                break;
+                
+            case 0x77: // BP + L
+                address = this.reg_bp + this.reg_l;
+                break;
+            
+            case 0x78: // A
+                address = this.reg_a;
+                break;
+            
+            case 0x79: // B
+                address = this.reg_b;
+                break;
+            
+            case 0x7A: // C
+                address = this.reg_c;
+                break;
+            
+            case 0x7B: // D
+                address = this.reg_d;
+                break;
+            
+            case 0x7C: // I
+                address = this.reg_i;
+                break;
+            
+            case 0x7D: // J
+                address = this.reg_j;
+                break;
+            
+            case 0x7E: // K
+                address = this.reg_k;
+                break;
+            
+            case 0x7F: // L
+                address = this.reg_l;
+                break;
+            
+            case 0x80: // D:A + 2*A
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_a << 1);
+                break;
+            
+            case 0x81: // D:A + 2*B
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_b << 1);
+                break;
+            
+            case 0x82: // D:A + 2*C
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_c << 1);
+                break;
+            
+            case 0x83: // D:A + 2*D
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_d << 1);
+                break;
+            
+            case 0x84: // D:A + 2*I
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_i << 1);
+                break;
+            
+            case 0x85: // D:A + 2*J
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_j << 1);
+                break;
+                
+            case 0x86: // D:A + 2*K
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_k << 1);
+                break;
+            
+            case 0x87: // D:A + 2*L
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_l << 1);
+                break;
+            
+            case 0x88: // A:B + 2*A
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_a << 1);
+                break;
+            
+            case 0x89: // A:B + 2*B
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_b << 1);
+                break;
+            
+            case 0x8A: // A:B + 2*C
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_c << 1);
+                break;
+            
+            case 0x8B: // A:B + 2*D
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_d << 1);
+                break;
+            
+            case 0x8C: // A:B + 2*I
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_i << 1);
+                break;
+            
+            case 0x8D: // A:B + 2*J
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_j << 1);
+                break;
+                
+            case 0x8E: // A:B + 2*K
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_k << 1);
+                break;
+            
+            case 0x8F: // A:B + 2*L
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_l << 1);
+                break;
+            
+            case 0x90: // B:C + 2*A
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_a << 1);
+                break;
+            
+            case 0x91: // B:C + 2*B
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_b << 1);
+                break;
+            
+            case 0x92: // B:C + 2*C
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_c << 1);
+                break;
+            
+            case 0x93: // B:C + 2*D
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_d << 1);
+                break;
+            
+            case 0x94: // B:C + 2*I
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_i << 1);
+                break;
+            
+            case 0x95: // B:C + 2*J
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_j << 1);
+                break;
+                
+            case 0x96: // B:C + 2*K
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_k << 1);
+                break;
+            
+            case 0x97: // B:C + 2*L
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_l << 1);
+                break;
+            
+            case 0x98: // C:D + 2*A
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_a << 1);
+                break;
+            
+            case 0x99: // C:D + 2*B
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_b << 1);
+                break;
+            
+            case 0x9A: // C:D + 2*C
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_c << 1);
+                break;
+            
+            case 0x9B: // C:D + 2*D
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_d << 1);
+                break;
+            
+            case 0x9C: // C:D + 2*I
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_i << 1);
+                break;
+            
+            case 0x9D: // C:D + 2*J
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_j << 1);
+                break;
+                
+            case 0x9E: // C:D + 2*K
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_k << 1);
+                break;
+            
+            case 0x9F: // C:D + 2*L
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_l << 1);
+                break;
+            
+            case 0xA0: // J:I + 2*A
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_a << 1);
+                break;
+            
+            case 0xA1: // J:I + 2*B
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_b << 1);
+                break;
+            
+            case 0xA2: // J:I + 2*C
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_c << 1);
+                break;
+            
+            case 0xA3: // J:I + 2*D
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_d << 1);
+                break;
+            
+            case 0xA4: // J:I + 2*I
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_i << 1);
+                break;
+            
+            case 0xA5: // J:I + 2*J
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_j << 1);
+                break;
+                
+            case 0xA6: // J:I + 2*K
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_k << 1);
+                break;
+            
+            case 0xA7: // J:I + 2*L
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_l << 1);
+                break;
+            
+            case 0xA8: // L:K + 2*A
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_a << 1);
+                break;
+            
+            case 0xA9: // L:K + 2*B
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_b << 1);
+                break;
+            
+            case 0xAA: // L:K + 2*C
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_c << 1);
+                break;
+            
+            case 0xAB: // L:K + 2*D
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_d << 1);
+                break;
+            
+            case 0xAC: // L:K + 2*I
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_i << 1);
+                break;
+            
+            case 0xAD: // L:K + 2*J
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_j << 1);
+                break;
+                
+            case 0xAE: // L:K + 2*K
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_k << 1);
+                break;
+            
+            case 0xAF: // L:K + 2*L
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_l << 1);
+                break;
+            
+            case 0xB0: // BP + 2*A
+                address = this.reg_bp + (this.reg_a << 1);
+                break;
+            
+            case 0xB1: // BP + 2*B
+                address = this.reg_bp + (this.reg_b << 1);
+                break;
+                
+            case 0xB2: // BP + 2*C
+                address = this.reg_bp + (this.reg_c << 1);
+                break;
+                
+            case 0xB3: // BP + 2*D
+                address = this.reg_bp + (this.reg_d << 1);
+                break;
+                
+            case 0xB4: // BP + 2*I
+                address = this.reg_bp + (this.reg_i << 1);
+                break;
+            
+            case 0xB5: // BP + 2*J
+                address = this.reg_bp + (this.reg_j << 1);
+                break;
+                
+            case 0xB6: // BP + 2*K
+                address = this.reg_bp + (this.reg_k << 1);
+                break;
+                
+            case 0xB7: // BP + 2*L
+                address = this.reg_bp + (this.reg_l << 1);
+                break;
+            
+            case 0xB8: // 2*A
+                address = this.reg_a << 1;
+                break;
+            
+            case 0xB9: // 2*B
+                address = this.reg_b << 1;
+                break;
+                
+            case 0xBA: // 2*C
+                address = this.reg_c << 1;
+                break;
+                
+            case 0xBB: // 2*D
+                address = this.reg_d << 1;
+                break;
+                
+            case 0xBC: // 2*I
+                address = this.reg_i << 1;
+                break;
+                
+            case 0xBD: // 2*J
+                address = this.reg_j << 1;
+                break;
+                
+            case 0xBE: // 2*K
+                address = this.reg_k << 1;
+                break;
+                
+            case 0xBF: // 2*L
+                address = this.reg_l << 1;
+                break;
+            
+            case 0xC0: // D:A + 4*A
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_a << 2);
+                break;
+            
+            case 0xC1: // D:A + 4*B
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_b << 2);
+                break;
+            
+            case 0xC2: // D:A + 4*C
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_c << 2);
+                break;
+            
+            case 0xC3: // D:A + 4*D
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_d << 2);
+                break;
+            
+            case 0xC4: // D:A + 4*I
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_i << 2);
+                break;
+            
+            case 0xC5: // D:A + 4*J
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_j << 2);
+                break;
+                
+            case 0xC6: // D:A + 4*K
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_k << 2);
+                break;
+            
+            case 0xC7: // D:A + 4*L
+                address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_l << 2);
+                break;
+            
+            case 0xC8: // A:B + 4*A
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_a << 2);
+                break;
+            
+            case 0xC9: // A:B + 4*B
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_b << 2);
+                break;
+            
+            case 0xCA: // A:B + 4*C
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_c << 2);
+                break;
+            
+            case 0xCB: // A:B + 4*D
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_d << 2);
+                break;
+            
+            case 0xCC: // A:B + 4*I
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_i << 2);
+                break;
+            
+            case 0xCD: // A:B + 4*J
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_j << 2);
+                break;
+                
+            case 0xCE: // A:B + 4*K
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_k << 2);
+                break;
+            
+            case 0xCF: // A:B + 4*L
+                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_l << 2);
+                break;
+            
+            case 0xD0: // B:C + 4*A
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_a << 2);
+                break;
+            
+            case 0xD1: // B:C + 4*B
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_b << 2);
+                break;
+            
+            case 0xD2: // B:C + 4*C
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_c << 2);
+                break;
+            
+            case 0xD3: // B:C + 4*D
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_d << 2);
+                break;
+            
+            case 0xD4: // B:C + 4*I
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_i << 2);
+                break;
+            
+            case 0xD5: // B:C + 4*J
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_j << 2);
+                break;
+                
+            case 0xD6: // B:C + 4*K
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_k << 2);
+                break;
+            
+            case 0xD7: // B:C + 4*L
+                address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_l << 2);
+                break;
+            
+            case 0xD8: // C:D + 4*A
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_a << 2);
+                break;
+            
+            case 0xD9: // C:D + 4*B
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_b << 2);
+                break;
+            
+            case 0xDA: // C:D + 4*C
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_c << 2);
+                break;
+            
+            case 0xDB: // C:D + 4*D
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_d << 2);
+                break;
+                
+            case 0xDC: // C:D + 4*I
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_i << 2);
+                break;
+            
+            case 0xDD: // C:D + 4*J
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_j << 2);
+                break;
+                
+            case 0xDE: // C:D + 4*K
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_k << 2);
+                break;
+            
+            case 0xDF: // C:D + 4*L
+                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_l << 2);
+                break;
+            
+            case 0xE0: // J:I + 4*A
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_a << 2);
+                break;
+            
+            case 0xE1: // J:I + 4*B
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_b << 2);
+                break;
+            
+            case 0xE2: // J:I + 4*C
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_c << 2);
+                break;
+            
+            case 0xE3: // J:I + 4*D
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_d << 2);
+                break;
+            
+            case 0xE4: // J:I + 4*I
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_i << 2);
+                break;
+            
+            case 0xE5: // J:I + 4*J
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_j << 2);
+                break;
+                
+            case 0xE6: // J:I + 4*K
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_k << 2);
+                break;
+            
+            case 0xE7: // J:I + 4*L
+                address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_l << 2);
+                break;
+            
+            case 0xE8: // L:K + 4*A
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_a << 2);
+                break;
+            
+            case 0xE9: // L:K + 4*B
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_b << 2);
+                break;
+            
+            case 0xEA: // L:K + 4*C
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_c << 2);
+                break;
+            
+            case 0xEB: // L:K + 4*D
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_d << 2);
+                break;
+            
+            case 0xEC: // L:K + 4*I
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_i << 2);
+                break;
+            
+            case 0xED: // L:K + 4*J
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_j << 2);
+                break;
+                
+            case 0xEE: // L:K + 4*K
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_k << 2);
+                break;
+            
+            case 0xEF: // L:K + 4*L
+                address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_l << 2);
+                break;
+            
+            case 0xF0: // BP + 4*A
+                address = this.reg_bp + (this.reg_a << 2);
+                break;
+            
+            case 0xF1: // BP + 4*B
+                address = this.reg_bp + (this.reg_b << 2);
+                break;
+                
+            case 0xF2: // BP + 4*C
+                address = this.reg_bp + (this.reg_c << 2);
+                break;
+                
+            case 0xF3: // BP + 4*D
+                address = this.reg_bp + (this.reg_d << 2);
+                break;
+                
+            case 0xF4: // BP + 4*I
+                address = this.reg_bp + (this.reg_i << 2);
+                break;
+            
+            case 0xF5: // BP + 4*J
+                address = this.reg_bp + (this.reg_j << 2);
+                break;
+                
+            case 0xF6: // BP + 4*K
+                address = this.reg_bp + (this.reg_k << 2);
+                break;
+                
+            case 0xF7: // BP + 4*L
+                address = this.reg_bp + (this.reg_l << 2);
+                break;
+            
+            case 0xF8: // 4*A
+                address = this.reg_a << 2;
+                break;
+            
+            case 0xF9: // 4*B
+                address = this.reg_b << 2;
+                break;
+                
+            case 0xFA: // 4*C
+                address = this.reg_c << 2;
+                break;
+                
+            case 0xFB: // 4*D
+                address = this.reg_d << 2;
+                break;
+                
+            case 0xFC: // 4*I
+                address = this.reg_i << 2;
+                break;
+                
+            case 0xFD: // 4*J
+                address = this.reg_j << 2;
+                break;
+                
+            case 0xFE: // 4*K
+                address = this.reg_k << 2;
+                break;
+                
+            case 0xFF: // 4*L
+                address = this.reg_l << 2;
+                break;
+        }
+        
+        // offset
+        if(hasOffset) {
+            int immOffs = hasRIM ? 3 : 2;
+            
+            address += switch(immediateWidth) {
+                case 1  -> this.fetchBuffer[immOffs];
+                case 2  -> get2FetchBytes(immOffs);
+                case 3  -> get3FetchBytes(immOffs);
+                case 4  -> get4FetchBytes(immOffs);
+                default -> 0;
+            };
+            
+            /*
+            long immAddr = this.reg_ip + (hasRIM ? 2 : 1);
+            
+            address += switch(immediateWidth) {
+                case 1  -> this.memory.readByte(immAddr);
+                case 2  -> this.memory.read2Bytes(immAddr);
+                case 3  -> this.memory.read3Bytes(immAddr);
+                case 4  -> this.memory.read4Bytes(immAddr);
+                default -> 0;
+            };
+            */
+            
+            desc.hasImmediateAddress = true;
+            desc.immediateWidth = immediateWidth;
+        }
+        
+        //System.out.printf("%08X%n", address);
+        return address;
+    }
+    
+    /**
+     * Gets the address from BIO (old computed version)
+     * 
+     * @param desc
+     * @param hasRIM
+     * @param hasOffset
+     * @return
+     */
+    /*
+    private int getBIOAddressOld(InstructionDescriptor desc, boolean hasRIM, boolean hasOffset) {
         byte bio = this.memory.readByte(this.reg_ip + (hasRIM ? 1 : 0)),
              base = (byte)((bio >> 3) & 0x07),
              index = (byte)(bio & 0x07),
@@ -2622,7 +3838,7 @@ public class NotSoTinySimulator {
                 // locate next instruction
                 if(desc.hasRIMByte) addr++;     // rim
                 addr++; // bio
-                if(desc.hasImmediateAddress || desc.hasImmediateValue) addr += desc.immediateWidth; // immediate
+                if(hasOffset) addr += offsetSize;
                 if(desc.hasRIMI8) addr++; // instructions add to immediateWidth later
                 
                 // base as index
@@ -2669,6 +3885,43 @@ public class NotSoTinySimulator {
         }
         
         return (int) addr;
+    }*/
+    
+    /**
+     * Gets a 16 bit value from the fetch buffer
+     * 
+     * @param offset
+     * @return
+     */
+    private short get2FetchBytes(int offset) {
+        return (short)
+               ((this.fetchBuffer[offset] & 0xFF) |
+               (this.fetchBuffer[offset + 1] << 8));
+    }
+    
+    /**
+     * Gets a 24 bit value from the fetch buffer
+     * 
+     * @param offset
+     * @return
+     */
+    private int get3FetchBytes(int offset) {
+        return (this.fetchBuffer[offset] & 0xFF) |
+               ((this.fetchBuffer[offset + 1] & 0xFF) << 8) |
+               (this.fetchBuffer[offset + 2] << 16);
+    }
+    
+    /**
+     * Gets a 32 bit value from the fetch buffer
+     * 
+     * @param offset
+     * @return
+     */
+    private int get4FetchBytes(int offset) {
+        return (this.fetchBuffer[offset] & 0xFF) |
+               ((this.fetchBuffer[offset + 1] & 0xFF) << 8) |
+               ((this.fetchBuffer[offset + 2] & 0xFF) << 16) |
+               (this.fetchBuffer[offset + 3] << 24);
     }
     
     /**
@@ -2697,12 +3950,16 @@ public class NotSoTinySimulator {
      * Fires an interrupt with the given vector. May be ignored.
      * 
      * @param vector
+     * @return true if the interrupt was not masked
      */
-    public void fireMaskableInterrupt(byte vector) {
+    public boolean fireMaskableInterrupt(byte vector) {
         if((this.reg_pf & 1) != 0) {
             this.halted = false;
             this.externalInterrupt = true;
             this.externalInterruptVector = vector;
+            return true;
+        } else {
+            return false;
         }
     }
     
@@ -2734,6 +3991,8 @@ public class NotSoTinySimulator {
     public int getRegBP() { return this.reg_bp; }
     public int getRegSP() { return this.reg_sp; }
     public boolean getHalted() { return this.halted; }
+    public boolean hasPendingInterrupt() { return this.externalInterrupt; }
+    public byte getPendingInterruptVector() { return this.externalInterruptVector; }
     
     /*
      * setty bois

@@ -15,7 +15,9 @@ public enum Operation {
     MOVS    (Family.MOVE),
     MOVZ    (Family.MOVE),
     CMOVCC  (Family.MOVE),
+    PCMOVCC (Family.MOVE),
     XCHG    (Family.MOVE),
+    XCHGW   (Family.MOVE),
     PUSH    (Family.MOVE),
     PUSHA   (Family.MOVE),
     POP     (Family.MOVE),
@@ -80,6 +82,7 @@ public enum Operation {
     INT     (Family.JUMP),
     
     CMP     (Family.JUMP),
+    PCMP	(Family.JUMP),
     JCC     (Family.JUMP),
     ;
     
@@ -105,9 +108,15 @@ public enum Operation {
             return Operation.valueOf(n);
         } catch(IllegalArgumentException e) {
             // packed stuff
-            if(n.endsWith("4") || n.endsWith("8")) {
-                return Operation.valueOf(n.substring(0, n.length() - 1));
-            }
+        	if(n.contains("4") || n.contains("8")) {
+        		if(n.endsWith("4") || n.endsWith("8")) {
+        			// normal packed stuff
+                    return Operation.valueOf(n.substring(0, n.length() - 1));
+                } else {
+                	// only pcmov has a second suffix
+                	return Operation.PCMOVCC;
+                }
+        	}
             
             // JCC & aliases
             switch(n) {

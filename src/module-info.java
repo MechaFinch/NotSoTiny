@@ -6,4 +6,6 @@ module NotSoTiny {
     requires java.desktop;
     
     exports notsotiny.ui;
+    exports notsotiny.sim;
+    exports notsotiny.sim.memory;
 }

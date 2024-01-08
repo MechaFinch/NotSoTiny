@@ -59,29 +59,30 @@ public class Disassembler {
                  PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L, PUSH_BP, PUSH_F,
                  PUSH_PF, POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L, POP_BP, POP_F,
                  POP_PF, NOT_F, INC_I, INC_J, INC_K, INC_L, ICC_I, ICC_J, ICC_K, ICC_L, DEC_I, DEC_J,
-                 DEC_K, DEC_L, DCC_I, DCC_J, DCC_K, DCC_L:
+                 DEC_K, DEC_L, DCC_I, DCC_J, DCC_K, DCC_L, ICC_A, ICC_B, ICC_C, ICC_D, DCC_A, DCC_B,
+                 DCC_C, DCC_D:
                 s += " " + os.substring(os.indexOf('_') + 1);
                 s = s.replace("_", ", ");
                 break;
             
             // 8 bit immediates
-            case MOVS_A_I8, MOVS_B_I8, MOVS_C_I8, MOVS_D_I8, ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADC_A_I8,
-                 ADC_B_I8, ADC_C_I8, ADC_D_I8, SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SBB_A_I8, SBB_B_I8,
-                 SBB_C_I8, SBB_D_I8, ADD_SP_I8, SUB_SP_I8, JMP_I8, CALL_I8, INT_I8, JC_I8, JNC_I8, JS_I8, JNS_I8,
+            case MOVS_A_I8, MOVS_B_I8, MOVS_C_I8, MOVS_D_I8,
+                 ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADD_I_I8, ADD_J_I8, ADD_K_I8, ADD_L_I8,
+                 SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SUB_I_I8, SUB_J_I8, SUB_K_I8, SUB_L_I8,
+                 ADC_A_I8, ADC_B_I8, ADC_C_I8, ADC_D_I8, SBB_A_I8, SBB_B_I8, SBB_C_I8, SBB_D_I8,
+                 ADD_SP_I8, ADD_BP_I8, SUB_SP_I8, SUB_BP_I8, JMP_I8, CALL_I8, INT_I8, JC_I8, JNC_I8, JS_I8, JNS_I8,
                  JO_I8, JNO_I8, JZ_I8, JNZ_I8, JA_I8, JBE_I8, JG_I8, JGE_I8, JL_I8, JLE_I8:
                      s += disassembleImmediateShortcut(memory, op, 1);
                 break;
             
             // 16 bit immediates
             case MOV_I_I16, MOV_J_I16, MOV_K_I16, MOV_L_I16, MOV_A_I16, MOV_B_I16, MOV_C_I16, MOV_D_I16,
-                 ADD_A_I16, ADD_B_I16, ADD_C_I16, ADD_D_I16, ADC_A_I16, ADC_B_I16, ADC_C_I16, ADC_D_I16,
-                 SUB_A_I16, SUB_B_I16, SUB_C_I16, SUB_D_I16, SBB_A_I16, SBB_B_I16, SBB_C_I16, SBB_D_I16,
                  JMP_I16, CALL_I16:
                 s += disassembleImmediateShortcut(memory, op, 2);
                 break;
             
             // 32 bit immediate
-            case MOV_SP_I32, MOV_BP_I32, PUSH_I32, JMP_I32, JMPA_I32, CALL_I32, CALLA_I32:
+            case PUSH_I32, JMP_I32, JMPA_I32, CALL_I32, CALLA_I32:
                 s += disassembleImmediateShortcut(memory, op, 4);
                 break;
             
@@ -108,6 +109,15 @@ public class Disassembler {
             case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8:
                 s += disassembleRIM(memory, true, false, false, false, false) + ", " + readHex(memory, 1);
                 break;
+            
+            case CMOVCC_RIM:
+            	s = s.substring(0, s.length() - 2);
+            	String params = disassembleRIM(memory, true, true, false, false, false);
+            	int cmp = readSize(memory, 1);
+            	String cmps = getMnemonic(Opcode.fromOp((byte) cmp));
+            	
+            	s += cmps.substring(1) + " " + params;
+            	break;
             
             // packed
             case PADD_RIMP, PADC_RIMP, PSUB_RIMP, PSBB_RIMP, PMUL_RIMP, PDIV_RIMP, PDIVS_RIMP:
@@ -412,7 +422,7 @@ public class Disassembler {
             case 1          -> memory.readByte(this.lastAddress);
             case 2          -> memory.read2Bytes(this.lastAddress);
             case 3          -> memory.read3Bytes(this.lastAddress);
-            case default    -> memory.read4Bytes(this.lastAddress);
+            default    		-> memory.read4Bytes(this.lastAddress);
         };
         
         this.lastAddress += size;
@@ -436,7 +446,7 @@ public class Disassembler {
                     case 5          -> Register.BH;
                     case 6          -> Register.CH;
                     case 7          -> Register.DH;
-                    case default    -> Register.NONE;
+                    default    		-> Register.NONE;
                 };
                 
             case 4:
@@ -449,7 +459,7 @@ public class Disassembler {
                     case 5          -> Register.LK;
                     case 6          -> Register.BP;
                     case 7          -> Register.SP; 
-                    case default    -> Register.NONE;
+                    default    		-> Register.NONE;
                 };
             
             default:
@@ -462,7 +472,7 @@ public class Disassembler {
                     case 5          -> Register.J;
                     case 6          -> Register.K;
                     case 7          -> Register.L;
-                    case default    -> Register.NONE;
+                    default    		-> Register.NONE;
                 };
         }
     }

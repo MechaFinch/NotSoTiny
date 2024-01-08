@@ -5,6 +5,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,8 +42,10 @@ import notsotiny.asm.Disassembler;
 import notsotiny.sim.NotSoTinySimulator;
 import notsotiny.sim.memory.FlatMemoryController;
 import notsotiny.sim.memory.Halter;
+import notsotiny.sim.memory.InterruptController;
 import notsotiny.sim.memory.MemoryManager;
 import notsotiny.sim.memory.RandomController;
+import notsotiny.sim.memory.ScreenBuffer;
 import notsotiny.sim.memory.SoundInterfaceController;
 
 public class NotSoTinyUI extends Application {
@@ -54,10 +59,17 @@ public class NotSoTinyUI extends Application {
     public void start(Stage primaryStage) throws Exception {
         this.stage = primaryStage;
         
-        // TODO Auto-generated method stub
         initSimulator();
         createUI();
     }
+    
+    /*
+     * PARAMETERS
+     */
+    
+    private static final long CLOCK_PERIOD = 0l;
+    
+    private static final boolean USE_SCREEN = true;
     
     /*
      * == SIMULATION ==
@@ -72,16 +84,18 @@ public class NotSoTinyUI extends Application {
                               SOUND_START =     0xF001_0000,
                               VIDEO_START =     0xF002_0000,
                               RANDOM_START =    0xF004_0000,
+                              PIC_START =       0xF005_0000,
                               BOOTROM_START =   0xFFFF_FC00;
     
     private static final int LOWRAM_SIZE =      0x0010_0000,
                              SPI_SIZE =         0x0000_0004,
                              KEYPAD_SIZE =      0x0000_0008,
                              CC_SIZE =          0x0000_0002,
-                             KEYBOARD_SIZE =    0x0000_0002,
-                             SOUND_SIZE =       0x0000_0004,
+                             KEYBOARD_SIZE =    0x0000_0004,
+                             SOUND_SIZE =       0x0000_0008,
                              VIDEO_SIZE =       0x0002_0000,
-                             RANDOM_SIZE =      0x0000_0004,
+                             RANDOM_SIZE =      0x0000_0010,
+                             PIC_SIZE =         0x0000_0200,
                              BOOTROM_SIZE =     0x0000_0400;
     
     private static final int VIDEO_BUFFER_SIZE =    0x0001_4000,
@@ -89,15 +103,20 @@ public class NotSoTinyUI extends Application {
                              VIDEO_OTHER_SIZE =     0x0002_0000 - (VIDEO_BUFFER_SIZE + VIDEO_CHARSET_SIZE);
     
     // other constants
+    private static final byte VECTOR_RESET = 0,
+                              VECTOR_RTC = 1,
+                              VECTOR_KEYUP = 2,
+                              VECTOR_KEYDOWN = 3;
+    
     /*
     private static final String PROGRAM_DATA_FOLDER = "data\\",
                                 PROGRAM_EXEC_FILE = "game.oex",
-                                TEXT_FONT_FILE = "text.dat";
+                                TEXT_FONT_FILE = "data\\text.dat";
     */
     
-    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\test\\",
-                                PROGRAM_EXEC_FILE = "test1.oex",
-                                TEXT_FONT_FILE = "C:\\Users\\wetca\\Desktop\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\textsmall.dat";
+    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernel\\emu\\",
+                                PROGRAM_EXEC_FILE = "forth.oex",
+                                TEXT_FONT_FILE = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\textsmall.dat";
     
     
     // sim vars
@@ -121,7 +140,11 @@ public class NotSoTinyUI extends Application {
     
     private RandomController rand;
     
+    private InterruptController pic;
+    
     private Relocator relocator;
+    
+    private ScreenBuffer screenBufferController;
     
     // actual memory arrays
     private byte[] lowramArray,
@@ -201,10 +224,16 @@ public class NotSoTinyUI extends Application {
          * Steps the simulator
          */
         private void step() {
-            if(NotSoTinyUI.this.halter.halted() || NotSoTinyUI.this.sim.getHalted()) {
+            if(NotSoTinyUI.this.halter.halted() || NotSoTinyUI.this.sim.getHalted() || !NotSoTinyUI.this.freerunEnabled) {
                 this.stopSim();
             } else {
                 try { 
+                    if(NotSoTinyUI.this.traceEnabled) {
+                        if(NotSoTinyUI.this.advancedViewVisisble) NotSoTinyUI.this.traceInstruction();
+                        else NotSoTinyUI.this.dummyTrace();
+                    }
+                    
+                    NotSoTinyUI.this.pic.step(NotSoTinyUI.this.sim);
                     NotSoTinyUI.this.sim.step();
                 } catch(Exception e) {
                     e.printStackTrace();
@@ -215,10 +244,18 @@ public class NotSoTinyUI extends Application {
                 NotSoTinyUI.this.instructionsExecutedLast++;
             }
             
+            // sanity check
+            if(NotSoTinyUI.this.sim.getRegIP() < 1024) {
+                NotSoTinyUI.this.sim.setHalted(true);
+                NotSoTinyUI.this.freerunEnabled = false;
+                throw new IllegalStateException("Out of bounds IP: " + NotSoTinyUI.this.sim.getRegIP());
+            }
+            
             if(NotSoTinyUI.this.enableBreakpoints && NotSoTinyUI.this.breakpointAddress != -1l) {
                 if(NotSoTinyUI.this.sim.getRegIP() == (NotSoTinyUI.this.breakpointAddress & 0xFFFF_FFFF)) {
                     //NotSoTinyUI.this.halter.writeByte(0, (byte) 0);
                     NotSoTinyUI.this.sim.setHalted(true);
+                    NotSoTinyUI.this.freerunEnabled = false;
                 }
             }
         }
@@ -235,9 +272,13 @@ public class NotSoTinyUI extends Application {
     
     private double lastAverageMIPS = 0;
     
-    private boolean enableBreakpoints = false;
+    private boolean enableBreakpoints = false,
+                    freerunEnabled = false,
+                    traceEnabled = false;
     
     private String breakpointSymbol = "";
+    
+    private Deque<String> instructionTrace = new ArrayDeque<>();
     
     /**
      * Initialize the simulator
@@ -269,6 +310,8 @@ public class NotSoTinyUI extends Application {
         halter = new Halter();
         sic = new SoundInterfaceController();
         rand = new RandomController();
+        pic = new InterruptController();
+        screenBufferController = new ScreenBuffer(videoBufferArray); // 3FFFC
         
         // initialize memory manager
         this.mmu = new MemoryManager();
@@ -279,11 +322,18 @@ public class NotSoTinyUI extends Application {
         this.mmu.registerSegment(keyboardBufferController, KEYBOARD_START, KEYBOARD_SIZE);
         this.mmu.registerSegment(videoBufferController, VIDEO_START, VIDEO_BUFFER_SIZE);
         this.mmu.registerSegment(videoCharsetController, VIDEO_START + VIDEO_BUFFER_SIZE, VIDEO_CHARSET_SIZE);
-        this.mmu.registerSegment(videoOtherController, VIDEO_START + VIDEO_BUFFER_SIZE + VIDEO_CHARSET_SIZE, VIDEO_OTHER_SIZE);
+        this.mmu.registerSegment(videoOtherController, VIDEO_START + VIDEO_BUFFER_SIZE + VIDEO_CHARSET_SIZE, VIDEO_OTHER_SIZE - 4);
+        this.mmu.registerSegment(pic, PIC_START, PIC_SIZE);
         this.mmu.registerSegment(bootromController, BOOTROM_START, BOOTROM_SIZE);
         
         this.mmu.registerSegment(sic, SOUND_START, SOUND_SIZE);
         this.mmu.registerSegment(rand, RANDOM_START, RANDOM_SIZE);
+        this.mmu.registerSegment(screenBufferController, VIDEO_START + VIDEO_BUFFER_SIZE + VIDEO_CHARSET_SIZE + VIDEO_OTHER_SIZE - 4, 4);
+        
+        // initialize trace
+        for(int i = 0; i < 16; i++) {
+            instructionTrace.push("");
+        }
         
         //this.mmu.printMap();
         
@@ -297,7 +347,9 @@ public class NotSoTinyUI extends Application {
         this.relocator = (Relocator) relocatorPair.get(0);
         String entrySymbol = (String) relocatorPair.get(1);
         
-        long entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, lowramArray, 0, 0);
+        int relStart = this.relocator.hasReference("ORIGIN", false) ? 0 : 1024;
+        
+        long entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, lowramArray, relStart, relStart);
         
         // write entry vector
         this.mmu.write4Bytes(0, (int) entry);
@@ -305,38 +357,46 @@ public class NotSoTinyUI extends Application {
         // simulator
         this.sim = new NotSoTinySimulator(this.mmu);
         this.sim.setRegSP((int)(LOWRAM_START + LOWRAM_SIZE));
+        this.sim.setRegPF((short) 0);
         
         // timing stuff
-        this.simThread = new SimulatorThread(10_000);
+        this.simThread = new SimulatorThread(CLOCK_PERIOD);
         
         this.simThread.start();
         
         // start seconds clock
         /*
         this.scheduler.scheduleAtFixedRate(() -> {
-            this.sim.fireMaskableInterrupt((byte) 1);
-            this.halter.clear();
+            this.pic.setRequest(VECTOR_RTC);
+            this.pic.step(this.sim);
             notifySimulatorThread();
-        }, 1_000_000l, 10_000l, TimeUnit.MICROSECONDS);
+        }, 1_000_000l, 1_000l, TimeUnit.MICROSECONDS);
         */
-        // 100 hz
+        // 1000 hz
         
         //this.halter.writeByte(0l, (byte) 0);
-        this.sim.setHalted(true);
+        this.sim.setHalted(false);
+        this.freerunEnabled = false;
     }
     
     /**
      * Toggles the simulator
      */
     private void toggleRunSimulator() {
-        if(this.halter.halted()) {
+        if(!this.freerunEnabled) {
+            this.freerunEnabled = true;
             this.halter.clear();
             this.sim.setHalted(false);
             notifySimulatorThread();
         } else {
+            this.freerunEnabled = false;
             this.halter.writeByte(0l, (byte) 0);
             this.sim.setHalted(true);
         }
+    }
+    
+    private void toggleTrace() {
+        this.traceEnabled = !this.traceEnabled;
     }
     
     /**
@@ -352,6 +412,11 @@ public class NotSoTinyUI extends Application {
      * Step the simulator
      */
     private void stepSim() {
+        if(NotSoTinyUI.this.traceEnabled) {
+            if(NotSoTinyUI.this.advancedViewVisisble) NotSoTinyUI.this.traceInstruction();
+            else NotSoTinyUI.this.dummyTrace();
+        }
+        
         this.sim.step();
         this.instructionsExecutedLast++;
         
@@ -394,13 +459,41 @@ public class NotSoTinyUI extends Application {
     
     private Button buttonToggleAdvanced,
                    buttonToggleRunning,
-                   buttonStepSim;
+                   buttonStepSim,
+                   buttonToggleTrace;
     
     private CheckBox checkEnableBreakpoints;
     
     private Node advancedView;
     
     private boolean advancedViewVisisble = false;
+    
+    private synchronized void traceInstruction() {
+        String descriptor;
+        
+        if(this.sim.hasPendingInterrupt()) {
+            descriptor = String.format("INTERRUPT %02X", this.sim.getPendingInterruptVector());
+        } else {
+            Disassembler dis = new Disassembler();
+            String disasm = dis.disassemble(this.mmu, Integer.toUnsignedLong(sim.getRegIP()));
+            
+            if(disasm == null) {
+                System.out.println("ERROR");
+                this.freerunEnabled = false;
+                disasm = "ERROR";
+            }
+            
+            descriptor = String.format("%08X: %-16s", this.sim.getRegIP(), disasm);
+        }
+        
+        this.instructionTrace.poll();
+        this.instructionTrace.offer(descriptor);
+    }
+    
+    private synchronized void dummyTrace() {
+        //this.instructionTrace.offer("");
+        //this.instructionTrace.poll();
+    }
     
     /**
      * Initialize the UI 
@@ -410,6 +503,12 @@ public class NotSoTinyUI extends Application {
         // initialize components in post-order
         // screen
         this.screen = new Screen(320, 240, 3);
+        
+        if(USE_SCREEN) {
+            this.screen.enable();
+        } else {
+            this.screen.disable();
+        }
         
         // basic info
         this.infoTotalInstructions = new Text("Total instrctions: 0");
@@ -452,8 +551,10 @@ public class NotSoTinyUI extends Application {
         
         this.buttonToggleRunning = new Button("Start CPU");
         this.buttonStepSim = new Button("Step CPU");
-        HBox boxToggleStep = new HBox(buttonToggleRunning, buttonStepSim);
+        this.buttonToggleTrace = new Button("Start Trace");
+        HBox boxToggleStep = new HBox(this.buttonToggleRunning, this.buttonStepSim, this.buttonToggleTrace);
         this.buttonToggleRunning.setMinWidth(83);
+        this.buttonToggleTrace.setMinWidth(96);
         
         Region rAdvancedViewSeparator1 = new Region();
         Region rAdvancedViewSeparator2 = new Region();
@@ -479,11 +580,12 @@ public class NotSoTinyUI extends Application {
         // bindings
         this.buttonToggleAdvanced.setOnAction(e -> toggleAdvancedView());
         this.buttonToggleRunning.setOnAction(e -> toggleRunSimulator());
+        this.buttonToggleTrace.setOnAction(e -> toggleTrace());
         
         // step button
         this.buttonStepSim.setOnAction(e -> {
-            this.halter.clear();
-            this.sim.setHalted(false);
+            //this.halter.clear();
+            //this.sim.setHalted(false);
             stepSim();
         });
         
@@ -496,11 +598,22 @@ public class NotSoTinyUI extends Application {
         this.fieldBreakpoint.setOnAction(e -> {
             this.breakpointSymbol = this.fieldBreakpoint.getText();
             
-            try {
-                this.breakpointAddress = this.relocator.getReference(this.breakpointSymbol);
-            } catch(Exception ex) {
-                this.breakpointSymbol = "(invalid symbol)";
-                this.breakpointAddress = -1l;
+            // hex
+            if(this.breakpointSymbol.toLowerCase().startsWith("0x")) {
+                try {
+                    this.breakpointAddress = Long.parseLong(breakpointSymbol.substring(2), 16);
+                } catch(Exception ex) {
+                    this.breakpointSymbol = "(invalid symbol)";
+                    this.breakpointAddress = -1l;
+                }
+            } else {
+                // label
+                try {
+                    this.breakpointAddress = this.relocator.getReference(this.breakpointSymbol);
+                } catch(Exception ex) {
+                    this.breakpointSymbol = "(invalid symbol)";
+                    this.breakpointAddress = -1l;
+                }
             }
         });
         
@@ -529,8 +642,8 @@ public class NotSoTinyUI extends Application {
         scene.addEventHandler(KeyEvent.KEY_TYPED, (ke) -> {
             this.keyboardBuffer[0] = (byte) ke.getCharacter().charAt(0);
             
-            this.sim.fireMaskableInterrupt((byte) 2);
-            this.halter.clear();
+            this.pic.setRequest(VECTOR_TYPED);
+            this.pic.step(this.sim);
             notifySimulatorThread();
         });
         */
@@ -547,10 +660,11 @@ public class NotSoTinyUI extends Application {
                 keyTracker.put(code, true);
                 this.keyboardBufferController.write4Bytes(0, code.getCode());
                 
+                //System.out.printf("%04X%n", code.getCode());
                 //System.out.println("interrupt sent " + code);
                 
-                this.sim.fireMaskableInterrupt((byte) 2);
-                this.halter.clear();
+                this.pic.setRequest(VECTOR_KEYDOWN);
+                this.pic.step(this.sim);
                 notifySimulatorThread();
             }
             
@@ -567,8 +681,8 @@ public class NotSoTinyUI extends Application {
                 keyTracker.put(code, false);
                 this.keyboardBufferController.write4Bytes(0, code.getCode());
                 
-                this.sim.fireMaskableInterrupt((byte) 3);
-                this.halter.clear();
+                this.pic.setRequest(VECTOR_KEYUP);
+                this.pic.step(this.sim);
                 notifySimulatorThread();
             }
             
@@ -615,18 +729,19 @@ public class NotSoTinyUI extends Application {
             }
             
             // basic info
-            this.infoTotalInstructions.setText(String.format("Total instructions: %d", this.instructionsExecutedTotal));
-            this.infoAverageMIPS.setText(String.format("Average IPS: %6.0f", this.lastAverageMIPS));
+            this.infoTotalInstructions.setText(String.format("Total instructions: %,d", this.instructionsExecutedTotal));
+            this.infoAverageMIPS.setText(String.format("Average IPS: %,6.0f", this.lastAverageMIPS));
             
-            this.buttonToggleRunning.setText(this.sim.getHalted() ? "Start CPU" : "Stop CPU");
+            this.buttonToggleRunning.setText(this.freerunEnabled ? "Stop CPU" : "Start CPU");
+            this.buttonToggleTrace.setText(this.traceEnabled ? "Stop Trace" : "Start Trace");
             
-            this.screen.update(this.videoBufferArray, 0);
+            //this.screen.update(this.videoBufferArray, 0);
+            this.screen.update(this.screenBufferController, 0);
             
             // advanced info
             if(this.advancedViewVisisble) {
                 this.buttonToggleAdvanced.setText("Hide advanced/debug view");
                 
-                // TODO advanced view
                 // processor state
                 Disassembler dis = new Disassembler();
                 String state = "-- Processor State --\n";
@@ -639,7 +754,8 @@ public class NotSoTinyUI extends Application {
                 
                 try {
                     state += dis.disassemble(this.mmu, Integer.toUnsignedLong(sim.getRegIP())) + "\n";
-                } catch(IndexOutOfBoundsException e) {}
+                } catch(IndexOutOfBoundsException e) {
+                } catch(NullPointerException e) {}
                 
                 for(int j = 0; j < dis.getLastInstructionLength(); j++) {
                     byte b = this.mmu.readByte(Integer.toUnsignedLong(sim.getRegIP()) + ((long) j));
@@ -648,18 +764,40 @@ public class NotSoTinyUI extends Application {
                 
                 state += "\n\n" + this.relocator.getAddressName(Integer.toUnsignedLong(sim.getRegIP()));
                 
+                if(this.traceEnabled) {
+                    state += "\n\n";
+                    
+                    ArrayList<String> traceCopy = new ArrayList<>(this.instructionTrace);
+                    
+                    for(String s : traceCopy) {
+                        state += (s != null ? s : "") + "\n";
+                    }
+                }
+                
                 this.infoProcessorState.setText(state);
                 
                 // memwatch
                 String memwatch = "";
                 
-                for(int i = 0; i < 16; i++) {
-                    memwatch += String.format("%02X ", this.mmu.readByte(this.memwatchAddress + i));
-                    if(i % 8 == 7) memwatch += "\n";
+                for(int i = 0; i < 64; i += 8) {
+                    try {
+                        int firstFour = this.mmu.read4Bytes(this.memwatchAddress + i),
+                            secondFour = this.mmu.read4Bytes(this.memwatchAddress + i + 4);
+                        
+                        memwatch += String.format("%08X: %02X %02X %02X %02X %02X %02X %02X %02X%n",
+                                                  this.memwatchAddress + i,
+                                                  firstFour & 0xFF, (firstFour >> 8) & 0xFF, (firstFour >> 16) & 0xFF, (firstFour >> 24) & 0xFF,
+                                                  secondFour & 0xFF, (secondFour >> 8) & 0xFF, (secondFour >> 16) & 0xFF, (secondFour >> 24) & 0xFF);
+                    } catch(IndexOutOfBoundsException e) { 
+                        memwatch += String.format("%08X: out of bounds%n", this.memwatchAddress + i);
+                    }
                 }
                 
+                String nearestSymbol = this.relocator.getNearest(this.memwatchAddress);
+                long nearestAddr = this.relocator.getReference(nearestSymbol);
+                
                 this.infoMemwatch.setText(memwatch);
-                this.infoCurrentWatchAddress.setText(String.format("Current Memwatch Address: %08X", this.memwatchAddress));
+                this.infoCurrentWatchAddress.setText(String.format("Current Memwatch Address: %08X%nNearest Label: %s%n               (%08X)", this.memwatchAddress, nearestSymbol, nearestAddr));
                 
                 // breakpoints
                 if(!this.breakpointSymbol.equals("")) {
