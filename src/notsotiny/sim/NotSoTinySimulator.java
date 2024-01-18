@@ -214,7 +214,8 @@ public class NotSoTinySimulator {
         if(desc.op == Opcode.NOP) return; 
         
         switch(desc.op) {
-            case CMP_RIM_I8, ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8:
+            case CMP_RIM_I8, ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8,
+                 SHL_RIM_I8, SHR_RIM_I8, SAR_RIM_I8, ROL_RIM_I8, ROR_RIM_I8, RCL_RIM_I8, RCR_RIM_I8:
                 desc.hasRIMI8 = true;
                 break;
             
@@ -415,14 +416,23 @@ public class NotSoTinySimulator {
         };
         
         int a = readLocation(dst) & mask,
-            b = getNormalRIMSource(desc) & mask,
+            b,
             c = 0;
+        
+        if(desc.hasRIMI8) {
+            desc.hasImmediateValue = true;
+            desc.immediateWidth = 1;
+            b = this.fetchBuffer[2] & mask;
+        } else {
+            b = getNormalRIMSource(desc) & mask;
+        }
         
         boolean carry = (this.reg_f & 0x0001) != 0;
         
         // agh
         switch(desc.op) {
             case SHL_RIM:
+            case SHL_RIM_I8:
                 carry = ((switch(dst.size()) {
                     case 1  -> 0x80;
                     case 2  -> 0x8000;
@@ -434,6 +444,7 @@ public class NotSoTinySimulator {
                 break;
             
             case SHR_RIM:
+            case SHR_RIM_I8:
                 carry = ((1 << (b - 1)) & a) != 0;
                 
                 c = switch(dst.size()) {
@@ -445,6 +456,7 @@ public class NotSoTinySimulator {
                 break;
                 
             case SAR_RIM:
+            case SAR_RIM_I8:
                 carry = ((1 << (b - 1)) & a) != 0;
                 
                 c = switch(dst.size()) {
@@ -456,12 +468,16 @@ public class NotSoTinySimulator {
                 break;
                 
             case ROL_RIM:
+            case ROL_RIM_I8:
             case RCL_RIM:
+            case RCL_RIM_I8:
                 long al = a;
                 int rot = 0;
                 for(int i = 0; i < b; i++) {
                     // use previous carry for RCL
-                    if(desc.op == Opcode.RCL_RIM) rot = carry ? 1 : 0;
+                    if(desc.op == Opcode.RCL_RIM || desc.op == Opcode.RCL_RIM_I8) {
+                        rot = carry ? 1 : 0;
+                    }
                     
                     al <<= 1;
                     carry = (switch(dst.size()) {
@@ -472,7 +488,9 @@ public class NotSoTinySimulator {
                     } & al) != 0;
                     
                     // use current carry for ROL
-                    if(desc.op == Opcode.ROL_RIM) rot = carry ? 1 : 0;
+                    if(desc.op == Opcode.ROL_RIM || desc.op == Opcode.ROL_RIM_I8) {
+                        rot = carry ? 1 : 0;
+                    }
                     
                     al |= rot;
                 }
@@ -481,7 +499,9 @@ public class NotSoTinySimulator {
                 break;
                 
             case ROR_RIM:
+            case ROR_RIM_I8:
             case RCR_RIM:
+            case RCR_RIM_I8:
                 al = a;
                 rot = 0;
                 
@@ -494,13 +514,17 @@ public class NotSoTinySimulator {
                 
                 for(int i = 0; i < b; i++) {
                     // use previous carry for RCR
-                    if(desc.op == Opcode.RCR_RIM) rot = carry ? 1 : 0;
+                    if(desc.op == Opcode.RCR_RIM || desc.op == Opcode.RCR_RIM_I8) {
+                        rot = carry ? 1 : 0;
+                    }
                     
                     carry = (al & 1) != 0;
                     al >>>= 1;
                     
                     // use current carry for ROR
-                    if(desc.op == Opcode.ROR_RIM) rot = carry ? 1 : 0;
+                    if(desc.op == Opcode.ROR_RIM || desc.op == Opcode.ROR_RIM_I8) {
+                        rot = carry ? 1 : 0;
+                    }
                     
                     al |= rot * rot_in; // rotate right means rot goes into the MSB
                 }
@@ -807,24 +831,22 @@ public class NotSoTinySimulator {
      */
     private void runADD(InstructionDescriptor desc) {
         LocationDescriptor dst = switch(desc.op) {
-            case ADD_A_I8, ADC_A_I8, SUB_A_I8, SBB_A_I8 -> LocationDescriptor.REGISTER_A;
-            case ADD_B_I8, ADC_B_I8, SUB_B_I8, SBB_B_I8 -> LocationDescriptor.REGISTER_B;
-            case ADD_C_I8, ADC_C_I8, SUB_C_I8, SBB_C_I8 -> LocationDescriptor.REGISTER_C;
-            case ADD_D_I8, ADC_D_I8, SUB_D_I8, SBB_D_I8 -> LocationDescriptor.REGISTER_D;
-            case ADD_I_I8, SUB_I_I8                     -> LocationDescriptor.REGISTER_I;
-            case ADD_J_I8, SUB_J_I8                     -> LocationDescriptor.REGISTER_J;
-            case ADD_K_I8, SUB_K_I8                     -> LocationDescriptor.REGISTER_K;
-            case ADD_L_I8, SUB_L_I8                     -> LocationDescriptor.REGISTER_L;
-            case ADD_SP_I8, SUB_SP_I8                   -> LocationDescriptor.REGISTER_SP;
-            case ADD_BP_I8, SUB_BP_I8                   -> LocationDescriptor.REGISTER_BP; 
-            default                                     -> getNormalRIMDestinationDescriptor(desc);
+            case ADD_A_I8, SUB_A_I8     -> LocationDescriptor.REGISTER_A;
+            case ADD_B_I8, SUB_B_I8     -> LocationDescriptor.REGISTER_B;
+            case ADD_C_I8, SUB_C_I8     -> LocationDescriptor.REGISTER_C;
+            case ADD_D_I8, SUB_D_I8     -> LocationDescriptor.REGISTER_D;
+            case ADD_I_I8, SUB_I_I8     -> LocationDescriptor.REGISTER_I;
+            case ADD_J_I8, SUB_J_I8     -> LocationDescriptor.REGISTER_J;
+            case ADD_K_I8, SUB_K_I8     -> LocationDescriptor.REGISTER_K;
+            case ADD_L_I8, SUB_L_I8     -> LocationDescriptor.REGISTER_L;
+            case ADD_SP_I8, SUB_SP_I8   -> LocationDescriptor.REGISTER_SP;
+            case ADD_BP_I8, SUB_BP_I8   -> LocationDescriptor.REGISTER_BP; 
+            default                     -> getNormalRIMDestinationDescriptor(desc);
         };
         
         int b = switch(desc.op) {
-            case ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADD_I_I8, ADD_J_I8, ADD_K_I8, ADD_L_I8, 
-                 ADC_A_I8, ADC_B_I8, ADC_C_I8, ADC_D_I8,
+            case ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADD_I_I8, ADD_J_I8, ADD_K_I8, ADD_L_I8,
                  SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SUB_I_I8, SUB_J_I8, SUB_K_I8, SUB_L_I8,
-                 SBB_A_I8, SBB_B_I8, SBB_C_I8, SBB_D_I8,
                  ADD_SP_I8, ADD_BP_I8, SUB_SP_I8, SUB_BP_I8 -> {
                      desc.hasImmediateValue = true;
                      desc.immediateWidth = 1;
@@ -1255,10 +1277,10 @@ public class NotSoTinySimulator {
             case JNZ_I8, JNZ_RIM    -> (flags & 0x08) == 0;    // not zero - zero clear
             case JA_I8, JA_RIM      -> (flags & 0x09) == 0;    // above - carry clear and zero clear 
             case JBE_I8, JBE_RIM    -> (flags & 0x09) != 0;    // below equal - carry set or zero set
-            case JG_I8, JG_RIM      -> ((flags & 0x08) == 0) && (((flags & 0x04) >>> 1) == (flags & 0x02));   // greater - zero clear and sign = overflow
-            case JGE_I8, JGE_RIM    -> (((flags & 0x04) >>> 1) == (flags & 0x02));                                 // greater equal - sign = overflow
-            case JL_I8, JL_RIM      -> (((flags & 0x04) >>> 1) != (flags & 0x02));                                 // less - sign != overflow
-            case JLE_I8, JLE_RIM    -> ((flags & 0x08) != 0) || (((flags & 0x04) >>> 1) != (flags & 0x02));   // less equal - zero set or sign != overflow
+            case JG_I8, JG_RIM      -> ((flags & 0x08) == 0) && (((flags & 0x04) >>> 1) == (flags & 0x02)); // greater - zero clear and sign = overflow
+            case JGE_I8, JGE_RIM    -> (((flags & 0x04) >>> 1) == (flags & 0x02));                          // greater equal - sign = overflow
+            case JL_I8, JL_RIM      -> (((flags & 0x04) >>> 1) != (flags & 0x02));                          // less - sign != overflow
+            case JLE_I8, JLE_RIM    -> ((flags & 0x08) != 0) || (((flags & 0x04) >>> 1) != (flags & 0x02)); // less equal - zero set or sign != overflow
             default                 -> false;
         };
     }
@@ -2887,19 +2909,19 @@ public class NotSoTinySimulator {
         
         int address = 0,
             immediateWidth = 4,
-            ipOffset = 0;
+            ipOffset = -1;  // account for ip autoincrement
         
         if(desc.hasRIMByte) {
-            if(desc.hasRIMI8) { 
-                ipOffset = 3;
-            } else {
-                ipOffset = 2;
-            }
-        } else {
             if(desc.hasRIMI8) { 
                 ipOffset = 2;
             } else {
                 ipOffset = 1;
+            }
+        } else {
+            if(desc.hasRIMI8) { 
+                ipOffset = 1;
+            } else {
+                ipOffset = 0;
             }
         }
         

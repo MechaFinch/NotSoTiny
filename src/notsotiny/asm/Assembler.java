@@ -724,13 +724,7 @@ public class Assembler {
                                 // ADC RIM -> ADC RIM, I8
                                 case ADC_RIM:
                                     if(dst.getType() == LocationType.REGISTER && width == 1) {
-                                        switch(dst.getRegister()) {
-                                            case A:     inst.setOpcode(Opcode.ADC_A_I8); changedValueSizes = true; break;
-                                            case B:     inst.setOpcode(Opcode.ADC_B_I8); changedValueSizes = true; break;
-                                            case C:     inst.setOpcode(Opcode.ADC_C_I8); changedValueSizes = true; break;
-                                            case D:     inst.setOpcode(Opcode.ADC_D_I8); changedValueSizes = true; break;
-                                            default:    if(width == 1) { inst.setOpcode(Opcode.ADC_RIM_I8); changedValueSizes = true; } break;
-                                        }
+                                        inst.setOpcode(Opcode.ADC_RIM_I8); changedValueSizes = true;
                                     } else if(dst.getSize() != 1 && width == 1) {
                                         inst.setOpcode(Opcode.ADC_RIM_I8);
                                         changedValueSizes = true;
@@ -778,13 +772,7 @@ public class Assembler {
                                 // SBB RIM -> SBB RIM, I8
                                 case SBB_RIM:
                                     if(dst.getType() == LocationType.REGISTER) {
-                                        switch(dst.getRegister()) {
-                                            case A:     inst.setOpcode(Opcode.SBB_A_I8); changedValueSizes = true; break;
-                                            case B:     inst.setOpcode(Opcode.SBB_B_I8); changedValueSizes = true; break;
-                                            case C:     inst.setOpcode(Opcode.SBB_C_I8); changedValueSizes = true; break;
-                                            case D:     inst.setOpcode(Opcode.SBB_D_I8); changedValueSizes = true; break;
-                                            default:    if(width == 1) { inst.setOpcode(Opcode.SBB_RIM_I8); changedValueSizes = true; } break;
-                                        }
+                                        inst.setOpcode(Opcode.SBB_RIM_I8); changedValueSizes = true; 
                                     } else if(dst.getSize() != 1 && width == 1) {
                                         inst.setOpcode(Opcode.SBB_RIM_I8);
                                         changedValueSizes = true;
@@ -856,6 +844,55 @@ public class Assembler {
                                             case L:     inst.setOpcode(Opcode.DCC_L); changedValueSizes = true; break;
                                             default:    break;    
                                         }
+                                    }
+                                    break;
+                                
+                                // SHL RIM -> SHL RIM I8
+                                case SHL_RIM:
+                                    if(dst.getType() == LocationType.IMMEDIATE && width == 1) {
+                                        inst.setOpcode(Opcode.SHL_RIM_I8);
+                                    }
+                                    break;
+                                
+                                // SHR RIM -> SHR RIM I8
+                                case SHR_RIM:
+                                    if(dst.getType() == LocationType.IMMEDIATE && width == 1) {
+                                        inst.setOpcode(Opcode.SHR_RIM_I8);
+                                    }
+                                    break;
+                                
+                                // SAR RIM -> SAR RIM I8
+                                case SAR_RIM:
+                                    if(dst.getType() == LocationType.IMMEDIATE && width == 1) {
+                                        inst.setOpcode(Opcode.SAR_RIM_I8);
+                                    }
+                                    break;
+                                
+                                // ROL RIM -> ROL RIM I8
+                                case ROL_RIM:
+                                    if(dst.getType() == LocationType.IMMEDIATE && width == 1) {
+                                        inst.setOpcode(Opcode.ROL_RIM_I8);
+                                    }
+                                    break;
+                                
+                                // ROR RIM -> ROR RIM I8
+                                case ROR_RIM:
+                                    if(dst.getType() == LocationType.IMMEDIATE && width == 1) {
+                                        inst.setOpcode(Opcode.ROR_RIM_I8);
+                                    }
+                                    break;
+                                
+                                // RCL RIM -> RCL RIM I8
+                                case RCL_RIM:
+                                    if(dst.getType() == LocationType.IMMEDIATE && width == 1) {
+                                        inst.setOpcode(Opcode.RCL_RIM_I8);
+                                    }
+                                    break;
+                                
+                                // RCR RIM -> RCR RIM I8
+                                case RCR_RIM:
+                                    if(dst.getType() == LocationType.IMMEDIATE && width == 1) {
+                                        inst.setOpcode(Opcode.RCR_RIM_I8);
                                     }
                                     break;
                                 
@@ -2082,13 +2119,7 @@ public class Assembler {
                         
                     case ADC:
                         if(isImmediate) {
-                            opcode = switch(firstRegister) {
-                                case A  -> (immediateSize == 1) ? Opcode.ADC_A_I8 : Opcode.ADC_RIM;
-                                case B  -> (immediateSize == 1) ? Opcode.ADC_B_I8 : Opcode.ADC_RIM;
-                                case C  -> (immediateSize == 1) ? Opcode.ADC_C_I8 : Opcode.ADC_RIM;
-                                case D  -> (immediateSize == 1) ? Opcode.ADC_D_I8 : Opcode.ADC_RIM;
-                                default -> (immediateSize == 1) ? Opcode.ADC_RIM_I8 : Opcode.ADC_RIM;
-                            };
+                            opcode = (immediateSize == 1) ? Opcode.ADC_RIM_I8 : Opcode.ADC_RIM;
                         } else {
                             opcode = Opcode.ADC_RIM;
                         }
@@ -2116,13 +2147,7 @@ public class Assembler {
                         
                     case SBB:
                         if(isImmediate) {
-                            opcode = switch(firstRegister) {
-                                case A  -> (immediateSize == 1) ? Opcode.SBB_A_I8 : Opcode.SBB_RIM;
-                                case B  -> (immediateSize == 1) ? Opcode.SBB_B_I8 : Opcode.SBB_RIM;
-                                case C  -> (immediateSize == 1) ? Opcode.SBB_C_I8 : Opcode.SBB_RIM;
-                                case D  -> (immediateSize == 1) ? Opcode.SBB_D_I8 : Opcode.SBB_RIM;
-                                default -> (immediateSize == 1) ? Opcode.SBB_RIM_I8 : Opcode.SBB_RIM;
-                            };
+                            opcode = (immediateSize == 1) ? Opcode.SBB_RIM_I8 : Opcode.SBB_RIM;
                         } else {
                             opcode = Opcode.SBB_RIM;
                         }
@@ -2173,6 +2198,62 @@ public class Assembler {
                             opcode = Opcode.XOR_RIM_F;
                         } else {
                             opcode = Opcode.XOR_RIM;
+                        }
+                        break;
+                    
+                    case SHL:
+                        if(isImmediate & immediateSize == 1) {
+                            opcode = Opcode.SHL_RIM_I8;
+                        } else {
+                            opcode = Opcode.SHL_RIM;
+                        }
+                        break;
+                    
+                    case SHR:
+                        if(isImmediate & immediateSize == 1) {
+                            opcode = Opcode.SHR_RIM_I8;
+                        } else {
+                            opcode = Opcode.SHR_RIM;
+                        }
+                        break;
+                    
+                    case SAR:
+                        if(isImmediate & immediateSize == 1) {
+                            opcode = Opcode.SAR_RIM_I8;
+                        } else {
+                            opcode = Opcode.SAR_RIM;
+                        }
+                        break;
+                    
+                    case ROL:
+                        if(isImmediate & immediateSize == 1) {
+                            opcode = Opcode.ROL_RIM_I8;
+                        } else {
+                            opcode = Opcode.ROL_RIM;
+                        }
+                        break;
+                        
+                    case ROR:
+                        if(isImmediate & immediateSize == 1) {
+                            opcode = Opcode.ROR_RIM_I8;
+                        } else {
+                            opcode = Opcode.ROR_RIM;
+                        }
+                        break;
+                    
+                    case RCL:
+                        if(isImmediate & immediateSize == 1) {
+                            opcode = Opcode.RCL_RIM_I8;
+                        } else {
+                            opcode = Opcode.RCL_RIM;
+                        }
+                        break;
+                        
+                    case RCR:
+                        if(isImmediate & immediateSize == 1) {
+                            opcode = Opcode.RCR_RIM_I8;
+                        } else {
+                            opcode = Opcode.RCR_RIM;
                         }
                         break;
                         

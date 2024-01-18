@@ -525,7 +525,7 @@ public class NotSoTinyUI extends Application {
         // advanced view
         this.infoProcessorState = new Text("");
         
-        this.infoMemwatch = new Text("");
+        this.infoMemwatch = new Text("                                             ");
         
         Text labelMemwatch = new Text("Memwatch Address");
         this.fieldMemwatch = new TextField();
@@ -784,10 +784,32 @@ public class NotSoTinyUI extends Application {
                         int firstFour = this.mmu.read4Bytes(this.memwatchAddress + i),
                             secondFour = this.mmu.read4Bytes(this.memwatchAddress + i + 4);
                         
-                        memwatch += String.format("%08X: %02X %02X %02X %02X %02X %02X %02X %02X%n",
+                        byte[] bytes = new byte[] {
+                            (byte)(firstFour & 0xFF),           (byte)((firstFour >> 8) & 0xFF),
+                            (byte)((firstFour >> 16) & 0xFF),   (byte)((firstFour >> 24) & 0xFF),
+                            (byte)(secondFour & 0xFF),          (byte)((secondFour >> 8) & 0xFF),
+                            (byte)((secondFour >> 16) & 0xFF),  (byte)((secondFour >> 24) & 0xFF)
+                        };
+                        
+                        String chars = "";
+                        
+                        for(int j = 0; j < 8; j++) {
+                            char c;
+                            
+                            if((bytes[j] & 0x7F) < 0x7F && (bytes[j] & 0x7F) > 0x1F) {
+                                c = (char)(bytes[j]);
+                            } else {
+                                c = '.';
+                            }
+                            
+                            chars += c;
+                        }
+                        
+                        memwatch += String.format("%08X: %02X %02X %02X %02X %02X %02X %02X %02X |%s| %n",
                                                   this.memwatchAddress + i,
-                                                  firstFour & 0xFF, (firstFour >> 8) & 0xFF, (firstFour >> 16) & 0xFF, (firstFour >> 24) & 0xFF,
-                                                  secondFour & 0xFF, (secondFour >> 8) & 0xFF, (secondFour >> 16) & 0xFF, (secondFour >> 24) & 0xFF);
+                                                  bytes[0], bytes[1], bytes[2], bytes[3],
+                                                  bytes[4], bytes[5], bytes[6], bytes[7],
+                                                  chars);
                     } catch(IndexOutOfBoundsException e) { 
                         memwatch += String.format("%08X: out of bounds%n", this.memwatchAddress + i);
                     }

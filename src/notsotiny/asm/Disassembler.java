@@ -69,7 +69,6 @@ public class Disassembler {
             case MOVS_A_I8, MOVS_B_I8, MOVS_C_I8, MOVS_D_I8,
                  ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADD_I_I8, ADD_J_I8, ADD_K_I8, ADD_L_I8,
                  SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SUB_I_I8, SUB_J_I8, SUB_K_I8, SUB_L_I8,
-                 ADC_A_I8, ADC_B_I8, ADC_C_I8, ADC_D_I8, SBB_A_I8, SBB_B_I8, SBB_C_I8, SBB_D_I8,
                  ADD_SP_I8, ADD_BP_I8, SUB_SP_I8, SUB_BP_I8, JMP_I8, CALL_I8, INT_I8, JC_I8, JNC_I8, JS_I8, JNS_I8,
                  JO_I8, JNO_I8, JZ_I8, JNZ_I8, JA_I8, JBE_I8, JG_I8, JGE_I8, JL_I8, JLE_I8:
                      s += disassembleImmediateShortcut(memory, op, 1);
@@ -106,7 +105,8 @@ public class Disassembler {
                 break;
             
             // RIM + I8
-            case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8:
+            case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8,
+                 SHL_RIM_I8, SHR_RIM_I8, SAR_RIM_I8, ROL_RIM_I8, ROR_RIM_I8, RCL_RIM_I8, RCR_RIM_I8:
                 s += disassembleRIM(memory, true, false, false, false, false) + ", " + readHex(memory, 1);
                 break;
             
