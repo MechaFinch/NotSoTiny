@@ -418,15 +418,20 @@ public class Disassembler {
      * @return
      */
     private int readSize(MemoryManager memory, int size) {
-        int i = switch(size) {
-            case 1          -> memory.readByte(this.lastAddress);
-            case 2          -> memory.read2Bytes(this.lastAddress);
-            case 3          -> memory.read3Bytes(this.lastAddress);
-            default    		-> memory.read4Bytes(this.lastAddress);
-        };
-        
-        this.lastAddress += size;
-        return i;
+        try {
+            int i = switch(size) {
+                case 1          -> memory.readByte(this.lastAddress);
+                case 2          -> memory.read2Bytes(this.lastAddress);
+                case 3          -> memory.read3Bytes(this.lastAddress);
+                default    		-> memory.read4Bytes(this.lastAddress);
+            };
+            
+            this.lastAddress += size;
+            return i;
+        } catch(IndexOutOfBoundsException e) {
+            this.lastAddress += size;
+            return 0;
+        }
     }
     
     /**
@@ -495,13 +500,17 @@ public class Disassembler {
      * @return
      */
     private String getMnemonic(Opcode op) {
-        String s = op.toString();
-        
-        if(s.contains("_")) {
-            return s.substring(0, s.indexOf("_"));
+        try {
+            String s = op.toString();
+            
+            if(s.contains("_")) {
+                return s.substring(0, s.indexOf("_"));
+            }
+            
+            return s;
+        } catch(NullPointerException e) {
+            return "INV";
         }
-        
-        return s;
     }
     
     /**

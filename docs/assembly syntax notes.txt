@@ -14,5 +14,5 @@ jumptable:
 	db @dest_1
 	db @dest_2
 	
-	@ when used in an instruction will always point to its opcode.
+	@ when used in an instruction will always point to its opcode
 	@ when used in a directive will point to the $ of the most recent instruction

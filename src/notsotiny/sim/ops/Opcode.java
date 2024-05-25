@@ -104,6 +104,8 @@ public enum Opcode {
     PUSHA       (0x51, Operation.PUSHA),
     POPA        (0x52, Operation.POPA),
     
+    INV_53      (0x53, Operation.INV),
+    
     POP_A       (0x54, Operation.POP),
     POP_B       (0x55, Operation.POP),
     POP_C       (0x56, Operation.POP),
@@ -232,6 +234,8 @@ public enum Opcode {
     ROR_RIM_I8  (0xC4, Operation.ROR),
     RCL_RIM_I8  (0xC5, Operation.RCL),
     RCR_RIM_I8  (0xC6, Operation.RCR),
+    
+    INV_C7      (0xC7, Operation.INV),
     
     SHL_RIM     (0xC8, Operation.SHL),
     SHR_RIM     (0xC9, Operation.SHR),

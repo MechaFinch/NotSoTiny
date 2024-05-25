@@ -274,6 +274,10 @@ public class Instruction implements Component {
         int sourceSize = includeSource ? this.source.getSize() : -1,
             destSize = includeDestination ? this.destination.getSize() : -1;
         
+        // unify 'not specified' values
+        if(sourceSize == 0) sourceSize = -1;
+        if(destSize == 0) destSize = -1;
+        
         if(sourceSize == -1 && destSize == -1) {
             // this is only valid in special cases
             switch(this.op) {
@@ -297,7 +301,7 @@ public class Instruction implements Component {
                     if(includeSource && sourceType == LocationType.IMMEDIATE) {
                         sourceSize = 2; 
                     } else {
-                        throw new IllegalArgumentException("Cannot infer operand sizes: " + this);
+                        throw new IllegalArgumentException("Cannot infer operand sizes: " + this + " " + this.source.getRegister().size() + " " + this.source.getSize());
                     }
             }
         }

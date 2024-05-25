@@ -226,6 +226,11 @@ public class NotSoTinySimulator {
         //System.out.println(desc.op.getType().getFamily()); 
         
         switch(desc.op.getType().getFamily()) {
+            case INV:
+                // invalid
+                runInterrupt((byte) 0x0F);
+                break;
+            
             case ADDITION:
                 stepAdditionFamily(desc);
                 break;
@@ -420,9 +425,7 @@ public class NotSoTinySimulator {
             c = 0;
         
         if(desc.hasRIMI8) {
-            desc.hasImmediateValue = true;
-            desc.immediateWidth = 1;
-            b = this.fetchBuffer[2] & mask;
+            b = getRIMI8(desc);
         } else {
             b = getNormalRIMSource(desc) & mask;
         }
@@ -631,7 +634,12 @@ public class NotSoTinySimulator {
                 int a = getNormalRIMSource(desc),
                     b = readLocation(wideDst) & 0x0000_FFFF;
                 
-                if(signed) b = (int)((short) b);
+                // A is sign extended, B is not
+                if(signed) {
+                    b = (int)((short) b);
+                } else {
+                    a &= 0xFFFF;
+                }
                 
                 int c = multiply(a, b, 4, high, signed);
                 writeLocation(wideDst, c);
@@ -856,14 +864,7 @@ public class NotSoTinySimulator {
                  
             case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8 -> {
                 // figure out where our immediate is
-                int offset = 2;                 // rim
-                if(desc.hasBIOByte) offset++;   // bio
-                if(desc.hasImmediateAddress || desc.hasImmediateValue) offset += desc.immediateWidth; // immediate
-                
-                desc.hasImmediateValue = true;
-                desc.immediateWidth++; // our immediate
-                
-                yield this.fetchBuffer[offset];
+                yield getRIMI8(desc);
                 //yield this.memory.readByte(this.reg_ip + offset);
             }
                  
@@ -1145,15 +1146,7 @@ public class NotSoTinySimulator {
         int b = switch(desc.op) {
             case CMP_RIM    -> getNormalRIMSource(desc);
             case CMP_RIM_I8 -> {
-                // figure out where our immediate is
-                int offset = 2;                 // rim
-                if(desc.hasBIOByte) offset++;   // bio
-                if(desc.hasImmediateAddress || desc.hasImmediateValue) offset += desc.immediateWidth; // immediate
-                
-                desc.hasImmediateValue = true;
-                desc.immediateWidth++; // our immediate
-                
-                yield this.fetchBuffer[offset];
+                yield getRIMI8(desc);
                 //yield this.memory.readByte(this.reg_ip + offset);
             }
             default -> 0; // also CMP_RIM_0
@@ -1409,6 +1402,7 @@ public class NotSoTinySimulator {
             
             case MOV_B_C:
                 this.reg_b = this.reg_c;
+                return;
                 
             case MOV_B_D:
                 this.reg_b = this.reg_d;
@@ -2052,18 +2046,20 @@ public class NotSoTinySimulator {
         } else {
             long sizeMask = switch(size) {
                 case 0  -> 0x0Fl;
-                case 1  -> 0xFFl;
-                case 2  -> 0xFFFFl;
-                case 4  -> 0xFFFF_FFFFl;
+                case 1  -> high ? 0x0F : 0xFFl;
+                case 2  -> high ? 0xFF : 0xFFFFl;
+                case 4  -> high ? 0xFFFF : 0xFFFF_FFFFl;
                 default -> 0l;
             };
+            
+            //System.out.printf("%s %08X %08X %08X ", size, sizeMask, a, b);
             
             al = ((long) a) & sizeMask;
             bl = ((long) b) & sizeMask;
         }
         
         res = al * bl;
-        //System.out.println(al + " * " + bl + " = " + res);
+        //if(!signed) System.out.printf("%08X * %08X = %08X%n", al, bl, res);
         
         // flags time
         boolean zero = false,
@@ -3944,6 +3940,23 @@ public class NotSoTinySimulator {
                ((this.fetchBuffer[offset + 1] & 0xFF) << 8) |
                ((this.fetchBuffer[offset + 2] & 0xFF) << 16) |
                (this.fetchBuffer[offset + 3] << 24);
+    }
+    
+    /**
+     * Gets the I8 from a _RIM_I8 instruction
+     * @param desc
+     * @return
+     */
+    private byte getRIMI8(InstructionDescriptor desc) {
+        // figure out where our immediate is
+        int offset = 2;                 // rim
+        if(desc.hasBIOByte) offset++;   // bio
+        if(desc.hasImmediateAddress || desc.hasImmediateValue) offset += desc.immediateWidth; // immediate
+        
+        desc.hasImmediateValue = true;
+        desc.immediateWidth++; // our immediate
+        
+        return this.fetchBuffer[offset];
     }
     
     /**

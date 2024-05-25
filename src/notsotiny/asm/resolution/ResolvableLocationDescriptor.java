@@ -85,12 +85,7 @@ public class ResolvableLocationDescriptor implements Resolvable {
         }
         
         // set size according to register
-        this.size = switch(this.register) {
-            case DA, AB, BC, CD, JI, LK, BP, SP -> 4;
-            case A, B, C, D, I, J, K, L, F      -> 2;
-            case AH, AL, BH, BL, CH, CL, DH, DL -> 1;
-            default -> -1;
-        };
+        this.size = this.register.size();
     }
     
     /**
@@ -147,8 +142,15 @@ public class ResolvableLocationDescriptor implements Resolvable {
         }
     }
     
+    public void setSize(int s, boolean packed) {
+        if(this.type == LocationType.REGISTER && !packed) {
+            throw new IllegalStateException("Cannot change the size of a register");
+        }
+        
+        this.size = s;
+    }
+    
     public int getSize() { return this.size; }
-    public void setSize(int s) { this.size = s; }
     public LocationType getType() { return this.type; }
     public Register getRegister() { return this.register; }
     public ResolvableMemory getMemory() { return this.memory; }

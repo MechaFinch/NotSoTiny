@@ -1,33 +1,33 @@
 
-	16 bit general purpose registers with 8 bit halves
-		A - A AH AL
-		B - B BH BL
-		C - C CH CL
-		D - D DH DL
+	NotSoTiny ISA
+
+Registers
+	General Purpose Registers
+	16-bit	8-bit
+			Upper Half	Lower Half
+	A		AH			AL
+	B		BH			BL
+	C		CH			CL
+	D		DH			DL
 	
-	16 bit index registers
-		I
-		J
-		K
-		L
+	Index Registers
+	16-bit
+	I
+	J
+	K
+	L
 	
-	32 bit address registers
-		Stack Pointer SP
-		Base Pointer BP
+	Pointer Registers
+	32-bit
+	SP		Stack Pointer
+	BP		Base Pointer
+	IP		Instruction Pointer
 	
-	Special purpose registers
-		Instruction Pointer IP (32 bit)
-			not accessed directly
-		
-		Arithmetic Flags F (16 bit)
-			support push/pop & bitwise operations
-		
-		Processor Flags PF (16 bit)
-			can be moved
-	
-	Instructions are encoded as:
-	{Opcode} [RIM] [BIO] [Immediate] [EI8]
-	
+	Special Purpose Registers
+	16-bit
+	F		Arithmetic Flags
+	PF		Processor Flags
+
 	F layout
 	|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|
 	|  F |  E |  D |  C |  B |  A |  9 |  8 |  7 |  6 |  5 |  4 |  3 |  2 |  1 |  0 |
@@ -36,95 +36,296 @@
 	|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|
 	|                   | Z1 | O1 | S1 | C1 |                   | Z0 | O0 | S0 | C0 | packed 8s
 	|-------------------|----|----|----|----|-------------------|----|----|----|----|
-	|                                                           | Z0 | O0 | S0 | C0 | 8/16 bit, conditions
+	|                                                           | Z0 | O0 | S0 | C0 | non-packed
 	|-----------------------------------------------------------|----|----|----|----|
 	
 	PF layout
-	|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|
-	|  F |  E |  D |  C |  B |  A |  9 |  8 |  7 |  6 |  5 |  4 |  3 |  2 |  1 |  0 |
-	|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|
-	|                                                                          | IE |
-	|--------------------------------------------------------------------------|----|
-	IE: Interrupt Enable (default 1). If 1, maskable interrupts are allowed. If 0, maskable interrupts are ignored
+	|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+	|   F |   E |   D |   C |   B |   A |   9 |   8 |   7 |   6 |   5 |   4 |   3 |   2 |   1 |   0 |
+	|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+	|                                                                                         |  IE |
+	|-----------------------------------------------------------------------------------------|-----|
+	IE: Interrupt Enable (default 0). If 1, maskable interrupts are allowed. If 0, maskable interrupts are ignored
+
+
+
+Instruction Encoding
+	Field		Size (bytes)	Required?
+	Opcode		1				Required
+	RIM			1				Optional
+	BIO			1				Optional
+	Immediate	1, 2, 3, 4		Optional
+	EI8			1				Optional
 	
-	
-	rim bytes
+	RIM Encoding (See "rim reference.txt")
 	|---|---|---|---|---|---|---|---|
 	| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
 	|---|---|---|---|---|---|---|---|
 	| s | r |       reg |       rim |
 	|---|---|-----------|-----------|
 	
-	r rim type:	0 = register-register, 1 = register-immediate/register-memory
+	'r' field (Register)
+	0	'rim' field specifies a register
+	1	'rim' field specifies memory
 	
-	size	normal	wide	packed
-	0		16 bit	32 bit	2x8
-	1		8 bit	16 bit 	4x4
+	's' field (Size)
+		normal	wide	packed
+	0	16-bit	32-bit	2x8-bit
+	1	8-bit	16-bit	4x4-bit
 	
-	bio
+	'reg' and 'rim' fields
+	value	register			memory
+			8  16	32
+	000		AL	A	D:A			immediate value source
+	001		BL	B	A:B			immediate address source
+	010		CL	C	B:C			base + index source
+	011		DL	D	C:D			base + index + offset source
+	100		AH	I	J:I			undef
+	101		BH	J	L:K			immediate address destination
+	110		CH	K	BP			base + index destination
+	111		DH	L	SP			base + index + offset destination
+	
+	'reg' always sepcifies a register.
+	If 'rim' specifies a register, 'reg' specifies the destination and 'rim' specifies the source.
+	If 'rim' specifies memory, 'reg' specifies the source or destination according to 'rim'.
+	"base + index" and "base + index + offset" memory locations are specified by the BIO byte and Immediate bytes.
+	
+	BIO Encoding (See "bio reference.txt")
 	|---|---|---|---|---|---|---|---|
 	| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
 	|---|---|---|---|---|---|---|---|
 	| scale | pair base | r16 index |
 	|-------|-----------|-----------|
 	
-	value	reg					immediate/memory
-			16  8	pair
-	000		A	AL	D:A			immediate value source
-	001		B	BL	A:B			immediate address source
-	010		C	CL	B:C			base + index source
-	011		D	DL	C:D			base + index + offset source
-	100		I	AH	J:I			???
-	101		J	BH	L:K			immediate address destination
-	110		K	CH	BP			base + index destination
-	111		L	DH	SP/none		base + index + offset destination
+	value	r16	pair	Offset Size					IP-relative Index
+	000		A	D:A		Normal base, 1-byte offset	None
+	001		B	A:B		Normal base, 2-byte offset	None
+	010		C	B:C		Normal base, 3-byte offset	None
+	011		D	C:D		Normal base, 4-byte offset	None
+	100		I	J:I		IP-relative, 1-byte offset	I
+	101		J	L:K		IP-relative, 2-byte offset	J
+	110		K	BP		IP-relative, 3-byte offset	K
+	111		L	SP/none	IP-relative, 4-byte offset	L
 	
-	value	scale	index
-	00		0		1 byte offset
-	01		1		2 byte offset
-	10		2		3 byte offset
-	11		4		4 byte offset
+	value	scale
+	00		0
+	01		1
+	10		2
+	11		4
 	
-	the reg field is the destination unless rim is a memory destination
-	
-	address = base + (index * scale) + offset
-	If scale != 0, the index field specifies the index as an r16.
-	
-	If scale = 0, the lower 2 bits of index specify the number of bytes of the offset if it is present.
-	If the most significant bit of index = 0, the base field is used as usual.
-	If the most significant bit of index = 1, the base is set to IP and the base field is used to
-	specify the index register. Registers A, B, C, and D are treated as no index in this case. As
-	with relative jumps, IP will point to the first byte of the next instruction.
-	
-	As an argument, pair 111 is always SP
-	As a base, pair 111 is none if there is an index and SP if there is not
-	
-	MOVW uses pairs for both sources and destinations.
-	Wide destination operations use wide destinations and normal sources.
-	MOVS sign extends, and MOVZ zero extends.
-	
-	For division, the carry and overflow flags are set appropriately if the quotient is too
-	large for the destination. The zero flag is set if both quotient and remainder (if applicible)
-	are zero. The sign flag is set according to the quotient. Quotient goes in the low half and
-	remainder goes in the high half
-	
-	Interrupts push IP, then flags, then jump to the address at [arg * 4]. The IE bit of PF is cleared.
-	Made for interrupts, PUSHA pushes, in order, A, B, C, D, I, J, K, L, BP. POPA pops the equivalent.
-	The HLT instruction halts execution until an interrupt is received. Execution will continue after
-	the HLT instruction upon returning from the interrupt handler.
+	The address of a memory location specified by the BIO byte and Immediate bytes is
+		base + (signext(index) * scale) + signext(offset)
+	If scale = 0, the 'index' field specifies the size of the offset immediate and whether to use
+	IP-relative addressing.
+	In IP-relative addressing, IP is used as the base, and the 'base' field is used to specify an index.
+	IP points to the first byte of the subsequent instruction.
+	If scale = 0, 'base' 111 is SP.
+	If scale != 0, 'base' 111 is none.
+
+
+
+Packed Operations
+	Packed operations (prefixed P, postfixed with 4 (4x4-bit) or 8 (2x8-bit)) operate on 16 bit
+	values and perform 2 8-bit or 4 4-bit operations in parallel. 
+
+
+
+Other Notes
+	Conditions use the same flag combinations as x86 conditions
+	Division sets the carry and overflow flags if the quotient is too large for the destination;
+	the zero flag is set if both the quotient and remainder (if applicable) are zero; the sign flag
+	is set according to the quotient.
+
+
+
+Instruction Descriptions
+	NOP
+		No-Operation
 		
-	Conditions match x86
+	MOV
+		destination <- source
 	
-	CMOV will always read its source, and conditionally write its destination.
-	PCMOV will always read its source, and always read and write its destination.
+	MOVW
+		wide destiation <- wide source
 	
-	Packed division returns the packed quotients in the lower register and packed remainders in the
-	upper register.
-	Packed low multiplication returns its results in place.
-	Packed high multiplication returns its values in wide form - i.e. words for 8s and 8s for 4s.
+	MOVS
+		wide destination <- signext(source)
 	
-	The memory-rim value 100 (???) is not strictly defined. However, if the immediate value source
-	is considered as memory pointing to the defined immediate value, it can also be used as a destination,
-	making 100 a valid value and 000 a valid value for the XCHG instruction.
+	MOVZ
+		wide destination <- zeroext(source)
 	
+	CMOVcc
+		destination <- source if condition met
+		Condition is specified by placing the opcode of a conditional jump in the I8 field
+		The source is always read.
+		When packed, the destination is always written. When not packed, the destination is only
+		written if the condition is met.
 	
+	XCHG
+		swaps source and destination
+	
+	XCHGW
+		swaps wide source and wide destination
+	
+	PUSH
+		[SP - size]	<- source
+		SP			<- SP - size
+	
+	POP
+		destination	<- [SP]
+		SP			<- SP + size
+	
+	PUSHA
+		Pushes, in order, A, B, C, D, I, J, K, L, BP
+	
+	POPA
+		Pops, in order, BP, L, K, J, I, D, C, B, A
+	
+	LEA
+		wide destination <- address(source)
+		Destination must be a 32-bit register
+		Source must be memory
+	
+	JMP
+		IP <- IP + source
+		Unconditional branch
+		Offset is relative to the start of the physically subsequent instruction
+	
+	JMPA
+		IP <- wide source
+		Source must be 32 bits
+	
+	Jcc
+		IP <- IP + source if condition met
+		Conditional branch
+		Offset is relative to the start of the physically subsequent instruction
+	
+	CALL
+		[SP - 4]	<- IP
+		SP			<- SP - 4
+		IP			<- IP + source
+		Offset is relative to the start of the physically subsequent instruction
+	
+	CALLA
+		[SP - 4]	<- IP
+		SP			<- SP - 4
+		IP			<- wide source
+		Source must be 32 bits
+	
+	RET
+		IP	<- [SP]
+		SP	<- SP + 4
+	
+	INT
+		[SP - 4]	<- IP
+		[SP - 6]	<- F
+		[SP - 8]	<- PF
+		SP			<- SP - 8
+		IP			<- [source * 4]
+		PF			<- IE cleared
+		Source must be 8 bits
+	
+	IRET
+		IP	<- [SP + 4]
+		F	<- [SP + 2]
+		PF	<- [SP]
+		SP	<- SP + 8
+	
+	HLT
+		Halts execution until an external interrupt
+	
+	CMP
+		Sets arithmetic flags according to destination - source
+	
+	ADD
+		destination <- destination + source
+	
+	ADC
+		destination <- destination + source + CF
+	
+	SUB
+		destination <- destination - source
+	
+	SBB
+		destination <- destination - source - CF
+	
+	INC
+		destination <- destination + 1
+	
+	ICC
+		destination <- destination + CF
+	
+	DEC
+		destination <- destination - 1
+	
+	DCC
+		destination <- destination - CF
+	
+	MUL
+		destination <- destination * source
+	
+	MULH
+		wide destination <- destination unsigned* source
+		Low half only of wide destination used
+		When packed, the result is treated as one packed value (4x4 -> 4x8, 2x8 -> 2x16)
+	
+	MULSH
+		wide destination <- destination signed* source
+		Low half only of wide destination used
+	
+	DIV
+		destination <- destination unsigned/ source
+	
+	DIVS
+		destination <- destination signed/ source
+	
+	DIVM
+		wide destination high	<- wide destination unsigned% source
+		wide destination low	<- wide destination unsigned/ source
+		Remainder in upper half of dest
+		Full value of wide destination used
+		When packed, a packed quotient and packed remainder are each produced.
+	
+	DIVMS
+		wide destination high	<- wide destination signed% source
+		wide destination low	<- wide destination signed/ source
+		Remainder in upper half of dest
+		Full value of wide destination used
+		When packed, a packed quotient and packed remainder are each produced.
+	
+	AND
+		destination <- destination & source
+		
+	OR
+		destination <- destination | source
+		
+	XOR
+		destination <- destination ^ source
+		
+	NOT
+		destination <- !destination
+		
+	NEG
+		destination <- -destination
+		Sets arithmetic flags according to !destination + 1
+	
+	SHL
+		Left shift destination by source bits
+	
+	SHR
+		Logical right shift destination by source bits
+	
+	SAR
+		Arithmetic right shift destination by source bits
+	
+	ROL
+		Rotate destination left by source bits
+	
+	ROR
+		Rotate destination right by source bits
+	
+	RCL
+		Rotate destination and CF left by source bits
+		
+	RCR
+		Rotate destination and CF right by source bits

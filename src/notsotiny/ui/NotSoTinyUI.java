@@ -40,8 +40,8 @@ import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import notsotiny.asm.Disassembler;
 import notsotiny.sim.NotSoTinySimulator;
+import notsotiny.sim.memory.DiskBufferController;
 import notsotiny.sim.memory.FlatMemoryController;
-import notsotiny.sim.memory.Halter;
 import notsotiny.sim.memory.InterruptController;
 import notsotiny.sim.memory.MemoryManager;
 import notsotiny.sim.memory.RandomController;
@@ -59,7 +59,7 @@ public class NotSoTinyUI extends Application {
     public void start(Stage primaryStage) throws Exception {
         this.stage = primaryStage;
         
-        initSimulator();
+        initSimulator(true);
         createUI();
     }
     
@@ -69,7 +69,11 @@ public class NotSoTinyUI extends Application {
     
     private static final long CLOCK_PERIOD = 0l;
     
-    private static final boolean USE_SCREEN = true;
+    private static final boolean USE_SCREEN = true,
+                                 START_IMMEDIATELY = false,
+                                 START_WITH_CLOCK = false;
+    
+    private static final int TRACE_SIZE = 16;
     
     /*
      * == SIMULATION ==
@@ -77,6 +81,7 @@ public class NotSoTinyUI extends Application {
     
     // memory map constants
     private static final long LOWRAM_START =    0x0000_0000,
+                              CRASHRAM_START =  0x4000_0000,
                               SPI_START =       0x8000_0000,
                               KEYPAD_START =    0x8001_0000,
                               CC_START =        0x8002_0000,
@@ -85,9 +90,11 @@ public class NotSoTinyUI extends Application {
                               VIDEO_START =     0xF002_0000,
                               RANDOM_START =    0xF004_0000,
                               PIC_START =       0xF005_0000,
+                              DISK_START =      0xF006_0000,
                               BOOTROM_START =   0xFFFF_FC00;
     
     private static final int LOWRAM_SIZE =      0x0010_0000,
+                             CRASHRAM_SIZE =    0x0000_1000,
                              SPI_SIZE =         0x0000_0004,
                              KEYPAD_SIZE =      0x0000_0008,
                              CC_SIZE =          0x0000_0002,
@@ -96,6 +103,7 @@ public class NotSoTinyUI extends Application {
                              VIDEO_SIZE =       0x0002_0000,
                              RANDOM_SIZE =      0x0000_0010,
                              PIC_SIZE =         0x0000_0200,
+                             DISK_SIZE =        0x0000_000C,
                              BOOTROM_SIZE =     0x0000_0400;
     
     private static final int VIDEO_BUFFER_SIZE =    0x0001_4000,
@@ -104,9 +112,11 @@ public class NotSoTinyUI extends Application {
     
     // other constants
     private static final byte VECTOR_RESET = 0,
-                              VECTOR_RTC = 1,
+                              VECTOR_NMI = 1,
                               VECTOR_KEYUP = 2,
-                              VECTOR_KEYDOWN = 3;
+                              VECTOR_KEYDOWN = 3,
+                              VECTOR_MEMORY_ERROR = 8,
+                              VECTOR_RTC = 12;
     
     /*
     private static final String PROGRAM_DATA_FOLDER = "data\\",
@@ -114,8 +124,13 @@ public class NotSoTinyUI extends Application {
                                 TEXT_FONT_FILE = "data\\text.dat";
     */
     
-    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernel\\emu\\",
-                                PROGRAM_EXEC_FILE = "forth.oex",
+    private static final String //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernel\\emu\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\testing\\",
+                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\minesweeper\\",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "forth.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "testing-mdbt.oex",
+                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "minesweeper.oex",
+                                DISK_FOLDER = PROGRAM_DATA_FOLDER + "disk\\",
                                 TEXT_FONT_FILE = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\textsmall.dat";
     
     
@@ -125,6 +140,7 @@ public class NotSoTinyUI extends Application {
     private MemoryManager mmu;
     
     private FlatMemoryController lowramController,
+                                 crashramController,
                                  placeholder_spiController,
                                  placeholder_cacheController,
                                  keyboardBufferController,
@@ -133,21 +149,23 @@ public class NotSoTinyUI extends Application {
                                  videoOtherController,
                                  bootromController;
     
-    // halter is deprecated by a HLT instruction but legacy code
-    private Halter halter;  
-    
     private SoundInterfaceController sic;
     
     private RandomController rand;
     
     private InterruptController pic;
     
+    private DiskBufferController dbc;
+    
     private Relocator relocator;
+    
+    private String entrySymbol;
     
     private ScreenBuffer screenBufferController;
     
     // actual memory arrays
     private byte[] lowramArray,
+                   crashramArray,
                    placeholder_spiArray,
                    placeholder_cacheArray,
                    keyboardBufferArray,
@@ -190,14 +208,15 @@ public class NotSoTinyUI extends Application {
                         this.clockHandler = null;
                         
                         // just run until halted
-                        while(!(NotSoTinyUI.this.halter.halted() || NotSoTinyUI.this.sim.getHalted())) {
+                        while(!NotSoTinyUI.this.sim.getHalted()) {
+                            if(Thread.interrupted()) return;
                             step();
                         }
                     } else if(this.clockHandler == null || this.clockHandler.isDone()){
                         
                         //System.out.println("running slow");
                         // run at the given rate
-                        if(!(NotSoTinyUI.this.halter.halted() || NotSoTinyUI.this.sim.getHalted())) {
+                        if(!NotSoTinyUI.this.sim.getHalted()) {
                             this.clockHandler = NotSoTinyUI.this.scheduler.scheduleAtFixedRate(() -> this.step(), 0, this.periodns, TimeUnit.NANOSECONDS);
                         }
                     }
@@ -205,6 +224,9 @@ public class NotSoTinyUI extends Application {
                     synchronized(this) {
                         wait();
                     }
+                } catch(InterruptedException ie) {
+                    this.stopSim();
+                    return;
                 } catch(Exception e) {
                     e.printStackTrace();
                 }
@@ -224,7 +246,7 @@ public class NotSoTinyUI extends Application {
          * Steps the simulator
          */
         private void step() {
-            if(NotSoTinyUI.this.halter.halted() || NotSoTinyUI.this.sim.getHalted() || !NotSoTinyUI.this.freerunEnabled) {
+            if(NotSoTinyUI.this.sim.getHalted() || !NotSoTinyUI.this.freerunEnabled) {
                 this.stopSim();
             } else {
                 try { 
@@ -236,24 +258,58 @@ public class NotSoTinyUI extends Application {
                     NotSoTinyUI.this.pic.step(NotSoTinyUI.this.sim);
                     NotSoTinyUI.this.sim.step();
                 } catch(Exception e) {
-                    e.printStackTrace();
-                    NotSoTinyUI.this.sim.setHalted(true);
-                    this.stopSim();
-                    throw e;
+                    if(e instanceof IndexOutOfBoundsException ie && ie.getMessage().contains("registered")) {
+                        System.out.printf("%08X: ", NotSoTinyUI.this.sim.getRegIP() - 1);
+                        System.out.println(ie.getMessage());
+                        
+                        // extract address
+                        String m = ie.getMessage();
+                        long targetAddr = Long.parseUnsignedLong(m.substring(m.lastIndexOf(" ") + 1), 16),
+                             sourceAddr = (NotSoTinyUI.this.sim.getRegIP() - 1) & 0xFFFF_FFFFl;
+                        
+                        // segfault
+                        NotSoTinyUI.this.sim.setRegD((short)(targetAddr >> 16)); // fault address in D:A
+                        NotSoTinyUI.this.sim.setRegA((short)targetAddr);
+                        NotSoTinyUI.this.sim.setRegB((short)(sourceAddr >> 16));
+                        NotSoTinyUI.this.sim.setRegC((short)sourceAddr);
+                        NotSoTinyUI.this.sim.setRegI((short) 0);
+                        
+                        NotSoTinyUI.this.sim.setRegSP((int)(CRASHRAM_START + CRASHRAM_SIZE)); // ensure SP is valid
+                        NotSoTinyUI.this.sim.fireNonMaskableInterrupt(VECTOR_MEMORY_ERROR);
+                    } else {
+                        System.out.printf("%08X: ", NotSoTinyUI.this.sim.getRegIP() - 1);
+                        e.printStackTrace();
+                        NotSoTinyUI.this.sim.setHalted(true);
+                        this.stopSim();
+                        throw e;
+                    }
                 }
                 NotSoTinyUI.this.instructionsExecutedLast++;
             }
             
             // sanity check
             if(NotSoTinyUI.this.sim.getRegIP() < 1024) {
+                
                 NotSoTinyUI.this.sim.setHalted(true);
                 NotSoTinyUI.this.freerunEnabled = false;
                 throw new IllegalStateException("Out of bounds IP: " + NotSoTinyUI.this.sim.getRegIP());
+                
+                
+                // segfault for this too
+                /*
+                System.out.printf("Out of bounds IP: %08X", NotSoTinyUI.this.sim.getRegIP());
+                NotSoTinyUI.this.sim.setRegD((short)(NotSoTinyUI.this.sim.getRegIP() >> 16));
+                NotSoTinyUI.this.sim.setRegA((short) NotSoTinyUI.this.sim.getRegIP());
+                NotSoTinyUI.this.sim.setRegI((short) 2);
+                
+                NotSoTinyUI.this.sim.setRegSP(1024);
+                NotSoTinyUI.this.sim.fireNonMaskableInterrupt(VECTOR_MEMORY_ERROR);
+                */
             }
             
+            // breakpoints
             if(NotSoTinyUI.this.enableBreakpoints && NotSoTinyUI.this.breakpointAddress != -1l) {
                 if(NotSoTinyUI.this.sim.getRegIP() == (NotSoTinyUI.this.breakpointAddress & 0xFFFF_FFFF)) {
-                    //NotSoTinyUI.this.halter.writeByte(0, (byte) 0);
                     NotSoTinyUI.this.sim.setHalted(true);
                     NotSoTinyUI.this.freerunEnabled = false;
                 }
@@ -267,18 +323,23 @@ public class NotSoTinyUI extends Application {
     private long instructionsExecutedLast, // tracks since UI was last updated
                  instructionsExecutedTotal,
                  elapsedTimens,
-                 breakpointAddress = -1l,
-                 memwatchAddress = 0;
+                 breakpointAddress,
+                 memwatchAddress;
     
-    private double lastAverageMIPS = 0;
+    private double lastAverageMIPS;
     
-    private boolean enableBreakpoints = false,
-                    freerunEnabled = false,
-                    traceEnabled = false;
+    private boolean enableBreakpoints,
+                    freerunEnabled,
+                    traceEnabled,
+                    disassemblyEnabled,
+                    stackTraceEnabled,
+                    rtcEnabled,
+                    memwatchIsNumber;
     
-    private String breakpointSymbol = "";
+    private String breakpointSymbol,
+                   memwatchRegister;
     
-    private Deque<String> instructionTrace = new ArrayDeque<>();
+    private Deque<String> instructionTrace;
     
     /**
      * Initialize the simulator
@@ -286,9 +347,13 @@ public class NotSoTinyUI extends Application {
      * @throws MidiUnavailableException 
      * @throws IOException 
      */
-    private void initSimulator() throws MidiUnavailableException, IOException {
+    private void initSimulator(boolean load) throws MidiUnavailableException, IOException {
+        // initialize memory manager
+        this.mmu = new MemoryManager();
+        
         // initialize flat memory segments]
         lowramArray = new byte[LOWRAM_SIZE];
+        crashramArray = new byte[CRASHRAM_SIZE];
         placeholder_spiArray = new byte[SPI_SIZE];
         placeholder_cacheArray = new byte[CC_SIZE];
         keyboardBufferArray = new byte[KEYBOARD_SIZE];
@@ -298,6 +363,7 @@ public class NotSoTinyUI extends Application {
         bootromArray = new byte[BOOTROM_SIZE];
         
         lowramController = new FlatMemoryController(lowramArray);
+        crashramController = new FlatMemoryController(crashramArray);
         placeholder_spiController = new FlatMemoryController(placeholder_spiArray);
         placeholder_cacheController = new FlatMemoryController(placeholder_cacheArray);
         keyboardBufferController = new FlatMemoryController(keyboardBufferArray);
@@ -307,14 +373,11 @@ public class NotSoTinyUI extends Application {
         bootromController = new FlatMemoryController(bootromArray);
         
         // initialize other segments
-        halter = new Halter();
         sic = new SoundInterfaceController();
         rand = new RandomController();
         pic = new InterruptController();
+        dbc = new DiskBufferController(this.mmu, Paths.get(DISK_FOLDER));
         screenBufferController = new ScreenBuffer(videoBufferArray); // 3FFFC
-        
-        // initialize memory manager
-        this.mmu = new MemoryManager();
         
         this.mmu.registerSegment(lowramController, LOWRAM_START, LOWRAM_SIZE);
         this.mmu.registerSegment(placeholder_spiController, SPI_START, SPI_SIZE);
@@ -324,16 +387,35 @@ public class NotSoTinyUI extends Application {
         this.mmu.registerSegment(videoCharsetController, VIDEO_START + VIDEO_BUFFER_SIZE, VIDEO_CHARSET_SIZE);
         this.mmu.registerSegment(videoOtherController, VIDEO_START + VIDEO_BUFFER_SIZE + VIDEO_CHARSET_SIZE, VIDEO_OTHER_SIZE - 4);
         this.mmu.registerSegment(pic, PIC_START, PIC_SIZE);
+        this.mmu.registerSegment(dbc, DISK_START, DISK_SIZE);
         this.mmu.registerSegment(bootromController, BOOTROM_START, BOOTROM_SIZE);
         
         this.mmu.registerSegment(sic, SOUND_START, SOUND_SIZE);
         this.mmu.registerSegment(rand, RANDOM_START, RANDOM_SIZE);
         this.mmu.registerSegment(screenBufferController, VIDEO_START + VIDEO_BUFFER_SIZE + VIDEO_CHARSET_SIZE + VIDEO_OTHER_SIZE - 4, 4);
         
-        // initialize trace
-        for(int i = 0; i < 16; i++) {
+        // initialize tracked things
+        this.instructionTrace = new ArrayDeque<>();
+        this.instructionsExecutedLast = 0;
+        this.instructionsExecutedTotal = 0;
+        
+        for(int i = 0; i < TRACE_SIZE; i++) {
             instructionTrace.push("");
         }
+        
+        // misc
+        this.breakpointAddress = -1l;
+        this.lastAverageMIPS = 0;
+        this.memwatchAddress = 0;
+        this.enableBreakpoints = false;
+        this.freerunEnabled = false;
+        this.traceEnabled = false;
+        this.disassemblyEnabled = false;
+        this.stackTraceEnabled = false;
+        this.memwatchIsNumber = true;
+        this.breakpointSymbol = "";
+        this.memwatchRegister = "";
+        this.pic.setNonMaskable(VECTOR_NMI);
         
         //this.mmu.printMap();
         
@@ -342,17 +424,19 @@ public class NotSoTinyUI extends Application {
         System.arraycopy(font, 0, videoCharsetArray, 0, font.length);
         
         // Load program into memory
-        List<Object> relocatorPair = ExecLoader.loadExecFileToRelocator(new File(PROGRAM_DATA_FOLDER + PROGRAM_EXEC_FILE));
-        
-        this.relocator = (Relocator) relocatorPair.get(0);
-        String entrySymbol = (String) relocatorPair.get(1);
+        if(load) {
+            List<Object> relocatorPair = ExecLoader.loadExecFileToRelocator(new File(PROGRAM_EXEC_FILE));
+            
+            this.relocator = (Relocator) relocatorPair.get(0);
+            this.entrySymbol = (String) relocatorPair.get(1);
+        }
         
         int relStart = this.relocator.hasReference("ORIGIN", false) ? 0 : 1024;
         
         long entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, lowramArray, relStart, relStart);
         
         // write entry vector
-        this.mmu.write4Bytes(0, (int) entry);
+        this.mmu.write4Bytes(VECTOR_RESET * 4, (int) entry);
         
         // simulator
         this.sim = new NotSoTinySimulator(this.mmu);
@@ -364,19 +448,42 @@ public class NotSoTinyUI extends Application {
         
         this.simThread.start();
         
-        // start seconds clock
-        /*
+        // start real time clock
+        this.rtcEnabled = START_WITH_CLOCK;
         this.scheduler.scheduleAtFixedRate(() -> {
-            this.pic.setRequest(VECTOR_RTC);
-            this.pic.step(this.sim);
-            notifySimulatorThread();
+            if(this.rtcEnabled) {
+                runInterrupt(VECTOR_RTC);
+            }
         }, 1_000_000l, 1_000l, TimeUnit.MICROSECONDS);
-        */
         // 1000 hz
         
         //this.halter.writeByte(0l, (byte) 0);
-        this.sim.setHalted(false);
-        this.freerunEnabled = false;
+        this.sim.setHalted(!START_IMMEDIATELY);
+        this.freerunEnabled = START_IMMEDIATELY;
+    }
+    
+    private void restartSimulator(boolean reload) {
+        // kill simThread
+        this.simThread.interrupt();
+        
+        try {
+            this.simThread.join();
+        } catch(InterruptedException e) {
+            // that's the idea
+        }
+        
+        // stop ui updater
+        while(!this.uiUpdateFuture.isDone()) this.uiUpdateFuture.cancel(false);
+        
+        // reset
+        try {
+            initSimulator(reload);
+            createUI();
+        } catch(MidiUnavailableException e) {
+            e.printStackTrace();
+        } catch(IOException e) {
+            e.printStackTrace();
+        }
     }
     
     /**
@@ -385,18 +492,54 @@ public class NotSoTinyUI extends Application {
     private void toggleRunSimulator() {
         if(!this.freerunEnabled) {
             this.freerunEnabled = true;
-            this.halter.clear();
             this.sim.setHalted(false);
             notifySimulatorThread();
         } else {
             this.freerunEnabled = false;
-            this.halter.writeByte(0l, (byte) 0);
             this.sim.setHalted(true);
         }
     }
     
+    /**
+     * Toggles traing
+     */
     private void toggleTrace() {
         this.traceEnabled = !this.traceEnabled;
+        this.disassemblyEnabled = false;
+        this.stackTraceEnabled = false;
+    }
+    
+    /**
+     * Toggles disassembly
+     */
+    private void toggleDisassembly() {
+        this.disassemblyEnabled = !this.disassemblyEnabled;
+        this.traceEnabled = false;
+        this.stackTraceEnabled = false;
+    }
+    
+    /**
+     * Toggles stack trace
+     */
+    private void toggleStackTrace() {
+        this.stackTraceEnabled = !this.stackTraceEnabled;
+        this.traceEnabled = false;
+        this.disassemblyEnabled = false;
+    }
+    
+    /**
+     * Toggles RTC
+     */
+    private void toggleRTC() {
+        this.rtcEnabled = !this.rtcEnabled;
+    }
+    
+    /**
+     * Toggles maskable interrupts
+     * Flips the IE bit in PF
+     */
+    private void toggleInterrupts() {
+        this.sim.setRegPF((short)(this.sim.getRegPF() ^ 0x0001));
     }
     
     /**
@@ -406,6 +549,16 @@ public class NotSoTinyUI extends Application {
         synchronized(this.simThread) { 
             this.simThread.notify();
         }
+    }
+    
+    /**
+     * Fires an interrupt, and sets the cpu running if applicable
+     * @param vector
+     */
+    private void runInterrupt(byte vector) {
+        this.pic.setRequest(vector);
+        this.pic.step(this.sim);
+        notifySimulatorThread();
     }
     
     /**
@@ -458,15 +611,24 @@ public class NotSoTinyUI extends Application {
                       fieldMemwatch;
     
     private Button buttonToggleAdvanced,
+                   buttonAwaken,
                    buttonToggleRunning,
                    buttonStepSim,
-                   buttonToggleTrace;
+                   buttonToggleTrace,
+                   buttonToggleDissassembler,
+                   buttonToggleStackTrace,
+                   buttonReset,
+                   buttonReload,
+                   buttonToggleClock,
+                   buttonToggleInterrupts;
     
     private CheckBox checkEnableBreakpoints;
     
     private Node advancedView;
     
     private boolean advancedViewVisisble = false;
+    
+    private ScheduledFuture<?> uiUpdateFuture;
     
     private synchronized void traceInstruction() {
         String descriptor;
@@ -513,14 +675,29 @@ public class NotSoTinyUI extends Application {
         // basic info
         this.infoTotalInstructions = new Text("Total instrctions: 0");
         this.infoAverageMIPS = new Text("Average MIPS:  0.00");
+        this.buttonAwaken = new Button("Awaken CPU");
+        this.buttonToggleRunning = new Button("Start CPU");
         this.buttonToggleAdvanced = new Button("Show debug/advanced view");
         
-        VBox boxBasicInfo = new VBox(this.infoAverageMIPS, this.buttonToggleAdvanced);
+        this.buttonAwaken.setDisable(true);
+        
+        Region rBasicInfoSeparator = new Region();
+        HBox.setHgrow(rBasicInfoSeparator, Priority.ALWAYS);
+        
+        HBox boxBasicInfoHUpper = new HBox(rBasicInfoSeparator, this.infoAverageMIPS);
+        HBox boxBasicInfoHLower = new HBox(this.buttonAwaken, this.buttonToggleRunning, this.buttonToggleAdvanced);
+        VBox boxBasicInfoV = new VBox(boxBasicInfoHUpper, boxBasicInfoHLower);
+        
+        this.buttonReset = new Button("Reset");
+        this.buttonReload = new Button("Reload");
+        
+        HBox boxBasicControlsLeftH = new HBox(this.buttonReset, this.buttonReload);
+        VBox boxBasicControlsLeftV = new VBox(this.infoTotalInstructions, boxBasicControlsLeftH);
         
         Region rBasicControlsSeparator = new Region();
         HBox.setHgrow(rBasicControlsSeparator, Priority.ALWAYS);
         
-        HBox boxBasicControls = new HBox(this.infoTotalInstructions, rBasicControlsSeparator, boxBasicInfo);
+        HBox boxBasicControls = new HBox(boxBasicControlsLeftV, rBasicControlsSeparator, boxBasicInfoV);
         
         // advanced view
         this.infoProcessorState = new Text("");
@@ -549,12 +726,25 @@ public class NotSoTinyUI extends Application {
         this.infoCurrentBreakpoint = new Text("Current Breakpoint: (none)");
         this.checkEnableBreakpoints = new CheckBox("Enable Breakpoints");
         
-        this.buttonToggleRunning = new Button("Start CPU");
         this.buttonStepSim = new Button("Step CPU");
+        this.buttonToggleInterrupts = new Button("Toggle Interrupts");
+        this.buttonToggleClock = new Button("Toggle RTC");
+        
+        this.buttonToggleInterrupts.setMinWidth(147);
+        this.buttonToggleClock.setMinWidth(97);
+        
+        Region rTogglesUpperSeparator = new Region();
+        HBox boxTogglesUpper = new HBox(this.buttonStepSim, rTogglesUpperSeparator, this.buttonToggleInterrupts, this.buttonToggleClock);
+        HBox.setHgrow(rTogglesUpperSeparator, Priority.ALWAYS);
+        
         this.buttonToggleTrace = new Button("Start Trace");
-        HBox boxToggleStep = new HBox(this.buttonToggleRunning, this.buttonStepSim, this.buttonToggleTrace);
+        this.buttonToggleDissassembler = new Button("Show Dissassembly");
+        this.buttonToggleStackTrace = new Button("Show Stack Trace");
+        HBox boxTogglesLower = new HBox(this.buttonToggleTrace, this.buttonToggleDissassembler, this.buttonToggleStackTrace);
         this.buttonToggleRunning.setMinWidth(83);
         this.buttonToggleTrace.setMinWidth(96);
+        this.buttonToggleDissassembler.setMinWidth(100);
+        this.buttonToggleStackTrace.setMinWidth(100);
         
         Region rAdvancedViewSeparator1 = new Region();
         Region rAdvancedViewSeparator2 = new Region();
@@ -566,7 +756,7 @@ public class NotSoTinyUI extends Application {
         this.advancedView = new VBox(this.infoProcessorState, rAdvancedViewSeparator1,
                                      this.infoMemwatch, boxMemwatchField, this.infoCurrentWatchAddress, rAdvancedViewSeparator2,
                                      boxBreakpointField, this.infoCurrentBreakpoint, this.checkEnableBreakpoints, rAdvancedViewSeparator3,
-                                     boxToggleStep);
+                                     boxTogglesUpper, boxTogglesLower);
         
         // grid
         GridPane pain = new GridPane();
@@ -579,15 +769,17 @@ public class NotSoTinyUI extends Application {
         
         // bindings
         this.buttonToggleAdvanced.setOnAction(e -> toggleAdvancedView());
+        this.buttonAwaken.setOnAction(e -> runInterrupt(VECTOR_NMI));
         this.buttonToggleRunning.setOnAction(e -> toggleRunSimulator());
+        this.buttonStepSim.setOnAction(e -> stepSim());
         this.buttonToggleTrace.setOnAction(e -> toggleTrace());
+        this.buttonToggleDissassembler.setOnAction(e -> toggleDisassembly());
+        this.buttonToggleStackTrace.setOnAction(e -> toggleStackTrace());
+        this.buttonReset.setOnAction(e -> restartSimulator(false));
+        this.buttonReload.setOnAction(e -> restartSimulator(true));
+        this.buttonToggleClock.setOnAction(e -> toggleRTC());
+        this.buttonToggleInterrupts.setOnAction(e -> toggleInterrupts());
         
-        // step button
-        this.buttonStepSim.setOnAction(e -> {
-            //this.halter.clear();
-            //this.sim.setHalted(false);
-            stepSim();
-        });
         
         // enable breakpoints button
         this.checkEnableBreakpoints.setOnAction(e -> {
@@ -621,11 +813,32 @@ public class NotSoTinyUI extends Application {
         this.fieldMemwatch.setOnAction(e -> {
             try {
                 this.memwatchAddress = Long.parseLong(this.fieldMemwatch.getText(), 16);
+                this.memwatchIsNumber = true;
             } catch(Exception ex1) {
                 try {
                     this.memwatchAddress = this.relocator.getReference(this.fieldMemwatch.getText());
+                    this.memwatchIsNumber = true;
                 } catch(Exception ex2) {
-                    this.breakpointAddress = 0;
+                    String str = this.fieldMemwatch.getText().toUpperCase(); 
+                    
+                    switch(str) {
+                        case "D:A":
+                        case "A:B":
+                        case "B:C":
+                        case "C:D":
+                        case "J:I":
+                        case "L:K":
+                        case "BP":
+                        case "SP":
+                        case "IP":
+                            this.memwatchRegister = str;
+                            this.memwatchIsNumber = false;
+                            break;
+                            
+                        default:
+                            this.memwatchAddress = 0;
+                            this.memwatchIsNumber = true;
+                    }
                 }
             }
         });
@@ -637,16 +850,6 @@ public class NotSoTinyUI extends Application {
         
         Scene scene = new Scene(pain);
         scene.getStylesheets().add(getClass().getResource("resources/application.css").toExternalForm());
-        
-        /*
-        scene.addEventHandler(KeyEvent.KEY_TYPED, (ke) -> {
-            this.keyboardBuffer[0] = (byte) ke.getCharacter().charAt(0);
-            
-            this.pic.setRequest(VECTOR_TYPED);
-            this.pic.step(this.sim);
-            notifySimulatorThread();
-        });
-        */
         
         // keyboard stuff
         Map<KeyCode, Boolean> keyTracker = new HashMap<>();
@@ -662,10 +865,7 @@ public class NotSoTinyUI extends Application {
                 
                 //System.out.printf("%04X%n", code.getCode());
                 //System.out.println("interrupt sent " + code);
-                
-                this.pic.setRequest(VECTOR_KEYDOWN);
-                this.pic.step(this.sim);
-                notifySimulatorThread();
+                runInterrupt(VECTOR_KEYDOWN);
             }
             
             // don't let traversal stuff or anything happen
@@ -681,9 +881,7 @@ public class NotSoTinyUI extends Application {
                 keyTracker.put(code, false);
                 this.keyboardBufferController.write4Bytes(0, code.getCode());
                 
-                this.pic.setRequest(VECTOR_KEYUP);
-                this.pic.step(this.sim);
-                notifySimulatorThread();
+                runInterrupt(VECTOR_KEYUP);
             }
             
             ke.consume();
@@ -706,7 +904,7 @@ public class NotSoTinyUI extends Application {
         });
         
         // start periodic UI updates
-        this.scheduler.scheduleAtFixedRate(() -> updateUI(), 0l, 1_000_000 / 30, TimeUnit.MICROSECONDS);
+        this.uiUpdateFuture = this.scheduler.scheduleAtFixedRate(() -> updateUI(), 0l, 1_000_000 / 30, TimeUnit.MICROSECONDS);
         
         screen.requestFocus();
     }
@@ -734,6 +932,16 @@ public class NotSoTinyUI extends Application {
             
             this.buttonToggleRunning.setText(this.freerunEnabled ? "Stop CPU" : "Start CPU");
             this.buttonToggleTrace.setText(this.traceEnabled ? "Stop Trace" : "Start Trace");
+            this.buttonToggleStackTrace.setText(this.stackTraceEnabled ? "Hide Stack Trace" : "Show Stack Trace");
+            this.buttonToggleDissassembler.setText(this.disassemblyEnabled ? "Hide Disassembly" : "Show Disassembly");
+            this.buttonToggleClock.setText(this.rtcEnabled ? "Disable RTC" : "Enable RTC");
+            this.buttonToggleInterrupts.setText((this.sim.getRegPF() & 0x0001) == 0 ? "Enable Interrupts" : "Disable Interrupts");
+            
+            if(this.freerunEnabled && this.sim.getHalted()) {
+                this.buttonAwaken.setDisable(false);
+            } else {
+                this.buttonAwaken.setDisable(true);
+            }
             
             //this.screen.update(this.videoBufferArray, 0);
             this.screen.update(this.screenBufferController, 0);
@@ -754,16 +962,33 @@ public class NotSoTinyUI extends Application {
                 
                 try {
                     state += dis.disassemble(this.mmu, Integer.toUnsignedLong(sim.getRegIP())) + "\n";
+                    
+                    for(int j = 0; j < dis.getLastInstructionLength(); j++) {
+                        byte b = this.mmu.readByte(Integer.toUnsignedLong(sim.getRegIP()) + ((long) j));
+                        state += String.format("%02X ", b);
+                    }
                 } catch(IndexOutOfBoundsException e) {
                 } catch(NullPointerException e) {}
                 
-                for(int j = 0; j < dis.getLastInstructionLength(); j++) {
-                    byte b = this.mmu.readByte(Integer.toUnsignedLong(sim.getRegIP()) + ((long) j));
-                    state += String.format("%02X ", b);
-                }
-                
                 state += "\n\n" + this.relocator.getAddressName(Integer.toUnsignedLong(sim.getRegIP()));
                 
+                // If watching a pointer, update address
+                if(!this.memwatchIsNumber) {
+                    this.memwatchAddress = switch(this.memwatchRegister) {
+                        case "D:A"  -> ((this.sim.getRegD() << 16) | this.sim.getRegA()) & 0xFFFF_FFFFl;
+                        case "A:B"  -> ((this.sim.getRegA() << 16) | this.sim.getRegB()) & 0xFFFF_FFFFl;
+                        case "B:C"  -> ((this.sim.getRegB() << 16) | this.sim.getRegC()) & 0xFFFF_FFFFl;
+                        case "C:D"  -> ((this.sim.getRegC() << 16) | this.sim.getRegD()) & 0xFFFF_FFFFl;
+                        case "J:I"  -> ((this.sim.getRegJ() << 16) | this.sim.getRegI()) & 0xFFFF_FFFFl;
+                        case "L:K"  -> ((this.sim.getRegL() << 16) | this.sim.getRegK()) & 0xFFFF_FFFFl;
+                        case "BP"   -> this.sim.getRegBP() & 0xFFFF_FFFFl;
+                        case "SP"   -> this.sim.getRegSP() & 0xFFFF_FFFFl;
+                        case "IP"   -> this.sim.getRegIP() & 0xFFFF_FFFFl;
+                        default     -> 0l;
+                    };
+                }
+                
+                // trace/disassembly
                 if(this.traceEnabled) {
                     state += "\n\n";
                     
@@ -771,6 +996,67 @@ public class NotSoTinyUI extends Application {
                     
                     for(String s : traceCopy) {
                         state += (s != null ? s : "") + "\n";
+                    }
+                } else if(this.disassemblyEnabled) {
+                    state += "\n\n";
+                    
+                    // disassemble memwatch area
+                    for(int i = 0, j = 0; i < 64 && j < TRACE_SIZE; j++) {
+                        String disasm = dis.disassemble(this.mmu, this.memwatchAddress + i),
+                               disBytes = "";
+                        
+                        int bytes = dis.getLastInstructionLength();
+                        
+                        for(int k = 0; k < bytes; k++) {
+                            byte l;
+                            
+                            try {
+                                l = this.mmu.readByte(this.memwatchAddress + i + k);
+                            } catch(IndexOutOfBoundsException e) {
+                                l = 0;
+                                j = TRACE_SIZE; // end disassembly
+                                break;
+                            }
+                            
+                            disBytes += String.format("%02X ", l);
+                        }
+                        
+                        if(j == TRACE_SIZE) {
+                            state += String.format("%08X: Out of bounds.%n", this.memwatchAddress + i);
+                        } else {
+                            state += String.format("%08X: %-24s%s %n", this.memwatchAddress + i, disBytes, disasm);
+                        }
+                        
+                        i += bytes;
+                    }
+                } else if(this.stackTraceEnabled) {
+                    state += "\n\nAddress   BP       Label\n";
+                    
+                    List<String> trace = new ArrayList<>();
+                    
+                    long bpAddr = this.sim.getRegBP() & 0xFFFFFFFFl,
+                         retAddr = this.sim.getRegIP() & 0xFFFFFFFFl;
+                    
+                    for(int i = 0; i < TRACE_SIZE; i++) {
+                        // trace
+                        String functionLabel = this.relocator.getNearestBelow(retAddr);
+                        
+                        trace.add(String.format("%08X: %08X %s%n", retAddr, bpAddr, functionLabel)); 
+                        
+                        // read from [BP] = previous BP
+                        // read from [BP + 4] = return address
+                        try {
+                            retAddr = this.mmu.read4Bytes(bpAddr + 4) & 0xFFFFFFFFl;
+                            bpAddr = this.mmu.read4Bytes(bpAddr) & 0xFFFFFFFFl;
+                        } catch(IndexOutOfBoundsException e) {
+                            break;
+                        }
+                        
+                        if(bpAddr == 0 || retAddr == 0) break;
+                    }
+                    
+                    for(int i = trace.size() - 1; i >= 0; i--) {
+                        state += trace.get(i);
                     }
                 }
                 
@@ -830,6 +1116,8 @@ public class NotSoTinyUI extends Application {
             } else {
                 this.buttonToggleAdvanced.setText("Show advanced/debug view");
             }
+            
+            this.stage.sizeToScene();
         });
         
         //printState();

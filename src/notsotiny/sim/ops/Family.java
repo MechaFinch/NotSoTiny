@@ -6,6 +6,7 @@ package notsotiny.sim.ops;
  * @author Mechafinch
  */
 public enum Family {
+    INV,
     MISC,
     MOVE,
     ADDITION,

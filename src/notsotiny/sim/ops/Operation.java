@@ -6,6 +6,8 @@ package notsotiny.sim.ops;
  * @author Mechafinch
  */
 public enum Operation {
+    INV     (Family.INV),
+    
     NOP     (Family.MISC),
     HLT     (Family.MISC),
     LEA     (Family.MISC),

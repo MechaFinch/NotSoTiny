@@ -128,14 +128,14 @@
 	0x75	ADD J, i8			sign extended
 	0x76	ADD K, i8			sign extended
 	0x77	ADD L, i8			sign extended
-	0x78	ADC A, i8			sign extended
-	0x79	ADC B, i8			sign extended
-	0x7A	ADC C, i8			sign extended
-	0x7B	ADC D, i8			sign extended
-	0x7C	ICC A
-	0x7D	ICC B
-	0x7E	ICC C
-	0x7F	ICC D
+	0x78	ICC A
+	0x79	ICC B
+	0x7A	ICC C
+	0x7B	ICC D
+	0x7C	ICC I
+	0x7D	ICC J
+	0x7E	ICC K
+	0x7F	ICC L
 	
 	0x80	SUB A, i8			sign extended
 	0x81	SUB B, i8			sign extended
@@ -145,14 +145,14 @@
 	0x85	SUB J, i8			sign extended
 	0x86	SUB K, i8			sign extended
 	0x87	SUB L, i8			sign extended
-	0x88	SBB A, i8			sign extended
-	0x89	SBB B, i8			sign extended
-	0x8A	SBB C, i8			sign extended
-	0x8B	SBB D, i8			sign extended
-	0x8C	DCC A
-	0x8D	DCC B
-	0x8E	DCC C
-	0x8F	DCC D
+	0x88	DCC A
+	0x89	DCC B
+	0x8A	DCC C
+	0x8B	DCC D
+	0x8C	DCC I
+	0x8D	DCC J
+	0x8E	DCC K
+	0x8F	DCC L
 	
 	0x90	ADD rim
 	0x91	ADD rim, i8			destination only, sign extended
@@ -194,27 +194,28 @@
 	0xB1	INC J
 	0xB2	INC K
 	0xB3	INC L
-	0xB4	ICC I
-	0xB5	ICC J
-	0xB6	ICC K
-	0xB7	ICC L
-	0xB8	DEC I
-	0xB9	DEC J
-	0xBA	DEC K
-	0xBB	DEC L
-	0xBC	DCC I
-	0xBD	DCC J
-	0xBE	DCC K
-	0xBF	DCC L
+	0xB4	DEC I
+	0xB5	DEC J
+	0xB6	DEC K
+	0xB7	DEC L
 	
-	0xC0	INC rim				destination only
-	0xC1	ICC rim				destination only
-	0xC2	PINC rimp			destination only
-	0xC3	PICC rimp			destination only
-	0xC4	DEC rim				destination only
-	0xC5	DCC rim				destination only
-	0xC6	PDEC rimp			destination only
-	0xC7	PDCC rimp			destination only
+	0xB8	INC rim				destination only
+	0xB9	ICC rim				destination only
+	0xBA	PINC rimp			destination only
+	0xBB	PICC rimp			destination only
+	0xBC	DEC rim				destination only
+	0xBD	DCC rim				destination only
+	0xBE	PDEC rimp			destination only
+	0xBF	PDCC rimp			destination only
+	
+	0xC0	SHL rim, i8			destination only, alias SAL rim, i8
+	0xC1	SHR rim, i8			destination only
+	0xC2	SAR rim, i8			destination only
+	0xC3	ROL rim, i8			destination only
+	0xC4	ROR rim, i8			destination only
+	0xC5	RCL rim, i8			destination only
+	0xC6	RCR rim, i8			destination only
+	0xC7	undef
 	
 	0xC8	SHL rim				alias SAL rim
 	0xC9	SHR rim
@@ -276,5 +277,5 @@
 	0xFB	JGE rim				alias JNL rim		source only		S XNOR O
 	0xFC	JL i8				alias JNGE i8						S XOR O
 	0xFD	JL rim				alias JNGE rim		source only		S XOR O
-	0xFE	JLE i8				alias JNG i8						Z AND (S XOR O)
-	0xFF	JLE rim				alias JNG rim		source only		Z AND (S XOR O)
+	0xFE	JLE i8				alias JNG i8						Z OR (S XOR O)
+	0xFF	JLE rim				alias JNG rim		source only		Z OR (S XOR O)

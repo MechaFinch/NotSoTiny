@@ -92,10 +92,15 @@ public class MemoryManager implements MemoryController {
         endAddress &= 0xFFFF_FFFFl;
         
         Entry<Long, MemoryController> segment = this.segmentControllerMap.floorEntry(startAddress);
-        Long start = segment.getKey();
+        Long start = segment.getKey(),
+             end = this.endAddressMap.get(start);
         
-        if(start == null || this.endAddressMap.get(start) < startAddress) {
-            throw new IndexOutOfBoundsException(String.format("Attempted to access non-registered address: %08X", startAddress));
+        if(start == null || end < startAddress) {
+            // floored segment ends before start
+            throw new IndexOutOfBoundsException(String.format("Attempted to access non-registered address: %08X from %08X", startAddress, startAddress));
+        } else if(end == null || end < endAddress) {
+            // segment ends before access does
+            throw new IndexOutOfBoundsException(String.format("Attempted to access non-registered address: %08X from %08X", endAddress, startAddress));
         } else if(endAddress < startAddress) {
             throw new IndexOutOfBoundsException(String.format("Multi-byte access overflowed: %08X", startAddress));
         }

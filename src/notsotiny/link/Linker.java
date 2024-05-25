@@ -31,23 +31,34 @@ public class Linker {
      * @throws IOException
      */
     public static void main(String[] args) throws IOException {
-        if(args.length < 1 || args.length > 6) {
-            System.out.println("Usage: Linker [flags] <relocator buffer size (hex)> <exec file> [<output file>]");
+        if(args.length < 1 || args.length > 7) {
+            System.out.println("Usage: Linker [flags] <exec file> [<output file>]");
             System.out.println("Flags:");
+            System.out.println("\t-s [size]  \tSize: Set a fixed output size in bytes (hexadecimal)");
             System.out.println("\t-o [origin]\tOrigin: Start address to be relocated to, in hexadecimal");
-            System.out.println("\t-l \t\tList: output a listing file");
+            System.out.println("\t-l         \tList: output a listing file");
             System.exit(0);
         }
         
         // parse flags
         int flagIndex = 0;
         
-        int origin = 0;
-        boolean outputListing = false;
+        int size = 0,
+            origin = 0;
+        boolean outputListing = false,
+                truncate = true;
         
         out:
         while(true) {
             switch(args[flagIndex]) {
+                case "-s":
+                    truncate = false;
+                    size = (int) Long.parseLong(args[flagIndex + 1], 16);
+                    flagIndex += 2;
+                    
+                    LOG.fine(String.format("Buffer size set to &08X", size));
+                    break;
+                
                 case "-o":
                     origin = (int) Long.parseLong(args[flagIndex + 1], 16);
                     flagIndex += 2;
@@ -67,8 +78,7 @@ public class Linker {
             }
         }
         
-        byte[] data = new byte[Integer.parseInt(args[flagIndex + 0], 16)];
-        String inputFileName = args[flagIndex + 1];
+        String inputFileName = args[flagIndex];
         
         // load
         List<Object> relocatorPair = ExecLoader.loadExecFileToRelocator(new File(inputFileName));
@@ -76,15 +86,29 @@ public class Linker {
         Relocator relocator = (Relocator) relocatorPair.get(0);
         String entrySymbol = (String) relocatorPair.get(1);
         
-        long entry = ExecLoader.loadRelocator(relocator, entrySymbol, data, Integer.toUnsignedLong(origin), 0);
+        byte[] data,
+               relData = relocator.relocate(Integer.toUnsignedLong(origin));
+        
+        if(truncate) {
+            data = relData;
+        } else {
+            data = new byte[size];
+            System.arraycopy(relData, 0, data, 0, Math.min(data.length, relData.length));
+            
+            if(data.length < relData.length) { 
+                LOG.warning("Output size smaller than relocated data size: %08X bytes specified, %08X bytes relocated");
+            }
+        }
+        
+        long entry = relocator.getReference(entrySymbol);
         
         LOG.finest(String.format("Entry symbol %s relocated to %08X", entrySymbol, entry));
         
         // write data to file
         String outputFileName = "";
         
-        if(args.length > flagIndex + 2) {
-            outputFileName = args[flagIndex + 2];
+        if(args.length > flagIndex + 1) {
+            outputFileName = args[flagIndex + 1];
         } else {
             outputFileName = inputFileName.substring(0, inputFileName.lastIndexOf('.')) + ".dat";
         }
