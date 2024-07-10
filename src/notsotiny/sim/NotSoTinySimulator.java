@@ -13,6 +13,8 @@ import notsotiny.sim.ops.Operation;
  */
 public class NotSoTinySimulator {
     
+    private static final byte VECTOR_GPF = 0x10;
+    
     private MemoryController memory;
     
     // 16 bit regs
@@ -24,8 +26,11 @@ public class NotSoTinySimulator {
                   reg_j,
                   reg_k,
                   reg_l,
-                  reg_f,
-                  reg_pf;
+                  reg_f;
+    
+    // PF Fields 
+    private boolean pf_ie,
+                    pf_pv;
     
     // 32 bit regs
     private int reg_ip,
@@ -34,7 +39,8 @@ public class NotSoTinySimulator {
     
     // state
     private boolean halted,
-                    externalInterrupt;
+                    externalInterrupt,
+                    generalProtectionFault;
     
     private byte externalInterruptVector;
     
@@ -60,10 +66,12 @@ public class NotSoTinySimulator {
         this.reg_sp = 0;
         this.reg_bp = 0;
         this.reg_f = 0;
-        this.reg_pf = 1; // interrupts enabled by default
+        this.pf_ie = false;
+        this.pf_pv = true;
         this.halted = false;
         this.externalInterrupt = false;
         this.externalInterruptVector = 0;
+        this.generalProtectionFault = false;
         this.fetchBuffer = new byte[8];
         this.prev_ip = this.reg_ip;
     }
@@ -262,6 +270,11 @@ public class NotSoTinySimulator {
         // jumps update themselves
         if(!(desc.op.getType().getFamily() == Family.JUMP && desc.op.getType() != Operation.CMP && desc.op.getType() != Operation.PCMP)) {
             updateIP(desc);
+        }
+        
+        if(this.generalProtectionFault) {
+            this.generalProtectionFault = false;
+            runInterrupt(VECTOR_GPF);
         }
     }
     
@@ -1072,7 +1085,7 @@ public class NotSoTinySimulator {
     private void runRET(InstructionDescriptor desc) {
         if(desc.op == Opcode.IRET) {
             // IRET also pops flags
-            this.reg_pf = this.memory.read2Bytes(this.reg_sp);
+            this.setRegPF(this.memory.read2Bytes(this.reg_sp));
             this.reg_f = this.memory.read2Bytes(this.reg_sp + 2);
             this.reg_sp += 4;
         }
@@ -1116,11 +1129,12 @@ public class NotSoTinySimulator {
         this.reg_sp -= 8;
         this.memory.write4Bytes(this.reg_sp + 4, this.reg_ip);
         this.memory.write2Bytes(this.reg_sp + 2, this.reg_f);
-        this.memory.write2Bytes(this.reg_sp, this.reg_pf);
+        this.memory.write2Bytes(this.reg_sp, this.getRegPF());
         
         // get vector & jump
         this.reg_ip = this.memory.read4Bytes((num & 0x00FFl) << 2);
-        this.reg_pf &= ~0x0001; // clear IE  
+        this.pf_ie = false; // Disable maskable interrupts
+        this.pf_pv = true;  // Set privileged
     }
     
     /**
@@ -1579,7 +1593,11 @@ public class NotSoTinySimulator {
                 break;
             
             case MOV_RIM_PF:
-                src = this.reg_pf;
+                if(this.pf_pv) {
+                    src = this.getRegPF();
+                } else {
+                    this.generalProtectionFault = true;
+                }
                 break;
             
             // rim
@@ -1682,7 +1700,11 @@ public class NotSoTinySimulator {
                 break;
             
             case MOV_PF_RIM:
-                this.reg_pf = (short) src;
+                if(this.pf_pv) {
+                    this.setRegPF((short) src);
+                } else {
+                    this.generalProtectionFault = true;
+                }
                 break;
             
             // rim
@@ -1709,9 +1731,17 @@ public class NotSoTinySimulator {
                 }
                 return;
             
+            case MOV_RIM_PF:
+                if(this.generalProtectionFault) {
+                    // Ensure complete decoding without actually writing
+                    getNormalRIMDestinationDescriptor(desc);
+                } else {
+                    putNormalRIMDestination(desc, src);
+                }
+                return;
+            
             case MOV_RIM:
             case MOV_RIM_F:
-            case MOV_RIM_PF:
                 putNormalRIMDestination(desc, src);
                 return;
             
@@ -1782,7 +1812,14 @@ public class NotSoTinySimulator {
             case PUSH_L     -> this.reg_l;
             case PUSH_BP    -> this.reg_bp;
             case PUSH_F     -> this.reg_f;
-            case PUSH_PF    -> this.reg_pf;
+            case PUSH_PF    -> {
+                if(this.pf_pv) {
+                    yield this.getRegPF();
+                } else {
+                    this.generalProtectionFault = true;
+                    yield 0;
+                }
+            }
             case PUSH_I32   -> {
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 4;
@@ -1791,6 +1828,10 @@ public class NotSoTinySimulator {
             }
             default         -> getNormalRIMSource(desc); // rim
         };
+        
+        if(this.generalProtectionFault) {
+            return;
+        }
         
         // update SP
         this.reg_sp -= opSize;
@@ -1825,6 +1866,9 @@ public class NotSoTinySimulator {
             
             this.reg_sp += 20;
             return;
+        } else if(desc.op == Opcode.POP_PF && !this.pf_pv) {
+            this.generalProtectionFault = true;
+            return;
         }
         
         // deal with operand size
@@ -1858,7 +1902,7 @@ public class NotSoTinySimulator {
             
             case POP_BP:    this.reg_bp = val; break;
             case POP_F:     this.reg_f = (short) val; break;
-            case POP_PF:    this.reg_pf = (short) val; break;
+            case POP_PF:    this.setRegPF((short) val); break;
             default:        putNormalRIMDestination(desc, val); // rim
         }
     }
@@ -2519,7 +2563,11 @@ public class NotSoTinySimulator {
                             break;
                             
                         case REG_PF:
-                            this.reg_pf = (short) val;
+                            if(this.pf_pv) {
+                                this.setRegPF((short) val);
+                            } else {
+                                this.generalProtectionFault = true;
+                            }
                             break;
                             
                         default:
@@ -2764,7 +2812,7 @@ public class NotSoTinySimulator {
                 case REG_BP -> this.reg_bp;
                 case REG_SP -> this.reg_sp;
                 case REG_F  -> this.reg_f;
-                case REG_PF -> this.reg_pf;
+                case REG_PF -> this.getRegPF();
                 default     -> 0;
             };
             
@@ -3988,7 +4036,7 @@ public class NotSoTinySimulator {
      * @return true if the interrupt was not masked
      */
     public boolean fireMaskableInterrupt(byte vector) {
-        if((this.reg_pf & 1) != 0) {
+        if(this.pf_ie) {
             this.halted = false;
             this.externalInterrupt = true;
             this.externalInterruptVector = vector;
@@ -4021,13 +4069,19 @@ public class NotSoTinySimulator {
     public short getRegK() { return this.reg_k; }
     public short getRegL() { return this.reg_l; }
     public short getRegF() { return this.reg_f; }
-    public short getRegPF() { return this.reg_pf; }
     public int getRegIP() { return this.reg_ip; }
     public int getRegBP() { return this.reg_bp; }
     public int getRegSP() { return this.reg_sp; }
     public boolean getHalted() { return this.halted; }
     public boolean hasPendingInterrupt() { return this.externalInterrupt; }
     public byte getPendingInterruptVector() { return this.externalInterruptVector; }
+    
+    public short getRegPF() {
+        return (short)(
+            (this.pf_ie ? 0x01 : 0x00) |
+            (this.pf_pv ? 0x02 : 0x00)
+        );
+    }
     
     /*
      * setty bois
@@ -4041,9 +4095,13 @@ public class NotSoTinySimulator {
     public void setRegK(short k) { this.reg_k = k; }
     public void setRegL(short l) { this.reg_l = l; }
     public void setRegF(short f) { this.reg_f = f; }
-    public void setRegPF(short pf) { this.reg_pf = pf; }
     public void setRegIP(int ip) { this.reg_ip = ip; }
     public void setRegBP(int bp) { this.reg_bp = bp; }
     public void setRegSP(int sp) { this.reg_sp = sp; }
     public void setHalted(boolean h) { this.halted = h; }
+    
+    public void setRegPF(short pf) {
+        this.pf_ie = (pf & 0x01) != 0;
+        this.pf_pv = (pf & 0x02) != 0;
+    }
 }

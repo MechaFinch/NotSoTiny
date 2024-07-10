@@ -133,6 +133,7 @@ public class Assembler {
         List<RenameableRelocatableObject> objects = assemble(Paths.get(args[flagCount]), optimize, debug, (args.length > flagCount + 2) ? args[flagCount + 2] : "");
         
         // write object files
+        LOG.info("Writing object files...");
         String directory = new File(args[flagCount]).getAbsolutePath();
         directory = directory.substring(0, directory.lastIndexOf("\\")) + "\\";
         
@@ -141,6 +142,8 @@ public class Assembler {
         for(RelocatableObject obj : objects) {
             String filename = "obj\\" + obj.getName() + ".obj";
             execContents.add(filename);
+            
+            LOG.fine("Writing object file " + directory + filename);
             
             // make obj directory if it doesn't exist
             if(!new File(directory + "obj\\").exists()) {
@@ -154,7 +157,11 @@ public class Assembler {
         
         // exec file
         if(args.length == (flagCount + 3)) {
-            try(PrintWriter execWriter = new PrintWriter(directory + args[flagCount + 1])) {
+            String fn = directory + args[flagCount + 1];
+            
+            LOG.fine("Writing exec file " + fn);
+            
+            try(PrintWriter execWriter = new PrintWriter(fn)) {
                 // entry point
                 execWriter.println("#entry " + args[flagCount + 2]);
                 
@@ -162,6 +169,8 @@ public class Assembler {
                 execContents.forEach(execWriter::println);
             }
         }
+        
+        LOG.info("Done.");
     }
     
     /**
@@ -198,7 +207,7 @@ public class Assembler {
      * @throws IOException
      */
     public static List<RenameableRelocatableObject> assemble(Path file, boolean optimizeInstructionWidth, boolean debugFriendlyOutput, String entrySymbolName) throws IOException {
-        LOG.info("Assembling from main file: " + file);
+        LOG.info("Assembling from main file: " + file + "...");
         
         ArrayList<RenameableRelocatableObject> objects = new ArrayList<>();
         Path standardLibPath = Paths.get("C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\");

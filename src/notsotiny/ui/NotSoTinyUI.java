@@ -126,10 +126,12 @@ public class NotSoTinyUI extends Application {
     
     private static final String //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernel\\emu\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\testing\\",
-                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\minesweeper\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\minesweeper\\",
+                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\fakeos\\",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "forth.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "testing-mdbt.oex",
-                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "minesweeper.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "minesweeper.oex",
+                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_shell.oex",
                                 DISK_FOLDER = PROGRAM_DATA_FOLDER + "disk\\",
                                 TEXT_FONT_FILE = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\textsmall.dat";
     
@@ -441,7 +443,6 @@ public class NotSoTinyUI extends Application {
         // simulator
         this.sim = new NotSoTinySimulator(this.mmu);
         this.sim.setRegSP((int)(LOWRAM_START + LOWRAM_SIZE));
-        this.sim.setRegPF((short) 0);
         
         // timing stuff
         this.simThread = new SimulatorThread(CLOCK_PERIOD);
@@ -608,7 +609,8 @@ public class NotSoTinyUI extends Application {
                  infoMemwatch;
     
     private TextField fieldBreakpoint,
-                      fieldMemwatch;
+                      fieldMemwatch,
+                      fieldClockSpeed;
     
     private Button buttonToggleAdvanced,
                    buttonAwaken,
@@ -726,6 +728,14 @@ public class NotSoTinyUI extends Application {
         this.infoCurrentBreakpoint = new Text("Current Breakpoint: (none)");
         this.checkEnableBreakpoints = new CheckBox("Enable Breakpoints");
         
+        // TODO
+        Text labelClockSpeedName = new Text("Clock Period");
+        Text labelClockSpeedUnit = new Text("us");
+        this.fieldClockSpeed = new TextField("0");
+        HBox boxClockField = new HBox(labelClockSpeedName, this.fieldClockSpeed, labelClockSpeedUnit);
+        boxClockField.setAlignment(Pos.CENTER_LEFT);
+        this.fieldClockSpeed.setMinWidth(35);
+        
         this.buttonStepSim = new Button("Step CPU");
         this.buttonToggleInterrupts = new Button("Toggle Interrupts");
         this.buttonToggleClock = new Button("Toggle RTC");
@@ -749,13 +759,16 @@ public class NotSoTinyUI extends Application {
         Region rAdvancedViewSeparator1 = new Region();
         Region rAdvancedViewSeparator2 = new Region();
         Region rAdvancedViewSeparator3 = new Region();
+        Region rAdvancedViewSeparator4 = new Region();
         VBox.setVgrow(rAdvancedViewSeparator1, Priority.ALWAYS);
         rAdvancedViewSeparator2.setMinHeight(10);
         rAdvancedViewSeparator3.setMinHeight(10);
+        rAdvancedViewSeparator4.setMinHeight(10);
         
         this.advancedView = new VBox(this.infoProcessorState, rAdvancedViewSeparator1,
                                      this.infoMemwatch, boxMemwatchField, this.infoCurrentWatchAddress, rAdvancedViewSeparator2,
                                      boxBreakpointField, this.infoCurrentBreakpoint, this.checkEnableBreakpoints, rAdvancedViewSeparator3,
+                                     boxClockField, rAdvancedViewSeparator4,
                                      boxTogglesUpper, boxTogglesLower);
         
         // grid
@@ -839,6 +852,25 @@ public class NotSoTinyUI extends Application {
                             this.memwatchAddress = 0;
                             this.memwatchIsNumber = true;
                     }
+                }
+            }
+        });
+        
+        // clock speed text field
+        this.fieldClockSpeed.setOnAction(e -> {
+            long period = Long.parseLong(this.fieldClockSpeed.getText());
+            
+            if(period >= 0) {
+                long oldPeriod = this.simThread.periodns;
+                this.simThread.periodns = period * 1_000l;
+                
+                if(this.freerunEnabled) {
+                    this.freerunEnabled = false;
+                    
+                    this.scheduler.schedule(() -> {
+                        this.freerunEnabled = true;
+                        notifySimulatorThread();
+                    }, 1l + (2 * oldPeriod / 1_000_000), TimeUnit.MILLISECONDS);
                 }
             }
         });
@@ -1041,7 +1073,7 @@ public class NotSoTinyUI extends Application {
                         // trace
                         String functionLabel = this.relocator.getNearestBelow(retAddr);
                         
-                        trace.add(String.format("%08X: %08X %s%n", retAddr, bpAddr, functionLabel)); 
+                        trace.add(String.format("%08X %08X %s%n", retAddr, bpAddr, functionLabel)); 
                         
                         // read from [BP] = previous BP
                         // read from [BP + 4] = return address

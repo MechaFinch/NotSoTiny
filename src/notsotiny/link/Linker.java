@@ -115,7 +115,7 @@ public class Linker {
         
         LOG.fine("Writing to output file " + outputFileName);
         
-        Files.write(new File(outputFileName).toPath(), data, StandardOpenOption.CREATE);
+        Files.write(new File(outputFileName).toPath(), data);
         
         // write listing file
         if(outputListing) {

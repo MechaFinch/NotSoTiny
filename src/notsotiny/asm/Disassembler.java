@@ -1,5 +1,7 @@
 package notsotiny.asm;
 
+import java.io.IOException;
+
 import notsotiny.sim.memory.MemoryManager;
 import notsotiny.sim.ops.Opcode;
 
@@ -14,7 +16,7 @@ public class Disassembler {
                  lastAddress = 0;
     
     private boolean uppercase;
-    
+
     /**
      * Creates a disassembler
      * 
