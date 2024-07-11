@@ -80,7 +80,8 @@ public class NotSoTinyUI extends Application {
      */
     
     // memory map constants
-    private static final long LOWRAM_START =    0x0000_0000,
+    private static final long IVT_START =       0x0000_0000,
+                              LOWRAM_START =    0x0000_0400,
                               CRASHRAM_START =  0x4000_0000,
                               SPI_START =       0x8000_0000,
                               KEYPAD_START =    0x8001_0000,
@@ -93,7 +94,8 @@ public class NotSoTinyUI extends Application {
                               DISK_START =      0xF006_0000,
                               BOOTROM_START =   0xFFFF_FC00;
     
-    private static final int LOWRAM_SIZE =      0x0010_0000,
+    private static final int IVT_SIZE =         0x0000_0400,
+                             LOWRAM_SIZE =      0x000F_FC00,
                              CRASHRAM_SIZE =    0x0000_1000,
                              SPI_SIZE =         0x0000_0004,
                              KEYPAD_SIZE =      0x0000_0008,
@@ -141,7 +143,8 @@ public class NotSoTinyUI extends Application {
     
     private MemoryManager mmu;
     
-    private FlatMemoryController lowramController,
+    private FlatMemoryController ivtController,
+                                 lowramController,
                                  crashramController,
                                  placeholder_spiController,
                                  placeholder_cacheController,
@@ -166,7 +169,8 @@ public class NotSoTinyUI extends Application {
     private ScreenBuffer screenBufferController;
     
     // actual memory arrays
-    private byte[] lowramArray,
+    private byte[] ivtArray,
+                   lowramArray,
                    crashramArray,
                    placeholder_spiArray,
                    placeholder_cacheArray,
@@ -354,6 +358,7 @@ public class NotSoTinyUI extends Application {
         this.mmu = new MemoryManager();
         
         // initialize flat memory segments]
+        ivtArray = new byte[IVT_SIZE];
         lowramArray = new byte[LOWRAM_SIZE];
         crashramArray = new byte[CRASHRAM_SIZE];
         placeholder_spiArray = new byte[SPI_SIZE];
@@ -364,15 +369,16 @@ public class NotSoTinyUI extends Application {
         videoOtherArray = new byte[VIDEO_OTHER_SIZE];
         bootromArray = new byte[BOOTROM_SIZE];
         
-        lowramController = new FlatMemoryController(lowramArray);
-        crashramController = new FlatMemoryController(crashramArray);
-        placeholder_spiController = new FlatMemoryController(placeholder_spiArray);
-        placeholder_cacheController = new FlatMemoryController(placeholder_cacheArray);
-        keyboardBufferController = new FlatMemoryController(keyboardBufferArray);
-        videoBufferController = new FlatMemoryController(videoBufferArray);
-        videoCharsetController = new FlatMemoryController(videoCharsetArray);
-        videoOtherController = new FlatMemoryController(videoOtherArray);
-        bootromController = new FlatMemoryController(bootromArray);
+        ivtController = new FlatMemoryController(ivtArray, true, true);
+        lowramController = new FlatMemoryController(lowramArray, false, false);
+        crashramController = new FlatMemoryController(crashramArray, false, false);
+        placeholder_spiController = new FlatMemoryController(placeholder_spiArray, false, false);
+        placeholder_cacheController = new FlatMemoryController(placeholder_cacheArray, true, true);
+        keyboardBufferController = new FlatMemoryController(keyboardBufferArray, false, true);
+        videoBufferController = new FlatMemoryController(videoBufferArray, false, false);
+        videoCharsetController = new FlatMemoryController(videoCharsetArray, false, false);
+        videoOtherController = new FlatMemoryController(videoOtherArray, false, false);
+        bootromController = new FlatMemoryController(bootromArray, false, true);
         
         // initialize other segments
         sic = new SoundInterfaceController();
@@ -381,6 +387,7 @@ public class NotSoTinyUI extends Application {
         dbc = new DiskBufferController(this.mmu, Paths.get(DISK_FOLDER));
         screenBufferController = new ScreenBuffer(videoBufferArray); // 3FFFC
         
+        this.mmu.registerSegment(ivtController, IVT_START, IVT_SIZE);
         this.mmu.registerSegment(lowramController, LOWRAM_START, LOWRAM_SIZE);
         this.mmu.registerSegment(placeholder_spiController, SPI_START, SPI_SIZE);
         this.mmu.registerSegment(placeholder_cacheController, CC_START, CC_SIZE);
@@ -435,10 +442,14 @@ public class NotSoTinyUI extends Application {
         
         int relStart = this.relocator.hasReference("ORIGIN", false) ? 0 : 1024;
         
-        long entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, lowramArray, relStart, relStart);
+        byte[] relocatedData = new byte[0x10_0000];
+        long entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, relocatedData, relStart, relStart);
+        
+        System.arraycopy(relocatedData, 0, ivtArray, 0, ivtArray.length);
+        System.arraycopy(relocatedData, IVT_SIZE, lowramArray, 0, LOWRAM_SIZE);
         
         // write entry vector
-        this.mmu.write4Bytes(VECTOR_RESET * 4, (int) entry);
+        this.mmu.write4BytesPrivileged(VECTOR_RESET * 4, (int) entry);
         
         // simulator
         this.sim = new NotSoTinySimulator(this.mmu);
@@ -996,7 +1007,7 @@ public class NotSoTinyUI extends Application {
                     state += dis.disassemble(this.mmu, Integer.toUnsignedLong(sim.getRegIP())) + "\n";
                     
                     for(int j = 0; j < dis.getLastInstructionLength(); j++) {
-                        byte b = this.mmu.readByte(Integer.toUnsignedLong(sim.getRegIP()) + ((long) j));
+                        byte b = this.mmu.readBytePrivileged(Integer.toUnsignedLong(sim.getRegIP()) + ((long) j));
                         state += String.format("%02X ", b);
                     }
                 } catch(IndexOutOfBoundsException e) {
@@ -1043,7 +1054,7 @@ public class NotSoTinyUI extends Application {
                             byte l;
                             
                             try {
-                                l = this.mmu.readByte(this.memwatchAddress + i + k);
+                                l = this.mmu.readBytePrivileged(this.memwatchAddress + i + k);
                             } catch(IndexOutOfBoundsException e) {
                                 l = 0;
                                 j = TRACE_SIZE; // end disassembly
@@ -1078,8 +1089,8 @@ public class NotSoTinyUI extends Application {
                         // read from [BP] = previous BP
                         // read from [BP + 4] = return address
                         try {
-                            retAddr = this.mmu.read4Bytes(bpAddr + 4) & 0xFFFFFFFFl;
-                            bpAddr = this.mmu.read4Bytes(bpAddr) & 0xFFFFFFFFl;
+                            retAddr = this.mmu.read4BytesPrivileged(bpAddr + 4) & 0xFFFFFFFFl;
+                            bpAddr = this.mmu.read4BytesPrivileged(bpAddr) & 0xFFFFFFFFl;
                         } catch(IndexOutOfBoundsException e) {
                             break;
                         }
@@ -1099,8 +1110,8 @@ public class NotSoTinyUI extends Application {
                 
                 for(int i = 0; i < 64; i += 8) {
                     try {
-                        int firstFour = this.mmu.read4Bytes(this.memwatchAddress + i),
-                            secondFour = this.mmu.read4Bytes(this.memwatchAddress + i + 4);
+                        int firstFour = this.mmu.read4BytesPrivileged(this.memwatchAddress + i),
+                            secondFour = this.mmu.read4BytesPrivileged(this.memwatchAddress + i + 4);
                         
                         byte[] bytes = new byte[] {
                             (byte)(firstFour & 0xFF),           (byte)((firstFour >> 8) & 0xFF),

@@ -10,7 +10,7 @@ import java.util.TreeSet;
  * 
  * @author Mechafinch
  */
-public class MemoryManager implements MemoryController {
+public class MemoryManager {
     
     // maps starting address to controller, treemap for searching
     private TreeMap<Long, MemoryController> segmentControllerMap;
@@ -75,19 +75,23 @@ public class MemoryManager implements MemoryController {
      */
     public void printMap() {
         for(Entry<Long, MemoryController> e : segmentControllerMap.entrySet()) {
-            System.out.printf("%08X: %s%n", e.getKey() & 0xFFFF_FFFFl, e.getValue().getClass().toString());
+            System.out.printf("%08X: %s %s %s%n", e.getKey() & 0xFFFF_FFFFl, e.getValue().getClass().toString(), e.getValue().readRequiresPrivilege(), e.getValue().writeRequiresPrivilege());
         }
     }
     
     /**
      * Gets the start address of the segment containing the specified address
      * 
-     * @param address
+     * @param startAddress
+     * @param endAddress
+     * @param privilege
+     * @param read
      * @return
+     * @throws UnprivilegedAccessException 
      * @throws IndexOutOfBoundsException when trying to access out-of-bounds memory
      * @throws NullPointerException if no segments have been registered
      */
-    private Entry<Long, MemoryController> getSegment(long startAddress, long endAddress) {
+    private Entry<Long, MemoryController> getSegment(long startAddress, long endAddress, boolean privilege, boolean read) throws UnprivilegedAccessException {
         startAddress &= 0xFFFF_FFFFl;
         endAddress &= 0xFFFF_FFFFl;
         
@@ -105,117 +109,358 @@ public class MemoryManager implements MemoryController {
             throw new IndexOutOfBoundsException(String.format("Multi-byte access overflowed: %08X", startAddress));
         }
         
+        if(!privilege && (
+           (read && segment.getValue().readRequiresPrivilege()) ||
+           (!read && segment.getValue().writeRequiresPrivilege())
+        )) {
+            throw new UnprivilegedAccessException();
+        }
+        
         return segment;
     }
 
-    @Override
-    public byte readByte(long address) {
+    /**
+     * Get 1 byte from an address
+     * 
+     * @param address
+     * @param privilege
+     * @return
+     * @throws UnprivilegedAccessException 
+     */
+    public byte readByte(long address, boolean privilege) throws UnprivilegedAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 1 byte: %08X\n", address);
         
-        Entry<Long, MemoryController> seg = getSegment(address, address);
+        Entry<Long, MemoryController> seg = getSegment(address, address, privilege, true);
         
         return seg.getValue().readByte(address - seg.getKey());
     }
     
-    @Override
-    public short read2Bytes(long address) {
+    /**
+     * Get 1 byte from an address, with privilege
+     * 
+     * @param address
+     * @return
+     */
+    public byte readBytePrivileged(long address) {
+        try {
+            return this.readByte(address, true);
+        } catch(UnprivilegedAccessException e) {
+            // Not possible
+            return 0;
+        }
+    }
+    
+    /**
+     * Get 2 little-endian bytes from an address
+     * 
+     * @param address
+     * @param privilege
+     * @return
+     * @throws UnprivilegedAccessException
+     */
+    public short read2Bytes(long address, boolean privilege) throws UnprivilegedAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 2 bytes: %08X\n", address);
         
-        Entry<Long, MemoryController> seg = getSegment(address, address + 1);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 1, privilege, true);
         
         return seg.getValue().read2Bytes(address - seg.getKey());
     }
     
-    @Override
-    public int read3Bytes(long address) {
+    /**
+     * Get 2 little-endian bytes from an address, with privilege
+     * 
+     * @param address
+     * @return
+     */
+    public short read2BytesPrivileged(long address) {
+        try {
+            return this.read2Bytes(address, true);
+        } catch(UnprivilegedAccessException e) {
+            // Not possible
+            return 0;
+        }
+    }
+    
+    /**
+     * Get 3 little-endian bytes from an address
+     * 
+     * @param address
+     * @param privilege
+     * @return
+     * @throws UnprivilegedAccessException 
+     */
+    public int read3Bytes(long address, boolean privilege) throws UnprivilegedAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 3 bytes: %08X\n", address);
         
-        Entry<Long, MemoryController> seg = getSegment(address, address + 2);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 2, privilege, true);
         
         return seg.getValue().read3Bytes(address - seg.getKey());
     }
     
-    @Override
-    public int read4Bytes(long address) {
+    /**
+     * Get 3 little-endian bytes from an address, with privilege
+     * 
+     * @param address
+     * @return
+     */
+    public int read3BytesPrivileged(long address) {
+        try {
+            return this.read3Bytes(address, true);
+        } catch(UnprivilegedAccessException e) {
+            // Not possible
+            return 0;
+        }
+    }
+    
+    /**
+     * Get 4 little-endian bytes from an address
+     * 
+     * @param address
+     * @param privilege
+     * @return
+     * @throws UnprivilegedAccessException 
+     */
+    public int read4Bytes(long address, boolean privilege) throws UnprivilegedAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 4 bytes: %08X\n", address);
         
-        Entry<Long, MemoryController> seg = getSegment(address, address + 3);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 3, privilege, true);
         
         return seg.getValue().read4Bytes(address - seg.getKey());
     }
     
-    @Override
-    public byte[] read2ByteArray(long address) {
+    /**
+     * Get 4 little-endian bytes from an address, with privilege
+     * 
+     * @param address
+     * @return
+     */
+    public int read4BytesPrivileged(long address) {
+        try {
+            return this.read4Bytes(address, true);
+        } catch(UnprivilegedAccessException e) {
+            // Not possible
+            return 0;
+        }
+    }
+    
+    /**
+     * Gets 2 bytes as an array
+     * 
+     * @param address
+     * @param privilege
+     * @return
+     * @throws UnprivilegedAccessException 
+     */
+    public byte[] read2ByteArray(long address, boolean privilege) throws UnprivilegedAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 4 bytes (array): %08X\n", address);
         
-        Entry<Long, MemoryController> seg = getSegment(address, address + 1);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 1, privilege, true);
         
         return seg.getValue().read2ByteArray(address - seg.getKey());
     }
     
-    @Override
-    public byte[] read3ByteArray(long address) {
+    /**
+     * Gets 2 bytes as an array, with privilege
+     * 
+     * @param address
+     * @return
+     */
+    public byte[] read2ByteArrayPrivileged(long address) {
+        try {
+            return this.read2ByteArray(address, true);
+        } catch(UnprivilegedAccessException e) {
+            // Not possible
+            return null;
+        }
+    }
+    
+    /**
+     * Gets 3 bytes as an array 
+     * 
+     * @param address
+     * @param privilege
+     * @return
+     * @throws UnprivilegedAccessException 
+     */
+    public byte[] read3ByteArray(long address, boolean privilege) throws UnprivilegedAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 4 bytes (array): %08X\n", address);
         
-        Entry<Long, MemoryController> seg = getSegment(address, address + 2);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 2, privilege, true);
         
         return seg.getValue().read3ByteArray(address - seg.getKey());
     }
     
-    @Override
-    public byte[] read4ByteArray(long address) {
+    /**
+     * Gets 3 bytes as an array, with privilege
+     * 
+     * @param address
+     * @return
+     */
+    public byte[] read3ByteArrayPrivileged(long address) {
+        try {
+            return this.read3ByteArray(address, true);
+        } catch(UnprivilegedAccessException e) {
+            // Not possible
+            return null;
+        }
+    }
+    
+    /**
+     * Gets 4 bytes as an array
+     * 
+     * @param address
+     * @param privilege
+     * @return
+     * @throws UnprivilegedAccessException 
+     */
+    public byte[] read4ByteArray(long address, boolean privilege) throws UnprivilegedAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 4 bytes (array): %08X\n", address);
         
-        Entry<Long, MemoryController> seg = getSegment(address, address + 3);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 3, privilege, true);
         
         return seg.getValue().read4ByteArray(address - seg.getKey());
     }
+    
+    /**
+     * Gets 4 bytes as an array, with privilege
+     * 
+     * @param address
+     * @return
+     */
+    public byte[] read4ByteArrayPrivileged(long address) {
+        try {
+            return this.read4ByteArray(address, true);
+        } catch(UnprivilegedAccessException e) {
+            // Not possible
+            return null;
+        }
+    }
 
-    @Override
-    public void writeByte(long address, byte value) {
+    /**
+     * Set 1 byte at an address
+     * 
+     * @param address
+     * @param privilege
+     * @param value
+     * @throws UnprivilegedAccessException 
+     */
+    public void writeByte(long address, byte value, boolean privilege) throws UnprivilegedAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 1 byte: %08X\n", address);
         
-        Entry<Long, MemoryController> seg = getSegment(address, address);
+        Entry<Long, MemoryController> seg = getSegment(address, address, privilege, false);
         
         seg.getValue().writeByte(address - seg.getKey(), value);
     }
     
-    @Override
-    public void write2Bytes(long address, short value) {
+    /**
+     * Set 1 byte at an address, with privilege
+     * @param address
+     * @param value
+     */
+    public void writeBytePrivileged(long address, byte value) {
+        try {
+            this.writeByte(address, value, true);
+        } catch(UnprivilegedAccessException e) {
+            // not possible
+        }
+    }
+    
+    /**
+     * Set 2 little-endian bytes at an address
+     * 
+     * @param address
+     * @param privilege
+     * @param value
+     * @throws UnprivilegedAccessException 
+     */
+    public void write2Bytes(long address, short value, boolean privilege) throws UnprivilegedAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 2 bytes: %08X\n", address);
         
-        Entry<Long, MemoryController> seg = getSegment(address, address + 1);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 1, privilege, false);
         
         seg.getValue().write2Bytes(address - seg.getKey(), value);
     }
     
-    @Override
-    public void write3Bytes(long address, int value) {
+    /**
+     * Set 2 little-endian bytes at an address, with privilege
+     * @param address
+     * @param value
+     */
+    public void write2BytesPrivileged(long address, short value) {
+        try {
+            this.write2Bytes(address, value, true);
+        } catch(UnprivilegedAccessException e) {
+            // not possible
+        }
+    }
+    
+    /**
+     * Set 3 little-endian bytes at an address
+     * 
+     * @param address
+     * @param privilege
+     * @param value
+     * @throws UnprivilegedAccessException 
+     */
+    public void write3Bytes(long address, int value, boolean privilege) throws UnprivilegedAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 3 bytes: %08X\n", address);
         
-        Entry<Long, MemoryController> seg = getSegment(address, address + 2);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 2, privilege, false);
         
         seg.getValue().write3Bytes(address - seg.getKey(), value);
     }
     
-    @Override
-    public void write4Bytes(long address, int value) {
+    /**
+     * Set 3 little-endian bytes at an address, with privilege
+     * @param address
+     * @param value
+     */
+    public void write3BytesPrivileged(long address, int value) {
+        try {
+            this.write3Bytes(address, value, true);
+        } catch(UnprivilegedAccessException e) {
+            // not possible
+        }
+    }
+    
+    /**
+     * Set 4 little-endian bytes at an address
+     * 
+     * @param address
+     * @param privilege
+     * @param value
+     * @throws UnprivilegedAccessException 
+     */
+    public void write4Bytes(long address, int value, boolean privilege) throws UnprivilegedAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 4 bytes: %08X\n", address);
         
-        Entry<Long, MemoryController> seg = getSegment(address, address + 3);
+        Entry<Long, MemoryController> seg = getSegment(address, address + 3, privilege, false);
         
         seg.getValue().write4Bytes(address - seg.getKey(), value);
+    }
+    
+    /**
+     * Set 4 little-endian bytes at an address, with privilege
+     * @param address
+     * @param value
+     */
+    public void write4BytesPrivileged(long address, int value) {
+        try {
+            this.write4Bytes(address, value, true);
+        } catch(UnprivilegedAccessException e) {
+            // not possible
+        }
     }
     
 }

@@ -8,6 +8,22 @@ package notsotiny.sim.memory;
 public interface MemoryController {
     
     /**
+     * Does reading this controller require privilege?
+     * @return
+     */
+    public default boolean readRequiresPrivilege() {
+        return false;
+    }
+    
+    /**
+     * Does writing this controller require privilege?
+     * @return
+     */
+    public default boolean writeRequiresPrivilege() {
+        return false;
+    }
+    
+    /**
      * Get 1 byte from an address
      * 
      * @param address

@@ -8,9 +8,22 @@ package notsotiny.sim.memory;
 public class FlatMemoryController implements MemoryController {
 
     byte[] mem;
+    boolean readPrivileged, writePrivileged;
     
-    public FlatMemoryController(byte[] mem) {
+    public FlatMemoryController(byte[] mem, boolean readPrivileged, boolean writePrivileged) {
         this.mem = mem;
+        this.readPrivileged = readPrivileged;
+        this.writePrivileged = writePrivileged;
+    }
+    
+    @Override
+    public boolean readRequiresPrivilege() {
+        return this.readPrivileged;
+    }
+    
+    @Override
+    public boolean writeRequiresPrivilege() {
+        return this.writePrivileged;
     }
     
     @Override

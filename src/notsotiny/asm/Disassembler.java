@@ -422,10 +422,10 @@ public class Disassembler {
     private int readSize(MemoryManager memory, int size) {
         try {
             int i = switch(size) {
-                case 1          -> memory.readByte(this.lastAddress);
-                case 2          -> memory.read2Bytes(this.lastAddress);
-                case 3          -> memory.read3Bytes(this.lastAddress);
-                default    		-> memory.read4Bytes(this.lastAddress);
+                case 1          -> memory.readBytePrivileged(this.lastAddress);
+                case 2          -> memory.read2BytesPrivileged(this.lastAddress);
+                case 3          -> memory.read3BytesPrivileged(this.lastAddress);
+                default    		-> memory.read4BytesPrivileged(this.lastAddress);
             };
             
             this.lastAddress += size;

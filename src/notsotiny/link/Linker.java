@@ -125,7 +125,7 @@ public class Linker {
             try(PrintWriter listWriter = new PrintWriter(listFileName)) {
                 Disassembler dis = new Disassembler();
                 MemoryManager mm = new MemoryManager();
-                FlatMemoryController fmc = new FlatMemoryController(data);
+                FlatMemoryController fmc = new FlatMemoryController(data, false, false);
                 
                 mm.registerSegment(fmc, 0, data.length);
                 

@@ -2,6 +2,8 @@ package notsotiny.sim;
 
 import notsotiny.sim.LocationDescriptor.LocationType;
 import notsotiny.sim.memory.MemoryController;
+import notsotiny.sim.memory.MemoryManager;
+import notsotiny.sim.memory.UnprivilegedAccessException;
 import notsotiny.sim.ops.Family;
 import notsotiny.sim.ops.Opcode;
 import notsotiny.sim.ops.Operation;
@@ -13,9 +15,11 @@ import notsotiny.sim.ops.Operation;
  */
 public class NotSoTinySimulator {
     
-    private static final byte VECTOR_GPF = 0x10;
+    private static final byte VECTOR_DECODING_ERROR = 0x08,
+                              VECTOR_GENERAL_PROTECTION_FAULT = 0x10,
+                              VECTOR_MEMORY_PROTECTION_FAULT = 0x11;
     
-    private MemoryController memory;
+    private MemoryManager memory;
     
     // 16 bit regs
     private short reg_a,
@@ -40,7 +44,8 @@ public class NotSoTinySimulator {
     // state
     private boolean halted,
                     externalInterrupt,
-                    generalProtectionFault;
+                    generalProtectionFault,
+                    memoryProtectionFault;
     
     private byte externalInterruptVector;
     
@@ -53,7 +58,7 @@ public class NotSoTinySimulator {
      * @param memory
      * @param entry
      */
-    public NotSoTinySimulator(MemoryController memory, int entry) {
+    public NotSoTinySimulator(MemoryManager memory, int entry) {
         this.memory = memory;
         this.reg_ip = entry;
         
@@ -72,6 +77,7 @@ public class NotSoTinySimulator {
         this.externalInterrupt = false;
         this.externalInterruptVector = 0;
         this.generalProtectionFault = false;
+        this.memoryProtectionFault = false;
         this.fetchBuffer = new byte[8];
         this.prev_ip = this.reg_ip;
     }
@@ -81,8 +87,8 @@ public class NotSoTinySimulator {
      * 
      * @param memory
      */
-    public NotSoTinySimulator(MemoryController memory) {
-        this(memory, memory.read4Bytes(0));
+    public NotSoTinySimulator(MemoryManager memory) {
+        this(memory, memory.read4BytesPrivileged(0));
     }
     
     /**
@@ -95,7 +101,7 @@ public class NotSoTinySimulator {
         
         if(this.externalInterrupt) {
             this.externalInterrupt = false;
-            runInterrupt(this.externalInterruptVector);
+            runInterruptPrivileged(this.externalInterruptVector);
             return;
         }
         
@@ -103,178 +109,187 @@ public class NotSoTinySimulator {
         byte[] readArr;
         int ipDiff = this.reg_ip - this.prev_ip;
         
-        switch(ipDiff) {
-            case 1:
-                this.fetchBuffer[0] = this.fetchBuffer[1];
-                this.fetchBuffer[1] = this.fetchBuffer[2];
-                this.fetchBuffer[2] = this.fetchBuffer[3];
-                this.fetchBuffer[3] = this.fetchBuffer[4];
-                this.fetchBuffer[4] = this.fetchBuffer[5];
-                this.fetchBuffer[5] = this.fetchBuffer[6];
-                this.fetchBuffer[6] = this.fetchBuffer[7];
-                this.fetchBuffer[7] = this.memory.readByte(this.reg_ip + 7);
-                break;
+        try {
+            switch(ipDiff) {
+                case 1:
+                    this.fetchBuffer[0] = this.fetchBuffer[1];
+                    this.fetchBuffer[1] = this.fetchBuffer[2];
+                    this.fetchBuffer[2] = this.fetchBuffer[3];
+                    this.fetchBuffer[3] = this.fetchBuffer[4];
+                    this.fetchBuffer[4] = this.fetchBuffer[5];
+                    this.fetchBuffer[5] = this.fetchBuffer[6];
+                    this.fetchBuffer[6] = this.fetchBuffer[7];
+                    this.fetchBuffer[7] = this.memory.readByte(this.reg_ip + 7, this.pf_pv);
+                    break;
+                    
+                case 2:
+                    this.fetchBuffer[0] = this.fetchBuffer[2];
+                    this.fetchBuffer[1] = this.fetchBuffer[3];
+                    this.fetchBuffer[2] = this.fetchBuffer[4];
+                    this.fetchBuffer[3] = this.fetchBuffer[5];
+                    this.fetchBuffer[4] = this.fetchBuffer[6];
+                    this.fetchBuffer[5] = this.fetchBuffer[7];
+                    
+                    readArr = this.memory.read2ByteArray(this.reg_ip + 6, this.pf_pv);
+                    this.fetchBuffer[6] = readArr[0];
+                    this.fetchBuffer[7] = readArr[1];
+                    break;
                 
-            case 2:
-                this.fetchBuffer[0] = this.fetchBuffer[2];
-                this.fetchBuffer[1] = this.fetchBuffer[3];
-                this.fetchBuffer[2] = this.fetchBuffer[4];
-                this.fetchBuffer[3] = this.fetchBuffer[5];
-                this.fetchBuffer[4] = this.fetchBuffer[6];
-                this.fetchBuffer[5] = this.fetchBuffer[7];
+                case 3:
+                    this.fetchBuffer[0] = this.fetchBuffer[3];
+                    this.fetchBuffer[1] = this.fetchBuffer[4];
+                    this.fetchBuffer[2] = this.fetchBuffer[5];
+                    this.fetchBuffer[3] = this.fetchBuffer[6];
+                    this.fetchBuffer[4] = this.fetchBuffer[7];
+                    
+                    readArr = this.memory.read3ByteArray(this.reg_ip + 5, this.pf_pv);
+                    this.fetchBuffer[5] = readArr[0];
+                    this.fetchBuffer[6] = readArr[1];
+                    this.fetchBuffer[7] = readArr[2];
+                    break;
                 
-                readArr = this.memory.read2ByteArray(this.reg_ip + 6);
-                this.fetchBuffer[6] = readArr[0];
-                this.fetchBuffer[7] = readArr[1];
-                break;
+                case 4:
+                    this.fetchBuffer[0] = this.fetchBuffer[4];
+                    this.fetchBuffer[1] = this.fetchBuffer[5];
+                    this.fetchBuffer[2] = this.fetchBuffer[6];
+                    this.fetchBuffer[3] = this.fetchBuffer[7];
+                    
+                    readArr = this.memory.read4ByteArray(this.reg_ip + 4, this.pf_pv);
+                    this.fetchBuffer[4] = readArr[0];
+                    this.fetchBuffer[5] = readArr[1];
+                    this.fetchBuffer[6] = readArr[2];
+                    this.fetchBuffer[7] = readArr[3];
+                    break;
+                
+                case 5:
+                    this.fetchBuffer[0] = this.fetchBuffer[5];
+                    this.fetchBuffer[1] = this.fetchBuffer[6];
+                    this.fetchBuffer[2] = this.fetchBuffer[7];
+                    
+                    readArr = this.memory.read4ByteArray(this.reg_ip + 3, this.pf_pv);
+                    this.fetchBuffer[3] = readArr[0];
+                    this.fetchBuffer[4] = readArr[1];
+                    this.fetchBuffer[5] = readArr[2];
+                    this.fetchBuffer[6] = readArr[3];
+                    
+                    this.fetchBuffer[7] = this.memory.readByte(reg_ip + 7, this.pf_pv);
+                    break;
+                    
+                case 6:
+                    this.fetchBuffer[0] = this.fetchBuffer[6];
+                    this.fetchBuffer[1] = this.fetchBuffer[7];
+                    
+                    readArr = this.memory.read4ByteArray(this.reg_ip + 2, this.pf_pv);
+                    this.fetchBuffer[2] = readArr[0];
+                    this.fetchBuffer[3] = readArr[1];
+                    this.fetchBuffer[4] = readArr[2];
+                    this.fetchBuffer[5] = readArr[3];
+                    
+                    readArr = this.memory.read2ByteArray(this.reg_ip + 6, this.pf_pv);
+                    this.fetchBuffer[6] = readArr[0];
+                    this.fetchBuffer[7] = readArr[1];
+                    break;
+                    
+                case 7:
+                    this.fetchBuffer[0] = this.fetchBuffer[7];
+                    
+                    readArr = this.memory.read4ByteArray(this.reg_ip + 1, this.pf_pv);
+                    this.fetchBuffer[1] = readArr[0];
+                    this.fetchBuffer[2] = readArr[1];
+                    this.fetchBuffer[3] = readArr[2];
+                    this.fetchBuffer[4] = readArr[3];
+                    
+                    readArr = this.memory.read3ByteArray(this.reg_ip + 5, this.pf_pv);
+                    this.fetchBuffer[5] = readArr[0];
+                    this.fetchBuffer[6] = readArr[1];
+                    this.fetchBuffer[7] = readArr[2];
+                    break;
+                
+                default:
+                    readArr = this.memory.read4ByteArray(this.reg_ip + 0, this.pf_pv);
+                    this.fetchBuffer[0] = readArr[0];
+                    this.fetchBuffer[1] = readArr[1];
+                    this.fetchBuffer[2] = readArr[2];
+                    this.fetchBuffer[3] = readArr[3];
+                    
+                    readArr = this.memory.read4ByteArray(this.reg_ip + 4, this.pf_pv);
+                    this.fetchBuffer[4] = readArr[0];
+                    this.fetchBuffer[5] = readArr[1];
+                    this.fetchBuffer[6] = readArr[2];
+                    this.fetchBuffer[7] = readArr[3];
+                    
+            }
             
-            case 3:
-                this.fetchBuffer[0] = this.fetchBuffer[3];
-                this.fetchBuffer[1] = this.fetchBuffer[4];
-                this.fetchBuffer[2] = this.fetchBuffer[5];
-                this.fetchBuffer[3] = this.fetchBuffer[6];
-                this.fetchBuffer[4] = this.fetchBuffer[7];
-                
-                readArr = this.memory.read3ByteArray(this.reg_ip + 5);
-                this.fetchBuffer[5] = readArr[0];
-                this.fetchBuffer[6] = readArr[1];
-                this.fetchBuffer[7] = readArr[2];
-                break;
+            this.prev_ip = this.reg_ip;
+            this.reg_ip++;
             
-            case 4:
-                this.fetchBuffer[0] = this.fetchBuffer[4];
-                this.fetchBuffer[1] = this.fetchBuffer[5];
-                this.fetchBuffer[2] = this.fetchBuffer[6];
-                this.fetchBuffer[3] = this.fetchBuffer[7];
-                
-                readArr = this.memory.read4ByteArray(this.reg_ip + 4);
-                this.fetchBuffer[4] = readArr[0];
-                this.fetchBuffer[5] = readArr[1];
-                this.fetchBuffer[6] = readArr[2];
-                this.fetchBuffer[7] = readArr[3];
-                break;
+            InstructionDescriptor desc = new InstructionDescriptor();
+            desc.op = Opcode.fromOp(this.fetchBuffer[0]);
             
-            case 5:
-                this.fetchBuffer[0] = this.fetchBuffer[5];
-                this.fetchBuffer[1] = this.fetchBuffer[6];
-                this.fetchBuffer[2] = this.fetchBuffer[7];
-                
-                readArr = this.memory.read4ByteArray(this.reg_ip + 3);
-                this.fetchBuffer[3] = readArr[0];
-                this.fetchBuffer[4] = readArr[1];
-                this.fetchBuffer[5] = readArr[2];
-                this.fetchBuffer[6] = readArr[3];
-                
-                this.fetchBuffer[7] = this.memory.readByte(reg_ip + 7);
-                break;
-                
-            case 6:
-                this.fetchBuffer[0] = this.fetchBuffer[6];
-                this.fetchBuffer[1] = this.fetchBuffer[7];
-                
-                readArr = this.memory.read4ByteArray(this.reg_ip + 2);
-                this.fetchBuffer[2] = readArr[0];
-                this.fetchBuffer[3] = readArr[1];
-                this.fetchBuffer[4] = readArr[2];
-                this.fetchBuffer[5] = readArr[3];
-                
-                readArr = this.memory.read2ByteArray(this.reg_ip + 6);
-                this.fetchBuffer[6] = readArr[0];
-                this.fetchBuffer[7] = readArr[1];
-                break;
-                
-            case 7:
-                this.fetchBuffer[0] = this.fetchBuffer[7];
-                
-                readArr = this.memory.read4ByteArray(this.reg_ip + 1);
-                this.fetchBuffer[1] = readArr[0];
-                this.fetchBuffer[2] = readArr[1];
-                this.fetchBuffer[3] = readArr[2];
-                this.fetchBuffer[4] = readArr[3];
-                
-                readArr = this.memory.read3ByteArray(this.reg_ip + 5);
-                this.fetchBuffer[5] = readArr[0];
-                this.fetchBuffer[6] = readArr[1];
-                this.fetchBuffer[7] = readArr[2];
-                break;
+            if(desc.op == Opcode.NOP) return; 
             
-            default:
-                readArr = this.memory.read4ByteArray(this.reg_ip + 0);
-                this.fetchBuffer[0] = readArr[0];
-                this.fetchBuffer[1] = readArr[1];
-                this.fetchBuffer[2] = readArr[2];
-                this.fetchBuffer[3] = readArr[3];
+            switch(desc.op) {
+                case CMP_RIM_I8, ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8,
+                     SHL_RIM_I8, SHR_RIM_I8, SAR_RIM_I8, ROL_RIM_I8, ROR_RIM_I8, RCL_RIM_I8, RCR_RIM_I8:
+                    desc.hasRIMI8 = true;
+                    break;
                 
-                readArr = this.memory.read4ByteArray(this.reg_ip + 4);
-                this.fetchBuffer[4] = readArr[0];
-                this.fetchBuffer[5] = readArr[1];
-                this.fetchBuffer[6] = readArr[2];
-                this.fetchBuffer[7] = readArr[3];
-                
-        }
-        
-        this.prev_ip = this.reg_ip;
-        this.reg_ip++;
-        
-        InstructionDescriptor desc = new InstructionDescriptor();
-        desc.op = Opcode.fromOp(this.fetchBuffer[0]);
-        
-        if(desc.op == Opcode.NOP) return; 
-        
-        switch(desc.op) {
-            case CMP_RIM_I8, ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8,
-                 SHL_RIM_I8, SHR_RIM_I8, SAR_RIM_I8, ROL_RIM_I8, ROR_RIM_I8, RCL_RIM_I8, RCR_RIM_I8:
-                desc.hasRIMI8 = true;
-                break;
+                default:
+                    break;
+            }
             
-            default:
-                break;
-        }
-        
-        //System.out.println(desc.op.getType().getFamily()); 
-        
-        switch(desc.op.getType().getFamily()) {
-            case INV:
-                // invalid
-                runInterrupt((byte) 0x0F);
-                break;
+            //System.out.println(desc.op.getType().getFamily()); 
             
-            case ADDITION:
-                stepAdditionFamily(desc);
-                break;
+            switch(desc.op.getType().getFamily()) {
+                case INV:
+                    // invalid
+                    runInterruptPrivileged(VECTOR_DECODING_ERROR);
+                    break;
                 
-            case JUMP:
-                stepJumpFamily(desc);
-                break;
-                
-            case LOGIC:
-                stepLogicFamily(desc);
-                break;
-                
-            case MISC:
-                stepMiscFamily(desc);
-                break;
-                
-            case MOVE:
-                stepMoveFamily(desc);
-                break;
-                
-            case MULTIPLICATION:
-                stepMultiplicationFamily(desc);
-                break;
-                
-            default:
-                break;
-        }
-        
-        // jumps update themselves
-        if(!(desc.op.getType().getFamily() == Family.JUMP && desc.op.getType() != Operation.CMP && desc.op.getType() != Operation.PCMP)) {
-            updateIP(desc);
+                case ADDITION:
+                    stepAdditionFamily(desc);
+                    break;
+                    
+                case JUMP:
+                    stepJumpFamily(desc);
+                    break;
+                    
+                case LOGIC:
+                    stepLogicFamily(desc);
+                    break;
+                    
+                case MISC:
+                    stepMiscFamily(desc);
+                    break;
+                    
+                case MOVE:
+                    stepMoveFamily(desc);
+                    break;
+                    
+                case MULTIPLICATION:
+                    stepMultiplicationFamily(desc);
+                    break;
+                    
+                default:
+                    break;
+            }
+            
+            // jumps update themselves
+            if(!(desc.op.getType().getFamily() == Family.JUMP && desc.op.getType() != Operation.CMP && desc.op.getType() != Operation.PCMP)) {
+                updateIP(desc);
+            }
+        } catch(UnprivilegedAccessException e) {
+            this.memoryProtectionFault = true;
         }
         
         if(this.generalProtectionFault) {
             this.generalProtectionFault = false;
-            runInterrupt(VECTOR_GPF);
+            runInterruptPrivileged(VECTOR_GENERAL_PROTECTION_FAULT);
+        }
+        
+        if(this.memoryProtectionFault) {
+            this.memoryProtectionFault = false;
+            runInterruptPrivileged(VECTOR_MEMORY_PROTECTION_FAULT);
         }
     }
     
@@ -282,8 +297,9 @@ public class NotSoTinySimulator {
      * Interprets MISC family instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void stepMiscFamily(InstructionDescriptor desc) {
+    private void stepMiscFamily(InstructionDescriptor desc) throws UnprivilegedAccessException {
         //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
@@ -307,8 +323,9 @@ public class NotSoTinySimulator {
      * Interprets LOGIC family instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void stepLogicFamily(InstructionDescriptor desc) {
+    private void stepLogicFamily(InstructionDescriptor desc) throws UnprivilegedAccessException {
         //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
@@ -342,8 +359,9 @@ public class NotSoTinySimulator {
      * Executes 2-input logic instructions AND, OR, and XOR
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void run2Logic(InstructionDescriptor desc) {
+    private void run2Logic(InstructionDescriptor desc) throws UnprivilegedAccessException {
         // operands
         LocationDescriptor dst = switch(desc.op) {
             case AND_F_RIM, OR_F_RIM, XOR_F_RIM -> LocationDescriptor.REGISTER_F;
@@ -390,8 +408,9 @@ public class NotSoTinySimulator {
      * Executes 1-input logic instructions NOT and NEG
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void run1Logic(InstructionDescriptor desc) {
+    private void run1Logic(InstructionDescriptor desc) throws UnprivilegedAccessException {
         if(desc.op == Opcode.NOT_F) {
             this.reg_f = (short)(~this.reg_f);
         } else {
@@ -423,8 +442,9 @@ public class NotSoTinySimulator {
      * Executes rotation instructions SHL, SHR, SAR, ROL, ROR, RCL, and RCR
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runRotateLogic(InstructionDescriptor desc) {
+    private void runRotateLogic(InstructionDescriptor desc) throws UnprivilegedAccessException {
         LocationDescriptor dst = getNormalRIMDestinationDescriptor(desc);
         
         int mask = switch(dst.size()) {
@@ -570,8 +590,9 @@ public class NotSoTinySimulator {
      * Interpret a MULTIPLICATION family instruction
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void stepMultiplicationFamily(InstructionDescriptor desc) {
+    private void stepMultiplicationFamily(InstructionDescriptor desc) throws UnprivilegedAccessException {
         //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
@@ -610,8 +631,9 @@ public class NotSoTinySimulator {
      * Executes MUL, MULH, and MULSH instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runMUL(InstructionDescriptor desc) {
+    private void runMUL(InstructionDescriptor desc) throws UnprivilegedAccessException {
         LocationDescriptor thinDst = getNormalRIMDestinationDescriptor(desc);
         
         boolean high = desc.op == Opcode.MULH_RIM || desc.op == Opcode.MULSH_RIM,
@@ -670,8 +692,9 @@ public class NotSoTinySimulator {
      * Executes PMUL, PMULH, and PMULSH instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runPMUL(InstructionDescriptor desc) {
+    private void runPMUL(InstructionDescriptor desc) throws UnprivilegedAccessException {
         LocationDescriptor thinDst = getNormalRIMDestinationDescriptor(desc);
         
         int a = getPackedRIMSource(thinDst, desc),
@@ -693,8 +716,9 @@ public class NotSoTinySimulator {
      * Executes DIV, DIVS, DIVM, and DIVMS instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runDIV(InstructionDescriptor desc) {
+    private void runDIV(InstructionDescriptor desc) throws UnprivilegedAccessException {
         LocationDescriptor thinDst = getNormalRIMDestinationDescriptor(desc);
         
         int size = thinDst.size();
@@ -727,8 +751,9 @@ public class NotSoTinySimulator {
      * Executes PDIV, PDIVS, PDIVM, and PDIVMS instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runPDIV(InstructionDescriptor desc) {
+    private void runPDIV(InstructionDescriptor desc) throws UnprivilegedAccessException {
         LocationDescriptor thinDst = getNormalRIMDestinationDescriptor(desc),
                            src = getNormalRIMSourceDescriptor(desc);
         
@@ -758,8 +783,9 @@ public class NotSoTinySimulator {
      * Interpret an ADDITION family instruction
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void stepAdditionFamily(InstructionDescriptor desc) {
+    private void stepAdditionFamily(InstructionDescriptor desc) throws UnprivilegedAccessException {
         //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
@@ -800,8 +826,9 @@ public class NotSoTinySimulator {
      * Executes INC, ICC, DEC, and DCC instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runINC(InstructionDescriptor desc) {
+    private void runINC(InstructionDescriptor desc) throws UnprivilegedAccessException {
         LocationDescriptor dst = switch(desc.op) {
             case ICC_A, DCC_A               -> LocationDescriptor.REGISTER_A;
             case ICC_B, DCC_B               -> LocationDescriptor.REGISTER_B;
@@ -826,8 +853,9 @@ public class NotSoTinySimulator {
      * Executes PINC, PICC, PDEC, and PDCC instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runPINC(InstructionDescriptor desc) {
+    private void runPINC(InstructionDescriptor desc) throws UnprivilegedAccessException {
         LocationDescriptor dst = getNormalRIMDestinationDescriptor(desc);
         
         boolean bytes = dst.size() != 1,
@@ -849,8 +877,9 @@ public class NotSoTinySimulator {
      * Executes ADD, ADC, SUB, and SBB instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runADD(InstructionDescriptor desc) {
+    private void runADD(InstructionDescriptor desc) throws UnprivilegedAccessException {
         LocationDescriptor dst = switch(desc.op) {
             case ADD_A_I8, SUB_A_I8     -> LocationDescriptor.REGISTER_A;
             case ADD_B_I8, SUB_B_I8     -> LocationDescriptor.REGISTER_B;
@@ -900,8 +929,9 @@ public class NotSoTinySimulator {
      * Executes PADD, PADC, PSUB, and PSBB instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runPADD(InstructionDescriptor desc) {
+    private void runPADD(InstructionDescriptor desc) throws UnprivilegedAccessException {
         LocationDescriptor dst = getNormalRIMDestinationDescriptor(desc);
         
         boolean bytes = dst.size() != 1,
@@ -924,8 +954,9 @@ public class NotSoTinySimulator {
      * Interpret a JUMP family instruction
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void stepJumpFamily(InstructionDescriptor desc) {
+    private void stepJumpFamily(InstructionDescriptor desc) throws UnprivilegedAccessException {
         //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
@@ -969,8 +1000,9 @@ public class NotSoTinySimulator {
      * Executes JMP and JMPA instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runJMP(InstructionDescriptor desc) {
+    private void runJMP(InstructionDescriptor desc) throws UnprivilegedAccessException {
         // get value
         int val = 0;
         
@@ -1020,8 +1052,9 @@ public class NotSoTinySimulator {
      * Executes CALL and CALLA instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runCALL(InstructionDescriptor desc) {
+    private void runCALL(InstructionDescriptor desc) throws UnprivilegedAccessException {
         int target = 0;
         
         switch(desc.op) {
@@ -1067,7 +1100,7 @@ public class NotSoTinySimulator {
         updateIP(desc);
         
         this.reg_sp -= 4;
-        this.memory.write4Bytes(this.reg_sp, this.reg_ip);
+        this.memory.write4Bytes(this.reg_sp, this.reg_ip, this.pf_pv);
         
         // jump
         if(desc.op.getType() == Operation.CALL) { // relative
@@ -1081,17 +1114,18 @@ public class NotSoTinySimulator {
      * Executes RET and IRET instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runRET(InstructionDescriptor desc) {
+    private void runRET(InstructionDescriptor desc) throws UnprivilegedAccessException {
         if(desc.op == Opcode.IRET) {
             // IRET also pops flags
-            this.setRegPF(this.memory.read2Bytes(this.reg_sp));
-            this.reg_f = this.memory.read2Bytes(this.reg_sp + 2);
+            this.setRegPF(this.memory.read2Bytes(this.reg_sp, this.pf_pv));
+            this.reg_f = this.memory.read2Bytes(this.reg_sp + 2, this.pf_pv);
             this.reg_sp += 4;
         }
         
         // normal RET
-        this.reg_ip = this.memory.read4Bytes(this.reg_sp);
+        this.reg_ip = this.memory.read4Bytes(this.reg_sp, this.pf_pv);
         this.reg_sp += 4;
     }
     
@@ -1099,8 +1133,9 @@ public class NotSoTinySimulator {
      * Executes INT instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runINT(InstructionDescriptor desc) {
+    private void runINT(InstructionDescriptor desc) throws UnprivilegedAccessException {
         byte b;
         
         // vector
@@ -1120,19 +1155,39 @@ public class NotSoTinySimulator {
     }
     
     /**
-     * Executes an interrupt, whether internal or external
+     * Executes a software interrupt
      * 
      * @param num
+     * @throws UnprivilegedAccessException 
      */
-    private void runInterrupt(byte num) {
+    private void runInterrupt(byte num) throws UnprivilegedAccessException {
         // push IP, flags, pflags
         this.reg_sp -= 8;
-        this.memory.write4Bytes(this.reg_sp + 4, this.reg_ip);
-        this.memory.write2Bytes(this.reg_sp + 2, this.reg_f);
-        this.memory.write2Bytes(this.reg_sp, this.getRegPF());
+        this.memory.write4Bytes(this.reg_sp + 4, this.reg_ip, this.pf_pv);
+        this.memory.write2Bytes(this.reg_sp + 2, this.reg_f, this.pf_pv);
+        this.memory.write2Bytes(this.reg_sp, this.getRegPF(), this.pf_pv);
         
         // get vector & jump
-        this.reg_ip = this.memory.read4Bytes((num & 0x00FFl) << 2);
+        this.reg_ip = this.memory.read4BytesPrivileged((num & 0x00FFl) << 2);
+        this.pf_ie = false; // Disable maskable interrupts
+        this.pf_pv = true;  // Set privileged
+    }
+    
+    /**
+     * Executes a privileged interrupt
+     * 
+     * @param num
+     * @throws UnprivilegedAccessException 
+     */
+    private void runInterruptPrivileged(byte num) {
+        // push IP, flags, pflags
+        this.reg_sp -= 8;
+        this.memory.write4BytesPrivileged(this.reg_sp + 4, this.reg_ip);
+        this.memory.write2BytesPrivileged(this.reg_sp + 2, this.reg_f);
+        this.memory.write2BytesPrivileged(this.reg_sp, this.getRegPF());
+        
+        // get vector & jump
+        this.reg_ip = this.memory.read4BytesPrivileged((num & 0x00FFl) << 2);
         this.pf_ie = false; // Disable maskable interrupts
         this.pf_pv = true;  // Set privileged
     }
@@ -1141,8 +1196,9 @@ public class NotSoTinySimulator {
      * Executes LEA instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runLEA(InstructionDescriptor desc) {
+    private void runLEA(InstructionDescriptor desc) throws UnprivilegedAccessException {
         // souper simple
         putWideRIMDestination(desc, getNormalRIMSourceDescriptor(desc).address());
     }
@@ -1151,8 +1207,9 @@ public class NotSoTinySimulator {
      * Executes CMP instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runCMP(InstructionDescriptor desc) {
+    private void runCMP(InstructionDescriptor desc) throws UnprivilegedAccessException {
         LocationDescriptor dest = getNormalRIMDestinationDescriptor(desc);
         
         int a = readLocation(dest);
@@ -1174,8 +1231,9 @@ public class NotSoTinySimulator {
      * Executes PCMP instructions
      * 
      * @param desc
+     * @throws UnprivilegedAccessException 
      */
-    private void runPCMP(InstructionDescriptor desc) {
+    private void runPCMP(InstructionDescriptor desc) throws UnprivilegedAccessException {
         LocationDescriptor dest = getNormalRIMDestinationDescriptor(desc);
         
         int a = getPackedRIMSource(dest, desc),
@@ -1189,8 +1247,9 @@ public class NotSoTinySimulator {
      * Executes CMOV
      * 
      * @param desc
+     * @throws UnprivilegedAccessException 
      */
-    private void runCMOV(InstructionDescriptor desc) {
+    private void runCMOV(InstructionDescriptor desc) throws UnprivilegedAccessException {
         // make sure RIM is read properly
         LocationDescriptor srcDesc = getNormalRIMSourceDescriptor(desc),
                            dstDesc = getNormalRIMDestinationDescriptor(desc);
@@ -1217,8 +1276,9 @@ public class NotSoTinySimulator {
      * Executes PCMOV
      * 
      * @param desc
+     * @throws UnprivilegedAccessException 
      */
-    private void runPCMOV(InstructionDescriptor desc) {
+    private void runPCMOV(InstructionDescriptor desc) throws UnprivilegedAccessException {
         // make sure RIM is read properly
         LocationDescriptor srcDesc = getPackedRIMSourceDescriptor(getNormalRIMSourceDescriptor(desc), desc),
                            ndstDesc = getNormalRIMDestinationDescriptor(desc),
@@ -1307,8 +1367,9 @@ public class NotSoTinySimulator {
      * Executes JCC instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runJCC(InstructionDescriptor desc) {
+    private void runJCC(InstructionDescriptor desc) throws UnprivilegedAccessException {
         int offset = 0;
         
         // target
@@ -1348,8 +1409,9 @@ public class NotSoTinySimulator {
      * Interpret a MOVE family instruction
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void stepMoveFamily(InstructionDescriptor desc) {
+    private void stepMoveFamily(InstructionDescriptor desc) throws UnprivilegedAccessException {
         //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
@@ -1392,8 +1454,9 @@ public class NotSoTinySimulator {
      * Executes MOV instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runMOV(InstructionDescriptor desc) {
+    private void runMOV(InstructionDescriptor desc) throws UnprivilegedAccessException {
         //System.out.println(desc.op);
         
         // deal with register-register moves
@@ -1562,7 +1625,7 @@ public class NotSoTinySimulator {
             case MOV_D_O:
                 desc.hasImmediateAddress = true;
                 desc.immediateWidth = 4;
-                src = this.memory.read2Bytes(get4FetchBytes(1));
+                src = this.memory.read2Bytes(get4FetchBytes(1), this.pf_pv);
                 //src = this.memory.read2Bytes(this.memory.read4Bytes(this.reg_ip));
                 break;
             
@@ -1571,7 +1634,7 @@ public class NotSoTinySimulator {
             case MOV_B_BI:
             case MOV_C_BI:
             case MOV_D_BI:
-                src = this.memory.read2Bytes(getBIOAddress(desc, false, false));
+                src = this.memory.read2Bytes(getBIOAddress(desc, false, false), this.pf_pv);
                 break;
             
             // BIO with offset
@@ -1579,7 +1642,7 @@ public class NotSoTinySimulator {
             case MOV_B_BIO:
             case MOV_C_BIO:
             case MOV_D_BIO:
-                src = this.memory.read2Bytes(getBIOAddress(desc, false, true));
+                src = this.memory.read2Bytes(getBIOAddress(desc, false, true), this.pf_pv);
                 break;
             
             // wide rim
@@ -1674,7 +1737,7 @@ public class NotSoTinySimulator {
             case MOV_O_D:
                 desc.hasImmediateAddress = true;
                 desc.immediateWidth = 4;
-                this.memory.write2Bytes(get4FetchBytes(1), (short) src);
+                this.memory.write2Bytes(get4FetchBytes(1), (short) src, this.pf_pv);
                 //this.memory.write2Bytes(this.memory.read4Bytes(this.reg_ip), (short) src);
                 return;
             
@@ -1683,7 +1746,7 @@ public class NotSoTinySimulator {
             case MOV_BI_B:
             case MOV_BI_C:
             case MOV_BI_D:
-                this.memory.write2Bytes(getBIOAddress(desc, false, false), (short) src);
+                this.memory.write2Bytes(getBIOAddress(desc, false, false), (short) src, this.pf_pv);
                 return;
                 
             // BIO with offset
@@ -1691,7 +1754,7 @@ public class NotSoTinySimulator {
             case MOV_BIO_B:
             case MOV_BIO_C:
             case MOV_BIO_D:
-                this.memory.write2Bytes(getBIOAddress(desc, false, true), (short) src);
+                this.memory.write2Bytes(getBIOAddress(desc, false, true), (short) src, this.pf_pv);
                 return;
                 
             // flags
@@ -1753,8 +1816,9 @@ public class NotSoTinySimulator {
      * Executes XCHG instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runXCHG(InstructionDescriptor desc) {
+    private void runXCHG(InstructionDescriptor desc) throws UnprivilegedAccessException {
         // i love abstraction
         LocationDescriptor srcDesc = getNormalRIMSourceDescriptor(desc),
                            dstDesc = getNormalRIMDestinationDescriptor(desc);
@@ -1776,20 +1840,21 @@ public class NotSoTinySimulator {
      * 
      * @param op
      * @return
+     * @throws UnprivilegedAccessException 
      */
-    private void runPUSH(InstructionDescriptor desc) {
+    private void runPUSH(InstructionDescriptor desc) throws UnprivilegedAccessException {
         // deal with this separately cause of multiple registers and whatnot
         if(desc.op == Opcode.PUSHA) {
             this.reg_sp -= 20;
-            this.memory.write4Bytes(this.reg_sp + 0, this.reg_bp);
-            this.memory.write2Bytes(this.reg_sp + 4, this.reg_l);
-            this.memory.write2Bytes(this.reg_sp + 6, this.reg_k);
-            this.memory.write2Bytes(this.reg_sp + 8, this.reg_j);
-            this.memory.write2Bytes(this.reg_sp + 10, this.reg_i);
-            this.memory.write2Bytes(this.reg_sp + 12, this.reg_d);
-            this.memory.write2Bytes(this.reg_sp + 14, this.reg_c);
-            this.memory.write2Bytes(this.reg_sp + 16, this.reg_b);
-            this.memory.write2Bytes(this.reg_sp + 18, this.reg_a);
+            this.memory.write4Bytes(this.reg_sp + 0, this.reg_bp, this.pf_pv);
+            this.memory.write2Bytes(this.reg_sp + 4, this.reg_l, this.pf_pv);
+            this.memory.write2Bytes(this.reg_sp + 6, this.reg_k, this.pf_pv);
+            this.memory.write2Bytes(this.reg_sp + 8, this.reg_j, this.pf_pv);
+            this.memory.write2Bytes(this.reg_sp + 10, this.reg_i, this.pf_pv);
+            this.memory.write2Bytes(this.reg_sp + 12, this.reg_d, this.pf_pv);
+            this.memory.write2Bytes(this.reg_sp + 14, this.reg_c, this.pf_pv);
+            this.memory.write2Bytes(this.reg_sp + 16, this.reg_b, this.pf_pv);
+            this.memory.write2Bytes(this.reg_sp + 18, this.reg_a, this.pf_pv);
             return;
         }
         
@@ -1838,11 +1903,11 @@ public class NotSoTinySimulator {
         
         // write
         if(opSize == 1) {
-            this.memory.writeByte(this.reg_sp, (byte) val);
+            this.memory.writeByte(this.reg_sp, (byte) val, this.pf_pv);
         } else if(opSize == 2) {
-            this.memory.write2Bytes(this.reg_sp, (short) val);
+            this.memory.write2Bytes(this.reg_sp, (short) val, this.pf_pv);
         } else {
-            this.memory.write4Bytes(this.reg_sp, val);
+            this.memory.write4Bytes(this.reg_sp, val, this.pf_pv);
         }
     }
     
@@ -1850,19 +1915,20 @@ public class NotSoTinySimulator {
      * Executes POP instructions
      * 
      * @param op
+     * @throws UnprivilegedAccessException 
      */
-    private void runPOP(InstructionDescriptor desc) {
+    private void runPOP(InstructionDescriptor desc) throws UnprivilegedAccessException {
         // deal with POPA separately
         if(desc.op == Opcode.POPA) {
-            this.reg_bp = this.memory.read4Bytes(this.reg_sp + 0);
-            this.reg_l = this.memory.read2Bytes(this.reg_sp + 4);
-            this.reg_k = this.memory.read2Bytes(this.reg_sp + 6);
-            this.reg_j = this.memory.read2Bytes(this.reg_sp + 8);
-            this.reg_i = this.memory.read2Bytes(this.reg_sp + 10);
-            this.reg_d = this.memory.read2Bytes(this.reg_sp + 12);
-            this.reg_c = this.memory.read2Bytes(this.reg_sp + 14);
-            this.reg_b = this.memory.read2Bytes(this.reg_sp + 16);
-            this.reg_a = this.memory.read2Bytes(this.reg_sp + 18);
+            this.reg_bp = this.memory.read4Bytes(this.reg_sp + 0, this.pf_pv);
+            this.reg_l = this.memory.read2Bytes(this.reg_sp + 4, this.pf_pv);
+            this.reg_k = this.memory.read2Bytes(this.reg_sp + 6, this.pf_pv);
+            this.reg_j = this.memory.read2Bytes(this.reg_sp + 8, this.pf_pv);
+            this.reg_i = this.memory.read2Bytes(this.reg_sp + 10, this.pf_pv);
+            this.reg_d = this.memory.read2Bytes(this.reg_sp + 12, this.pf_pv);
+            this.reg_c = this.memory.read2Bytes(this.reg_sp + 14, this.pf_pv);
+            this.reg_b = this.memory.read2Bytes(this.reg_sp + 16, this.pf_pv);
+            this.reg_a = this.memory.read2Bytes(this.reg_sp + 18, this.pf_pv);
             
             this.reg_sp += 20;
             return;
@@ -1879,9 +1945,9 @@ public class NotSoTinySimulator {
         };
         
         int val = switch(opSize) {
-            case 1  -> this.memory.readByte(this.reg_sp);
-            case 2  -> this.memory.read2Bytes(this.reg_sp);
-            case 4  -> this.memory.read4Bytes(this.reg_sp);
+            case 1  -> this.memory.readByte(this.reg_sp, this.pf_pv);
+            case 2  -> this.memory.read2Bytes(this.reg_sp, this.pf_pv);
+            case 4  -> this.memory.read4Bytes(this.reg_sp, this.pf_pv);
             default -> -1; // not possible
         };
         
@@ -2470,17 +2536,18 @@ public class NotSoTinySimulator {
      * Puts a value at a location
      * 
      * @param val
+     * @throws UnprivilegedAccessException 
      */
-    private void writeLocation(LocationDescriptor desc, int val) {
+    private void writeLocation(LocationDescriptor desc, int val) throws UnprivilegedAccessException {
         //System.out.println("writing location " + desc + " with " + val);
         
         // what we dealin with
         if(desc.type() == LocationType.MEMORY) {
             switch(desc.size()) {
-                case 1: this.memory.writeByte(desc.address(), (byte) val);     break;
-                case 2: this.memory.write2Bytes(desc.address(), (short) val);   break;
-                case 3: this.memory.write3Bytes(desc.address(), val);           break;
-                case 4: this.memory.write4Bytes(desc.address(), val);           break;
+                case 1: this.memory.writeByte(desc.address(), (byte) val, this.pf_pv);      break;
+                case 2: this.memory.write2Bytes(desc.address(), (short) val, this.pf_pv);   break;
+                case 3: this.memory.write3Bytes(desc.address(), val, this.pf_pv);           break;
+                case 4: this.memory.write4Bytes(desc.address(), val, this.pf_pv);           break;
             }
         } else {
             // registers. handle by size
@@ -2627,8 +2694,9 @@ public class NotSoTinySimulator {
      * Puts the result of a RIM in its destination
      * 
      * @param val
+     * @throws UnprivilegedAccessException 
      */
-    private void putNormalRIMDestination(InstructionDescriptor desc, int val) {
+    private void putNormalRIMDestination(InstructionDescriptor desc, int val) throws UnprivilegedAccessException {
         writeLocation(getNormalRIMDestinationDescriptor(desc), val);
     }
     
@@ -2636,8 +2704,9 @@ public class NotSoTinySimulator {
      * Puts the result of a wide RIM in its destination (double normal width)
      * 
      * @param val
+     * @throws UnprivilegedAccessException 
      */
-    private void putWideRIMDestination(InstructionDescriptor desc, int val) {
+    private void putWideRIMDestination(InstructionDescriptor desc, int val) throws UnprivilegedAccessException {
         LocationDescriptor normalDesc = getNormalRIMDestinationDescriptor(desc);
         
         writeWideLocation(normalDesc, val);
@@ -2649,8 +2718,9 @@ public class NotSoTinySimulator {
      * 
      * @param normalDesc
      * @param val
+     * @throws UnprivilegedAccessException 
      */
-    private void writeWideLocation(LocationDescriptor normalDesc, int val) {
+    private void writeWideLocation(LocationDescriptor normalDesc, int val) throws UnprivilegedAccessException {
         int size = normalDesc.size();
         
         if(size < 4) {
@@ -2680,8 +2750,9 @@ public class NotSoTinySimulator {
      * 
      * @param normalDesc
      * @param val
+     * @throws UnprivilegedAccessException 
      */
-    private void putPackedRIMDestination(LocationDescriptor normalDesc, int val) {
+    private void putPackedRIMDestination(LocationDescriptor normalDesc, int val) throws UnprivilegedAccessException {
         writeLocation(new LocationDescriptor(normalDesc.type(), 2, normalDesc.address()), val);
     }
     
@@ -2690,8 +2761,9 @@ public class NotSoTinySimulator {
      * 
      * @param normalDesc
      * @param val
+     * @throws UnprivilegedAccessException 
      */
-    private void putWidePackedRIMDestination(LocationDescriptor normalDesc, int val) {
+    private void putWidePackedRIMDestination(LocationDescriptor normalDesc, int val) throws UnprivilegedAccessException {
         writeLocation(new LocationDescriptor(normalDesc.type(), 4, normalDesc.address()), val);
     }
     
@@ -2786,16 +2858,17 @@ public class NotSoTinySimulator {
      * 
      * @param loc
      * @return
+     * @throws UnprivilegedAccessException 
      */
-    private int readLocation(LocationDescriptor desc) {
+    private int readLocation(LocationDescriptor desc) throws UnprivilegedAccessException {
         //System.out.println("reading location " + desc);
         
         // what we workin with
         if(desc.type() == LocationType.MEMORY) {
             return switch(desc.size()) {
-                case 1  -> this.memory.readByte(desc.address());
-                case 2  -> this.memory.read2Bytes(desc.address());
-                case 4  -> this.memory.read4Bytes(desc.address());
+                case 1  -> this.memory.readByte(desc.address(), this.pf_pv);
+                case 2  -> this.memory.read2Bytes(desc.address(), this.pf_pv);
+                case 4  -> this.memory.read4Bytes(desc.address(), this.pf_pv);
                 default -> 0;
             };
         } else {
@@ -2854,8 +2927,9 @@ public class NotSoTinySimulator {
      * Gets the source of a RIM
      * 
      * @return
+     * @throws UnprivilegedAccessException 
      */
-    private int getNormalRIMSource(InstructionDescriptor desc) {
+    private int getNormalRIMSource(InstructionDescriptor desc) throws UnprivilegedAccessException {
         LocationDescriptor locDesc = getNormalRIMSourceDescriptor(desc); 
         desc.sourceWidth = getNormalRIMSourceWidth(desc);
         return readLocation(locDesc);
@@ -2865,8 +2939,9 @@ public class NotSoTinySimulator {
      * Gets the source of a wide RIM. Forces sources to be 4 bytes.
      * 
      * @return
+     * @throws UnprivilegedAccessException 
      */
-    private int getWideRIMSource(InstructionDescriptor desc) {
+    private int getWideRIMSource(InstructionDescriptor desc) throws UnprivilegedAccessException {
         LocationDescriptor normalDesc = getNormalRIMSourceDescriptor(desc);
         desc.sourceWidth = 4;
         
@@ -2878,8 +2953,9 @@ public class NotSoTinySimulator {
      * @param idesc
      * @param normalDesc
      * @return
+     * @throws UnprivilegedAccessException 
      */
-    private int readWideLocation(InstructionDescriptor idesc, LocationDescriptor normalDesc) {
+    private int readWideLocation(InstructionDescriptor idesc, LocationDescriptor normalDesc) throws UnprivilegedAccessException {
         if(idesc.hasImmediateValue) {
             idesc.immediateWidth = 4;
         }
@@ -2916,8 +2992,9 @@ public class NotSoTinySimulator {
      * 
      * @param desc
      * @return
+     * @throws UnprivilegedAccessException 
      */
-    private int getPackedRIMSource(LocationDescriptor normalDesc, InstructionDescriptor idesc) {
+    private int getPackedRIMSource(LocationDescriptor normalDesc, InstructionDescriptor idesc) throws UnprivilegedAccessException {
         return readLocation(getPackedRIMSourceDescriptor(normalDesc, idesc));
     }
     
@@ -2926,8 +3003,9 @@ public class NotSoTinySimulator {
      * 
      * @param normalDesc
      * @return
+     * @throws UnprivilegedAccessException 
      */
-    private int getWidePackedRIMSource(LocationDescriptor normalDesc, InstructionDescriptor idesc) {
+    private int getWidePackedRIMSource(LocationDescriptor normalDesc, InstructionDescriptor idesc) throws UnprivilegedAccessException {
         if(idesc.hasImmediateValue) idesc.immediateWidth = 4;
         idesc.sourceWidth = 4;
         return readLocation(new LocationDescriptor(normalDesc.type(), 4, normalDesc.address()));
