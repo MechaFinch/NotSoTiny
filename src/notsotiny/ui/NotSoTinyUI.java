@@ -40,6 +40,7 @@ import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import notsotiny.asm.Disassembler;
 import notsotiny.sim.NotSoTinySimulator;
+import notsotiny.sim.memory.CachingMemoryManager;
 import notsotiny.sim.memory.DiskBufferController;
 import notsotiny.sim.memory.FlatMemoryController;
 import notsotiny.sim.memory.InterruptController;
@@ -126,14 +127,16 @@ public class NotSoTinyUI extends Application {
                                 TEXT_FONT_FILE = "data\\text.dat";
     */
     
-    private static final String //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernel\\emu\\",
+    private static final String //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernelv2\\src\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\testing\\",
+                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\mandelbrot\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\minesweeper\\",
-                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\fakeos\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\fakeos\\",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "forth.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "testing-mdbt.oex",
+                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "mandelbrot.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "minesweeper.oex",
-                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_shell.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_shell.oex",
                                 DISK_FOLDER = PROGRAM_DATA_FOLDER + "disk\\",
                                 TEXT_FONT_FILE = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\textsmall.dat";
     
@@ -328,7 +331,9 @@ public class NotSoTinyUI extends Application {
     // misc
     private long instructionsExecutedLast, // tracks since UI was last updated
                  instructionsExecutedTotal,
-                 elapsedTimens,
+                 mipsElapsedTimens,
+                 frameElapsedTimens,
+                 cpuTimens,
                  breakpointAddress,
                  memwatchAddress;
     
@@ -355,7 +360,8 @@ public class NotSoTinyUI extends Application {
      */
     private void initSimulator(boolean load) throws MidiUnavailableException, IOException {
         // initialize memory manager
-        this.mmu = new MemoryManager();
+        this.mmu = new CachingMemoryManager();
+        //this.mmu = new MemoryManager();
         
         // initialize flat memory segments]
         ivtArray = new byte[IVT_SIZE];
@@ -388,7 +394,8 @@ public class NotSoTinyUI extends Application {
         screenBufferController = new ScreenBuffer(videoBufferArray); // 3FFFC
         
         this.mmu.registerSegment(ivtController, IVT_START, IVT_SIZE);
-        this.mmu.registerSegment(lowramController, LOWRAM_START, LOWRAM_SIZE);
+        ((CachingMemoryManager)this.mmu).registerSegment(lowramController, LOWRAM_START, LOWRAM_SIZE, true);
+        //this.mmu.registerSegment(lowramController, LOWRAM_START, LOWRAM_SIZE);
         this.mmu.registerSegment(placeholder_spiController, SPI_START, SPI_SIZE);
         this.mmu.registerSegment(placeholder_cacheController, CC_START, CC_SIZE);
         this.mmu.registerSegment(keyboardBufferController, KEYBOARD_START, KEYBOARD_SIZE);
@@ -407,6 +414,9 @@ public class NotSoTinyUI extends Application {
         this.instructionTrace = new ArrayDeque<>();
         this.instructionsExecutedLast = 0;
         this.instructionsExecutedTotal = 0;
+        this.mipsElapsedTimens = 0l;
+        this.frameElapsedTimens = 0l;
+        this.cpuTimens = 0l;
         
         for(int i = 0; i < TRACE_SIZE; i++) {
             instructionTrace.push("");
@@ -442,7 +452,7 @@ public class NotSoTinyUI extends Application {
         
         int relStart = this.relocator.hasReference("ORIGIN", false) ? 0 : 1024;
         
-        byte[] relocatedData = new byte[0x10_0000];
+        byte[] relocatedData = new byte[IVT_SIZE + LOWRAM_SIZE];
         long entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, relocatedData, relStart, relStart);
         
         System.arraycopy(relocatedData, 0, ivtArray, 0, ivtArray.length);
@@ -957,21 +967,30 @@ public class NotSoTinyUI extends Application {
      */
     private void updateUI() {
         Platform.runLater(() -> {
+            long nanoTime = System.nanoTime();
+            long mipsTime = nanoTime - this.mipsElapsedTimens,
+                 frameTime = nanoTime - this.frameElapsedTimens;
+            
+            // calculate CPU time every frame
+            this.frameElapsedTimens = nanoTime;
+            if(this.freerunEnabled && !this.sim.getHalted()) {
+                this.cpuTimens += frameTime;
+            }
+            
             // calculate average mips every half second
-            long time = System.nanoTime() - this.elapsedTimens;
-            if(time > 1_000_000_000l) {
+            if(mipsTime > 1_000_000_000l) {
                 long executed = this.instructionsExecutedLast;
                 this.instructionsExecutedLast = 0;
-                this.elapsedTimens = System.nanoTime();
+                this.mipsElapsedTimens = nanoTime;
                 
-                double mips = (((double) executed) / ((double) time)) * 1_000_000_000;
+                double mips = (((double) executed) / ((double) mipsTime)) * 1_000_000_000;
                 this.lastAverageMIPS = mips;
                 this.instructionsExecutedTotal += executed;
             }
             
             // basic info
-            this.infoTotalInstructions.setText(String.format("Total instructions: %,d", this.instructionsExecutedTotal));
-            this.infoAverageMIPS.setText(String.format("Average IPS: %,6.0f", this.lastAverageMIPS));
+            this.infoTotalInstructions.setText(String.format("Total instructions: %,d\nCPU Time: %,.3fs", this.instructionsExecutedTotal, ((double)(this.cpuTimens / 1_000_000)) / 1000.0));
+            this.infoAverageMIPS.setText(String.format("\nAverage IPS: %,6.0f", this.lastAverageMIPS));
             
             this.buttonToggleRunning.setText(this.freerunEnabled ? "Stop CPU" : "Start CPU");
             this.buttonToggleTrace.setText(this.traceEnabled ? "Stop Trace" : "Start Trace");

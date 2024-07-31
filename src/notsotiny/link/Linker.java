@@ -13,6 +13,7 @@ import asmlib.util.relocation.Relocator;
 import notsotiny.asm.Disassembler;
 import notsotiny.sim.memory.FlatMemoryController;
 import notsotiny.sim.memory.MemoryManager;
+import notsotiny.sim.ops.Opcode;
 
 /**
  * Linker for NotSoTiny
@@ -36,7 +37,8 @@ public class Linker {
             System.out.println("Flags:");
             System.out.println("\t-s [size]  \tSize: Set a fixed output size in bytes (hexadecimal)");
             System.out.println("\t-o [origin]\tOrigin: Start address to be relocated to, in hexadecimal");
-            System.out.println("\t-l         \tList: output a listing file");
+            System.out.println("\t-l         \tList: Output a listing file");
+            System.out.println("\t--stats    \tStatistics: Include opcode frequency statistics in listing file");
             System.exit(0);
         }
         
@@ -46,6 +48,7 @@ public class Linker {
         int size = 0,
             origin = 0;
         boolean outputListing = false,
+                listingStats = false,
                 truncate = true;
         
         out:
@@ -71,6 +74,13 @@ public class Linker {
                     flagIndex += 1;
                     
                     LOG.fine("Listing file will be output");
+                    break;
+                
+                case "--stats":
+                    listingStats = true;
+                    flagIndex += 1;
+                    
+                    LOG.fine("Listing file will include statistics");
                     break;
                 
                 default:
@@ -131,24 +141,37 @@ public class Linker {
                 
                 for(int address = 0; address < data.length;) {
                     try {
-                    String dsm = dis.disassemble(mm, address);
-                    int len = dis.getLastInstructionLength();
-                    
-                    String label = relocator.getAddressName(Integer.toUnsignedLong(address + origin));
+                        String dsm = dis.disassemble(mm, address);
+                        int len = dis.getLastInstructionLength();
                         
-                    StringBuilder bytes = new StringBuilder();
-                    
-                    for(int i = 0; i < len; i++) {
-                        bytes.append(String.format("%02X ", data[address + i]));
-                    }
-                    
-                    String listString = String.format("%-32s%08X: %-24s %s", label, address + origin, bytes, dsm);
-                    listWriter.println(listString);
-                    LOG.finer(listString);
-                    
-                    address += len;
+                        String label = relocator.getAddressName(Integer.toUnsignedLong(address + origin));
+                            
+                        StringBuilder bytes = new StringBuilder();
+                        
+                        for(int i = 0; i < len; i++) {
+                            bytes.append(String.format("%02X ", data[address + i]));
+                        }
+                        
+                        String listString = String.format("%-32s%08X: %-24s %s", label, address + origin, bytes, dsm);
+                        listWriter.println(listString);
+                        LOG.finer(listString);
+                        
+                        address += len;
                     } catch(IndexOutOfBoundsException e) {
                         // ignore end
+                    }
+                }
+                
+                // stats
+                if(listingStats) {
+                    listWriter.println("\n\n<<OPCODE STATISTICS>>");
+                    
+                    for(int i = 0; i < 256; i++) {
+                        Opcode op = Opcode.fromOp((byte) i);
+                        
+                        String statString = String.format("%02X %-12s %s", i, op, dis.instructionStatisticsMap.getOrDefault(op, 0));;
+                        listWriter.println(statString);
+                        LOG.finer(statString);
                     }
                 }
             }

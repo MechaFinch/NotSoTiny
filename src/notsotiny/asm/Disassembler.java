@@ -1,6 +1,8 @@
 package notsotiny.asm;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 import notsotiny.sim.memory.MemoryManager;
 import notsotiny.sim.ops.Opcode;
@@ -16,6 +18,8 @@ public class Disassembler {
                  lastAddress = 0;
     
     private boolean uppercase;
+    
+    public Map<Opcode, Integer> instructionStatisticsMap;
 
     /**
      * Creates a disassembler
@@ -24,13 +28,14 @@ public class Disassembler {
      */
     public Disassembler(boolean uppercase) {
         this.uppercase = uppercase;
+        this.instructionStatisticsMap = new HashMap<>();
     }
     
     /**
      * Default disassembler
      */
     public Disassembler() {
-        this.uppercase = true;
+        this(true);
     }
     
     /**
@@ -45,6 +50,7 @@ public class Disassembler {
         this.lastAddress = address;
         
         Opcode op = Opcode.fromOp((byte) readSize(memory, 1));
+        this.instructionStatisticsMap.put(op, this.instructionStatisticsMap.getOrDefault(op, 0) + 1);
         
         String s = getMnemonic(op),
                os = op.toString();

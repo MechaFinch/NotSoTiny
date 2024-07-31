@@ -91,7 +91,7 @@ public class MemoryManager {
      * @throws IndexOutOfBoundsException when trying to access out-of-bounds memory
      * @throws NullPointerException if no segments have been registered
      */
-    private Entry<Long, MemoryController> getSegment(long startAddress, long endAddress, boolean privilege, boolean read) throws UnprivilegedAccessException {
+    protected Entry<Long, MemoryController> getSegment(long startAddress, long endAddress, boolean privilege, boolean read) throws UnprivilegedAccessException {
         startAddress &= 0xFFFF_FFFFl;
         endAddress &= 0xFFFF_FFFFl;
         
