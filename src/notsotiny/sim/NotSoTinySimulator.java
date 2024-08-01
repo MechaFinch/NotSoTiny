@@ -1508,54 +1508,6 @@ public class NotSoTinySimulator {
             case MOV_D_C:
                 this.reg_d = this.reg_c;
                 return;
-                
-            case MOV_AL_BL:
-                this.reg_a = (short)((this.reg_a & 0xFF00) | (this.reg_b & 0x00FF));
-                return;
-                
-            case MOV_AL_CL:
-                this.reg_a = (short)((this.reg_a & 0xFF00) | (this.reg_c & 0x00FF));
-                return;
-                
-            case MOV_AL_DL:
-                this.reg_a = (short)((this.reg_a & 0xFF00) | (this.reg_d & 0x00FF));
-                return;
-                
-            case MOV_BL_AL:
-                this.reg_b = (short)((this.reg_b & 0xFF00) | (this.reg_a & 0x00FF));
-                return;
-                
-            case MOV_BL_CL:
-                this.reg_b = (short)((this.reg_b & 0xFF00) | (this.reg_c & 0x00FF));
-                return;
-                
-            case MOV_BL_DL:
-                this.reg_b = (short)((this.reg_b & 0xFF00) | (this.reg_d & 0x00FF));
-                return;
-                
-            case MOV_CL_AL:
-                this.reg_c = (short)((this.reg_c & 0xFF00) | (this.reg_a & 0x00FF));
-                return;
-                
-            case MOV_CL_BL:
-                this.reg_c = (short)((this.reg_c & 0xFF00) | (this.reg_b & 0x00FF));
-                return;
-                
-            case MOV_CL_DL:
-                this.reg_c = (short)((this.reg_c & 0xFF00) | (this.reg_d & 0x00FF));
-                return;
-                
-            case MOV_DL_AL:
-                this.reg_d = (short)((this.reg_d & 0xFF00) | (this.reg_a & 0x00FF));
-                return;
-                
-            case MOV_DL_BL:
-                this.reg_d = (short)((this.reg_d & 0xFF00) | (this.reg_b & 0x00FF));
-                return;
-                
-            case MOV_DL_CL:
-                this.reg_d = (short)((this.reg_d & 0xFF00) | (this.reg_c & 0x00FF));
-                return;
             
             default:
         }
@@ -1861,7 +1813,7 @@ public class NotSoTinySimulator {
         // deal with operand size
         int opSize = switch(desc.op) {
             case PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L, PUSH_F, PUSH_PF -> 2;
-            case PUSH_BP, PUSH_I32 -> 4;
+            case PUSH_BP, BPUSH_SP, PUSHW_I32, BPUSHW_I32, PUSHW_RIM, BPUSHW_RIM -> 4;
             default -> getNormalRIMSourceWidth(desc);
         };
         
@@ -1876,6 +1828,7 @@ public class NotSoTinySimulator {
             case PUSH_K     -> this.reg_k;
             case PUSH_L     -> this.reg_l;
             case PUSH_BP    -> this.reg_bp;
+            case BPUSH_SP   -> this.reg_sp;
             case PUSH_F     -> this.reg_f;
             case PUSH_PF    -> {
                 if(this.pf_pv) {
@@ -1885,12 +1838,13 @@ public class NotSoTinySimulator {
                     yield 0;
                 }
             }
-            case PUSH_I32   -> {
+            case PUSHW_I32, BPUSHW_I32 -> {
                 desc.hasImmediateValue = true;
                 desc.immediateWidth = 4;
                 yield get4FetchBytes(1);
                 //yield this.memory.read4Bytes(this.reg_ip);
             }
+            case PUSHW_RIM, BPUSHW_RIM -> getWideRIMSource(desc);
             default         -> getNormalRIMSource(desc); // rim
         };
         
@@ -1898,16 +1852,36 @@ public class NotSoTinySimulator {
             return;
         }
         
-        // update SP
-        this.reg_sp -= opSize;
-        
-        // write
-        if(opSize == 1) {
-            this.memory.writeByte(this.reg_sp, (byte) val, this.pf_pv);
-        } else if(opSize == 2) {
-            this.memory.write2Bytes(this.reg_sp, (short) val, this.pf_pv);
-        } else {
-            this.memory.write4Bytes(this.reg_sp, val, this.pf_pv);
+        switch(desc.op) { 
+            case BPUSH_RIM:
+            case BPUSHW_RIM:
+            case BPUSHW_I32:
+            case BPUSH_SP:// BP
+                // update BP
+                this.reg_bp -= opSize;
+                
+                // write
+                if(opSize == 1) {
+                    this.memory.writeByte(this.reg_bp, (byte) val, this.pf_pv);
+                } else if(opSize == 2) {
+                    this.memory.write2Bytes(this.reg_bp, (short) val, this.pf_pv);
+                } else {
+                    this.memory.write4Bytes(this.reg_bp, val, this.pf_pv);
+                }
+                break;
+                
+            default: // SP
+                // update SP
+                this.reg_sp -= opSize;
+                
+                // write
+                if(opSize == 1) {
+                    this.memory.writeByte(this.reg_sp, (byte) val, this.pf_pv);
+                } else if(opSize == 2) {
+                    this.memory.write2Bytes(this.reg_sp, (short) val, this.pf_pv);
+                } else {
+                    this.memory.write4Bytes(this.reg_sp, val, this.pf_pv);
+                }
         }
     }
     
@@ -1940,21 +1914,31 @@ public class NotSoTinySimulator {
         // deal with operand size
         int opSize = switch(desc.op) {
             case POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L, POP_F, POP_PF -> 2;
-            case POP_BP -> 4;
+            case POP_BP, BPOP_SP, POPW_RIM, BPOPW_RIM -> 4;
             default -> getNormalRIMSourceWidth(desc);
         };
         
+        int sourcePointer;
+        
+        switch(desc.op) {
+            case BPOP_RIM, BPOPW_RIM, BPOP_SP:
+                sourcePointer = this.reg_bp;
+                this.reg_bp += opSize;
+                break;
+            
+            default:
+                sourcePointer = this.reg_sp;
+                this.reg_sp += opSize;
+                break;
+        }
+        
         int val = switch(opSize) {
-            case 1  -> this.memory.readByte(this.reg_sp, this.pf_pv);
-            case 2  -> this.memory.read2Bytes(this.reg_sp, this.pf_pv);
-            case 4  -> this.memory.read4Bytes(this.reg_sp, this.pf_pv);
+            case 1  -> this.memory.readByte(sourcePointer, this.pf_pv);
+            case 2  -> this.memory.read2Bytes(sourcePointer, this.pf_pv);
+            case 4  -> this.memory.read4Bytes(sourcePointer, this.pf_pv);
             default -> -1; // not possible
         };
-        
-        //System.out.println(String.format("source value: %08X", val));
-        
-        this.reg_sp += opSize;
-        
+                
         // write
         switch(desc.op) {
             case POP_A:     this.reg_a = (short) val; break;
@@ -1967,8 +1951,10 @@ public class NotSoTinySimulator {
             case POP_L:     this.reg_l = (short) val; break;
             
             case POP_BP:    this.reg_bp = val; break;
+            case BPOP_SP:   this.reg_sp = val; break;
             case POP_F:     this.reg_f = (short) val; break;
             case POP_PF:    this.setRegPF((short) val); break;
+            case POPW_RIM, BPOPW_RIM:   putWideRIMDestination(desc, val); break;
             default:        putNormalRIMDestination(desc, val); // rim
         }
     }

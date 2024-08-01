@@ -8,9 +8,15 @@ mov
 xchg
 xchgw
 push
+pushw
 pusha
+bpush
+bpushw
 pop
+popw
 popa
+bpop
+bpopw
 and
 or
 xor

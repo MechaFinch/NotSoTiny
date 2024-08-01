@@ -20,7 +20,7 @@ Registers
 	Pointer Registers
 	32-bit
 	SP		Stack Pointer
-	BP		Base Pointer
+	BP		Base/B-Stack Pointer
 	IP		Instruction Pointer
 	
 	Special Purpose Registers
@@ -40,12 +40,14 @@ Registers
 	|-----------------------------------------------------------|----|----|----|----|
 	
 	PF layout
-	|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
-	|   F |   E |   D |   C |   B |   A |   9 |   8 |   7 |   6 |   5 |   4 |   3 |   2 |   1 |   0 |
-	|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
-	|                                                                                         |  IE |
-	|-----------------------------------------------------------------------------------------|-----|
-	IE: Interrupt Enable (default 0). If 1, maskable interrupts are allowed. If 0, maskable interrupts are ignored
+	|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|
+	|  F |  E |  D |  C |  B |  A |  9 |  8 |  7 |  6 |  5 |  4 |  3 |  2 |  1 |  0 |
+	|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|
+	|                                                                     | PV | IE |
+	|---------------------------------------------------------------------|----|----|
+	Field					Startup		Interrupt	Description
+	IE: Interrupt Enable	0			0			If 1, maskable interrupts are allowed. If 0, maskable interrupts are ignored.
+	PV:	Privilege Level		1			1			If 1, privileged. If 0, unprivileged.
 
 
 
@@ -135,6 +137,14 @@ Other Notes
 	Division sets the carry and overflow flags if the quotient is too large for the destination;
 	the zero flag is set if both the quotient and remainder (if applicable) are zero; the sign flag
 	is set according to the quotient.
+	Reading or writing PF while unprivileged raises a general protection fault (0x10).
+	
+	Calling Convention
+	- A, B, C, D caller-saved
+	- I, J, K, L, BP, SP callee-saved
+	- Return value in D:A
+	- Rightmost argument pushed first
+	- No alignment
 
 
 
@@ -156,7 +166,7 @@ Instruction Descriptions
 	
 	CMOVcc
 		destination <- source if condition met
-		Condition is specified by placing the opcode of a conditional jump in the I8 field
+		Condition is specified by placing the opcode of a conditional jump in the EI8 field
 		The source is always read.
 		When packed, the destination is always written. When not packed, the destination is only
 		written if the condition is met.
@@ -171,9 +181,33 @@ Instruction Descriptions
 		[SP - size]	<- source
 		SP			<- SP - size
 	
+	PUSHW
+		[SP - size]	<- wide source
+		SP			<- SP - size
+	
+	BPUSH
+		[BP - size]	<- source
+		BP			<- BP - size
+	
+	BPUSHW
+		[BP - size]	<- wide source
+		BP			<- BP - size
+	
 	POP
 		destination	<- [SP]
 		SP			<- SP + size
+	
+	POPW
+		wide destination	<- [SP]
+		SP					<- SP + size
+	
+	BPOP
+		destination	<- [SP]
+		SP			<- SP + size
+	
+	BPOPW
+		wide destination	<- [BP]
+		BP					<- BP + size
 	
 	PUSHA
 		Pushes, in order, A, B, C, D, I, J, K, L, BP
@@ -185,6 +219,10 @@ Instruction Descriptions
 		wide destination <- address(source)
 		Destination must be a 32-bit register
 		Source must be memory
+	
+	HWI
+		Hardware Instruction
+		Model-specific instructions. The EI8 field is used as a second opcode.
 	
 	JMP
 		IP <- IP + source
@@ -222,7 +260,7 @@ Instruction Descriptions
 		[SP - 8]	<- PF
 		SP			<- SP - 8
 		IP			<- [source * 4]
-		PF			<- IE cleared
+		PF			<- IE=0, PV=1
 		Source must be 8 bits
 	
 	IRET
@@ -233,6 +271,7 @@ Instruction Descriptions
 	
 	HLT
 		Halts execution until an external interrupt
+		Requires privilege. If PV == 0, raises a general protection fault (0x10).
 	
 	CMP
 		Sets arithmetic flags according to destination - source

@@ -60,48 +60,48 @@
 	0x36	MOV D, B
 	0x37	MOV D, C
 	
-	0x38	MOV AL, BL
-	0x39	MOV AL, CL
-	0x3A	MOV AL, DL
-	0x3B	MOV BL, AL
-	0x3C	MOV BL, CL
-	0x3D	MOV BL, DL
-	0x3E	MOV CL, AL
-	0x3F	MOV CL, BL
-	0x40	MOV CL, DL
-	0x41	MOV DL, AL
-	0x42	MOV DL, BL
-	0x43	MOV DL, CL
+	0x38	PUSH A
+	0x39	PUSH B
+	0x3A	PUSH C
+	0x3B	PUSH D
+	0x3C	PUSH I
+	0x3D	PUSH J
+	0x3E	PUSH K
+	0x3F	PUSH L
+	0x40	PUSH BP
+	0x41	BPUSH SP
+	0x42	PUSH F
+	0x43	PUSH PF
 	
-	0x44	PUSH A
-	0x45	PUSH B
-	0x46	PUSH C
-	0x47	PUSH D
-	0x48	PUSH I
-	0x49	PUSH J
-	0x4A	PUSH K
-	0x4B	PUSH L
-	0x4C	PUSH BP
-	0x4D	PUSH F
-	0x4E	PUSH PF
-	0x4F	PUSH rim			source only
+	0x44	POP A
+	0x45	POP B
+	0x46	POP C
+	0x47	POP D
+	0x48	POP I
+	0x49	POP J
+	0x4A	POP K
+	0x4B	POP L
+	0x4C	POP BP
+	0x4D	BPOP SP
+	0x4E	POP F
+	0x4F	POP PF
 	
-	0x50	PUSH i32
-	0x51	PUSHA
-	0x52	POPA
-	0x53	hardware-specific extensions (for special registers and the like)
-	0x54	POP A
-	0x55	POP B
-	0x56	POP C
-	0x57	POP D
-	0x58	POP I
-	0x59	POP J
-	0x5A	POP K
-	0x5B	POP L
-	0x5C	POP BP
-	0x5D	POP F
-	0x5E	POP PF
-	0x5F	POP rim				destination only
+	0x50	PUSH rim			source only
+	0x51	PUSHW rim			source only, wide
+	0x52	BPUSH rim			source only
+	0x53	BPUSHW rim			source only, wide
+	0x54	POP rim				destination only
+	0x55	POPW rim			destination only, wide
+	0x56	BPOP rim			destination only
+	0x57	BPOPW rim			destination only, wide
+	0x58	PUSHW i32
+	0x59	BPUSHW i32
+	0x5A	PUSHA
+	0x5B	POPA
+	0x5C	undef
+	0x5D	undef
+	0x5E	undef
+	0x5F	HWI					hardware-specific extensions (for special registers and the like)
 	
 	0x60	AND F, rim			source only
 	0x61	AND rim, F			destination only, doesn't affect flags
@@ -160,8 +160,8 @@
 	0x93	ADC rim, i8			destination only, sign extended
 	0x94	PADD rimp
 	0x95	PADC rimp
-	0x96	ADD SP, i8
-	0x97	ADD BP, i8
+	0x96	ADD SP, i8			sign extended
+	0x97	ADD BP, i8			sign extended
 	
 	0x98	SUB rim
 	0x99	SUB rim, i8			destination only, sign extended
@@ -169,8 +169,8 @@
 	0x9B	SBB rim, i8			destination only, sign extended
 	0x9C	PSUB rimp
 	0x9D	PSBB rimp
-	0x9E	SUB SP, i8
-	0x9F	SUB BP, i8
+	0x9E	SUB SP, i8			sign extended
+	0x9F	SUB BP, i8			sign extended
 	
 	0xA0	MUL rim
 	0xA1	MULH rim			wide destination, uses lower half of dest.

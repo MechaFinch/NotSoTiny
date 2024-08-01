@@ -100,12 +100,11 @@ public class Instruction implements Component {
         switch(this.op) {
             // nothing
             case NOP, MOV_A_B, MOV_A_C, MOV_A_D, MOV_B_A, MOV_B_C, MOV_B_D, MOV_C_A, MOV_C_B, MOV_C_D,
-                 MOV_D_A, MOV_D_B, MOV_D_C, MOV_AL_BL, MOV_AL_CL, MOV_AL_DL, MOV_BL_AL, MOV_BL_CL,
-                 MOV_BL_DL, MOV_CL_AL, MOV_CL_BL, MOV_CL_DL, MOV_DL_AL, MOV_DL_BL, MOV_DL_CL, 
-                 PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L, PUSH_BP, PUSH_F,
-                 PUSH_PF, POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L, POP_BP, POP_F,
-                 POP_PF, NOT_F, INC_I, INC_J, INC_K, INC_L, ICC_I, ICC_J, ICC_K, ICC_L, DEC_I, DEC_J,
-                 ICC_A, ICC_B, ICC_C, ICC_D, DCC_A, DCC_B, DCC_C, DCC_D,
+                 MOV_D_A, MOV_D_B, MOV_D_C, 
+                 PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L, PUSH_BP, BPUSH_SP,
+                 PUSH_F, PUSH_PF, POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L, POP_BP, 
+                 BPOP_SP, POP_F, POP_PF, NOT_F, INC_I, INC_J, INC_K, INC_L, ICC_I, ICC_J, ICC_K, ICC_L,
+                 DEC_I, DEC_J, ICC_A, ICC_B, ICC_C, ICC_D, DCC_A, DCC_B, DCC_C, DCC_D,
                  DEC_K, DEC_L, DCC_I, DCC_J, DCC_K, DCC_L, RET, IRET, PUSHA, POPA, HLT:
                 break;
             
@@ -129,7 +128,7 @@ public class Instruction implements Component {
                 break;
             
             // 32 bit immediate only
-            case PUSH_I32, JMP_I32, JMPA_I32, CALL_I32, CALLA_I32:
+            case PUSHW_I32, BPUSHW_I32, JMP_I32, JMPA_I32, CALL_I32, CALLA_I32:
                 this.cachedImmediateOffset = 1;
                 data.addAll(getImmediateData(this.source.getImmediate(), 4));
                 break;
@@ -192,20 +191,24 @@ public class Instruction implements Component {
                 break;
             
             // source only
-            case PUSH_RIM, AND_F_RIM, OR_F_RIM, XOR_F_RIM, MOV_F_RIM, MOV_PF_RIM, JMP_RIM, CALL_RIM,
+            case PUSH_RIM, BPUSH_RIM, AND_F_RIM, OR_F_RIM, XOR_F_RIM, MOV_F_RIM, MOV_PF_RIM, JMP_RIM, CALL_RIM,
                  INT_RIM, JC_RIM, JNC_RIM, JS_RIM, JNS_RIM, JO_RIM, JNO_RIM, JZ_RIM, JNZ_RIM, JA_RIM,
                  JBE_RIM, JG_RIM, JGE_RIM, JL_RIM, JLE_RIM:
                 data.addAll(getRIMData(false, true, false, false, false));
                 break;
             
-            case JMPA_RIM32, CALLA_RIM32:
+            case JMPA_RIM32, CALLA_RIM32, PUSHW_RIM, BPUSHW_RIM:
                 data.addAll(getRIMData(false, true, false, false, true));
                 break;
             
             // destination only
-            case POP_RIM, AND_RIM_F, OR_RIM_F, XOR_RIM_F, MOV_RIM_F, MOV_RIM_PF, INC_RIM, ICC_RIM,
+            case POP_RIM, BPOP_RIM, AND_RIM_F, OR_RIM_F, XOR_RIM_F, MOV_RIM_F, MOV_RIM_PF, INC_RIM, ICC_RIM,
                  DEC_RIM, DCC_RIM, NOT_RIM, NEG_RIM, CMP_RIM_0:
                 data.addAll(getRIMData(true, false, false, false, false));
+                break;
+            
+            case POPW_RIM, BPOPW_RIM:
+                data.addAll(getRIMData(true, false, false, true, false));
                 break;
             
             case PINC_RIMP, PICC_RIMP, PDEC_RIMP, PDCC_RIMP:
@@ -625,7 +628,7 @@ public class Instruction implements Component {
         if(this.source.getType() == LocationType.REGISTER && this.source.getSize() == 4) {
             switch(this.op) {
                 // opcodes that allow wide sources
-                case MOVW_RIM, XCHGW_RIM, CALLA_RIM32, JMPA_RIM32, PUSH_BP:
+                case MOVW_RIM, XCHGW_RIM, CALLA_RIM32, JMPA_RIM32, PUSH_BP, BPUSH_SP, PUSHW_RIM, BPUSHW_RIM:
                     break;
                 
                 default:
@@ -637,7 +640,7 @@ public class Instruction implements Component {
             switch(this.op) {
                 // opcodes that allow wide destiantions
                 case MOVW_RIM, MOVS_RIM, MOVZ_RIM, XCHGW_RIM, LEA_RIM,
-                     POP_BP,
+                     POP_BP, BPOP_SP, POPW_RIM, BPOPW_RIM,
                      ADD_SP_I8, SUB_SP_I8, ADD_BP_I8, SUB_BP_I8,
                      MULH_RIM, MULSH_RIM, PMULH_RIMP, PMULSH_RIMP,
                      DIVM_RIM, DIVMS_RIM, PDIVM_RIMP, PDIVMS_RIMP:

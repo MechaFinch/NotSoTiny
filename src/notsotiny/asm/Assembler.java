@@ -1583,55 +1583,127 @@ public class Assembler {
                 switch(opr) {
                         // register shortcuts + F
                     case PUSH:
-                        opcode = switch(type) {
-                            case REGISTER   -> switch(register) {
-                                case A  -> Opcode.PUSH_A;
-                                case B  -> Opcode.PUSH_B;
-                                case C  -> Opcode.PUSH_C;
-                                case D  -> Opcode.PUSH_D;
-                                case I  -> Opcode.PUSH_I;
-                                case J  -> Opcode.PUSH_J;
-                                case K  -> Opcode.PUSH_K;
-                                case L  -> Opcode.PUSH_L;
-                                case BP -> Opcode.PUSH_BP;
-                                case F  -> Opcode.PUSH_F;
-                                case PF -> Opcode.PUSH_PF;
-                                default -> Opcode.PUSH_RIM;
-                            };
-                            
-                            case IMMEDIATE  -> {
-                                // assuming the immediate size of a push is ill advised
-                                ResolvableValue imm = firstOperand.getImmediate();
-                                int immediateSize = firstOperand.getSize();
-                                
-                                if(immediateSize == -1) throw new IllegalArgumentException("Cannot infer push size for immedate " + imm);
-                                
-                                yield immediateSize == 4 ? Opcode.PUSH_I32 : Opcode.PUSH_RIM;
+                        if(m.name().startsWith("B")) {
+                            // BP
+                            if(firstOperand.getSize() == 4) {
+                                // Wide
+                                opcode = (type == LocationType.IMMEDIATE) ? Opcode.BPUSHW_I32 : Opcode.BPUSHW_RIM;
+                            } else {
+                                // Normal
+                                opcode = switch(type) {
+                                    case REGISTER   -> switch(register) {
+                                        case SP -> Opcode.BPUSH_SP;
+                                        default -> Opcode.BPUSH_RIM;
+                                    };
+                                    
+                                    case IMMEDIATE  -> {
+                                        // assuming the immediate size of a push is ill advised
+                                        ResolvableValue imm = firstOperand.getImmediate();
+                                        int immediateSize = firstOperand.getSize();
+                                        
+                                        if(immediateSize == -1) throw new IllegalArgumentException("Cannot infer push size for immedate " + imm);
+                                        
+                                        yield immediateSize == 4 ? Opcode.BPUSHW_I32 : Opcode.BPUSH_RIM;
+                                    }
+                                    
+                                    default -> Opcode.BPUSH_RIM;
+                                };
                             }
-                            
-                            default         -> Opcode.PUSH_RIM;
-                        };
+                        } else {
+                            // SP
+                            if(firstOperand.getSize() == 4) {
+                                // Wide
+                                opcode = switch(type) {
+                                    case REGISTER   -> switch(register) {
+                                        case BP -> Opcode.PUSH_BP;
+                                        default -> Opcode.PUSHW_RIM;
+                                    };
+                                    
+                                    case IMMEDIATE  -> Opcode.PUSHW_I32;
+                                    
+                                    default         -> Opcode.PUSHW_RIM;
+                                };
+                            } else {
+                                // Normal
+                                opcode = switch(type) {
+                                    case REGISTER   -> switch(register) {
+                                        case A  -> Opcode.PUSH_A;
+                                        case B  -> Opcode.PUSH_B;
+                                        case C  -> Opcode.PUSH_C;
+                                        case D  -> Opcode.PUSH_D;
+                                        case I  -> Opcode.PUSH_I;
+                                        case J  -> Opcode.PUSH_J;
+                                        case K  -> Opcode.PUSH_K;
+                                        case L  -> Opcode.PUSH_L;
+                                        case BP -> Opcode.PUSH_BP;
+                                        case F  -> Opcode.PUSH_F;
+                                        case PF -> Opcode.PUSH_PF;
+                                        default -> Opcode.PUSH_RIM;
+                                    };
+                                    
+                                    case IMMEDIATE  -> {
+                                        // assuming the immediate size of a push is ill advised
+                                        ResolvableValue imm = firstOperand.getImmediate();
+                                        int immediateSize = firstOperand.getSize();
+                                        
+                                        if(immediateSize == -1) throw new IllegalArgumentException("Cannot infer push size for immedate " + imm);
+                                        
+                                        yield immediateSize == 4 ? Opcode.PUSHW_I32 : Opcode.PUSH_RIM;
+                                    }
+                                    
+                                    default         -> Opcode.PUSH_RIM;
+                                };
+                            }
+                        }
                         break;
                     
                     case POP:
-                        opcode = switch(type) {
-                            case REGISTER   -> switch(register) {
-                                case A  -> Opcode.POP_A;
-                                case B  -> Opcode.POP_B;
-                                case C  -> Opcode.POP_C;
-                                case D  -> Opcode.POP_D;
-                                case I  -> Opcode.POP_I;
-                                case J  -> Opcode.POP_J;
-                                case K  -> Opcode.POP_K;
-                                case L  -> Opcode.POP_L;
-                                case BP -> Opcode.POP_BP;
-                                case F  -> Opcode.POP_F;
-                                case PF -> Opcode.PUSH_PF;
-                                default -> Opcode.POP_RIM;
-                            };
-                            
-                            default         -> Opcode.POP_RIM;
-                        };
+                        if(m.name().startsWith("B")) {
+                            // BP
+                            if(firstOperand.getSize() == 4) {
+                                opcode = switch(type) {
+                                    case REGISTER   -> switch(register) {
+                                        case SP -> Opcode.BPOP_SP;
+                                        default -> Opcode.BPOPW_RIM;
+                                    };
+                                    
+                                    default     -> Opcode.BPOPW_RIM;
+                                };
+                            } else {
+                                opcode = Opcode.BPOP_RIM;
+                            }
+                        } else {
+                            // SP
+                            if(firstOperand.getSize() == 4) {
+                                opcode = switch(type) {
+                                    case REGISTER   -> switch(register) {
+                                        case BP -> Opcode.POP_BP;
+                                        default -> Opcode.POPW_RIM;
+                                    };
+                                    
+                                    default     -> Opcode.POPW_RIM;
+                                };
+                            } else {
+                                opcode = switch(type) {
+                                    case REGISTER   -> switch(register) {
+                                        case A  -> Opcode.POP_A;
+                                        case B  -> Opcode.POP_B;
+                                        case C  -> Opcode.POP_C;
+                                        case D  -> Opcode.POP_D;
+                                        case I  -> Opcode.POP_I;
+                                        case J  -> Opcode.POP_J;
+                                        case K  -> Opcode.POP_K;
+                                        case L  -> Opcode.POP_L;
+                                        case BP -> Opcode.POP_BP;
+                                        case F  -> Opcode.POP_F;
+                                        case PF -> Opcode.POP_PF;
+                                        default -> Opcode.POP_RIM;
+                                    };
+                                    
+                                    default         -> Opcode.POP_RIM;
+                                };
+                            }
+                        }
                         break;
                     
                         // index register shortcuts
@@ -2047,34 +2119,6 @@ public class Assembler {
                                     default -> Opcode.MOV_RIM;
                                 };
                                 
-                                case AL -> switch(secondRegister) {
-                                    case BL -> Opcode.MOV_AL_BL;
-                                    case CL -> Opcode.MOV_AL_CL;
-                                    case DL -> Opcode.MOV_AL_DL;
-                                    default -> Opcode.MOV_RIM;
-                                };
-                                
-                                case BL -> switch(secondRegister) {
-                                    case AL -> Opcode.MOV_BL_AL;
-                                    case CL -> Opcode.MOV_BL_CL;
-                                    case DL -> Opcode.MOV_BL_DL;
-                                    default -> Opcode.MOV_RIM;
-                                };
-                                
-                                case CL -> switch(secondRegister) {
-                                    case AL -> Opcode.MOV_CL_AL;
-                                    case BL -> Opcode.MOV_CL_BL;
-                                    case DL -> Opcode.MOV_CL_DL;
-                                    default -> Opcode.MOV_RIM;
-                                };
-                                
-                                case DL -> switch(secondRegister) {
-                                    case AL -> Opcode.MOV_DL_AL;
-                                    case BL -> Opcode.MOV_DL_BL;
-                                    case CL -> Opcode.MOV_DL_CL;
-                                    default -> Opcode.MOV_RIM;
-                                };
-                                
                                 default -> Opcode.MOV_RIM; // fallback
                             };
                             
@@ -2102,8 +2146,11 @@ public class Assembler {
                         break;
                         
                     case XCHG:
-                        // no more shortcuts for xchg
-                        opcode = Opcode.XCHG_RIM;
+                        if(firstOperand.getSize() == 4 || secondOperand.getSize() == 4) {
+                            opcode = Opcode.XCHGW_RIM;
+                        } else {
+                            opcode = Opcode.XCHG_RIM;
+                        }
                         break;
                     
                     case XCHGW:

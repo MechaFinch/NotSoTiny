@@ -141,6 +141,13 @@ public enum Operation {
                 case "PMULS":
                     return Operation.PMUL;
                 
+                // PUSH/POP variants
+                case "PUSHW", "BPUSH", "BPUSHW":
+                    return Operation.PUSH;
+                
+                case "POPW", "BPOP", "BPOPW":
+                    return Operation.POP;
+                
                 default:
                     throw new IllegalArgumentException("Invalid mnemonic " + n);
             }
