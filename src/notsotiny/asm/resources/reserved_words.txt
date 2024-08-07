@@ -21,6 +21,9 @@ and
 or
 xor
 not
+tst
+ptst4
+ptst8
 neg
 inc
 icc

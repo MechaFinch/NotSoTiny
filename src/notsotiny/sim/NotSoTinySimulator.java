@@ -100,6 +100,7 @@ public class NotSoTinySimulator {
     public synchronized void step() {
         
         if(this.externalInterrupt) {
+            //System.out.println("External interrupt: " + this.externalInterruptVector);
             this.externalInterrupt = false;
             runInterruptPrivileged(this.externalInterruptVector);
             return;
@@ -332,6 +333,8 @@ public class NotSoTinySimulator {
             case AND:
             case OR:
             case XOR:
+            case TST:
+            case PTST:
                 run2Logic(desc);
                 break;
             
@@ -370,14 +373,16 @@ public class NotSoTinySimulator {
         
         int b = switch(desc.op) {
             case AND_RIM_F, OR_RIM_F, XOR_RIM_F -> this.reg_f;
+            case PTST_RIMP                      -> getPackedRIMSource(getNormalRIMSourceDescriptor(desc), desc);
             default                             -> getNormalRIMSource(desc);
         };
         
         // operation
         int c = switch(desc.op.getType()) {
-            case AND    -> readLocation(dst) & b;
-            case OR     -> readLocation(dst) | b;
-            case XOR    -> readLocation(dst) ^ b;
+            case AND, TST   -> readLocation(dst) & b;
+            case PTST       -> getPackedRIMSource(dst, desc) & b;
+            case OR         -> readLocation(dst) | b;
+            case XOR        -> readLocation(dst) ^ b;
             default -> 0;
         };
         
@@ -386,22 +391,49 @@ public class NotSoTinySimulator {
             case AND_F_RIM, AND_RIM_F, OR_F_RIM, OR_RIM_F, XOR_F_RIM, XOR_RIM_F:
                 break;
             
+            case PTST_RIMP:
+                if(dst.size() == 1) {
+                    // packed 4
+                    this.reg_f = (short)(
+                        get2LogicFlags(c & 0x0F, 0) |
+                        (get2LogicFlags((c >> 4) & 0x0F, 0) << 4) |
+                        (get2LogicFlags((c >> 8) & 0x0F, 0) << 8) |
+                        (get2LogicFlags((c >> 12) & 0x0F, 0) << 12)
+                    );
+                } else {
+                    // packed 8
+                    this.reg_f = (short)(get2LogicFlags(c & 0x00FF, 1) | (get2LogicFlags((c >> 8) & 0x00FF, 1) << 8));
+                }
+                break;
+            
             default:
-                boolean zero = c == 0,
-                        overflow = false,
-                        sign = switch(dst.size()) {
-                            case 1  -> (c & 0x80) != 0;
-                            case 2  -> (c & 0x8000) != 0;
-                            case 4  -> (c & 0x8000_0000) != 0;
-                            default -> false;
-                        },
-                        carry = false;
-                        
-                this.reg_f = (short)((zero ? 0x08 : 0x00) | (overflow ? 0x04 : 0x00) | (sign ? 0x02 : 0x00) | (carry ? 0x01 : 0x00));
+                this.reg_f = get2LogicFlags(c, dst.size());
         }
         
         // write
-        writeLocation(dst, c);
+        switch(desc.op.getType()) {
+            case TST, PTST: break;
+            default: writeLocation(dst, c);
+        }
+    }
+    
+    /**
+     * Gets the flags from a 2logic operation
+     * @param c
+     */
+    private short get2LogicFlags(int c, int size) {
+        boolean zero = c == 0,
+                overflow = false,
+                sign = switch(size) {
+                    case 0  -> (c & 0x08) != 0;
+                    case 1  -> (c & 0x80) != 0;
+                    case 2  -> (c & 0x8000) != 0;
+                    case 4  -> (c & 0x8000_0000) != 0;
+                    default -> false;
+                },
+                carry = false;
+                
+        return (short)((zero ? 0x08 : 0x00) | (overflow ? 0x04 : 0x00) | (sign ? 0x02 : 0x00) | (carry ? 0x01 : 0x00));
     }
     
     /**

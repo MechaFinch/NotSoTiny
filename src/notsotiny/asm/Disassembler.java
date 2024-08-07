@@ -127,7 +127,7 @@ public class Disassembler {
             	break;
             
             // packed
-            case PADD_RIMP, PADC_RIMP, PSUB_RIMP, PSBB_RIMP, PMUL_RIMP, PDIV_RIMP, PDIVS_RIMP:
+            case PADD_RIMP, PADC_RIMP, PSUB_RIMP, PSBB_RIMP, PMUL_RIMP, PDIV_RIMP, PDIVS_RIMP, PCMP_RIMP, PTST_RIMP:
                 s += disassembleRIM(memory, true, true, true, false, false);
                 break;
             

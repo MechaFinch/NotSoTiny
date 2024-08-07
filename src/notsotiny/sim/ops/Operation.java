@@ -30,6 +30,8 @@ public enum Operation {
     XOR     (Family.LOGIC),
     NOT     (Family.LOGIC),
     NEG     (Family.LOGIC),
+    TST     (Family.LOGIC),
+    PTST    (Family.LOGIC),
     
     INC     (Family.ADDITION),
     ICC     (Family.ADDITION),

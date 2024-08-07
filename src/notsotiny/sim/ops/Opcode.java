@@ -112,8 +112,8 @@ public enum Opcode {
     BPUSHW_I32  (0x59, Operation.PUSH),
     PUSHA       (0x5A, Operation.PUSHA),
     POPA        (0x5B, Operation.POPA),
-    UNDEF_5C    (0x5C, Operation.INV),
-    UNDEF_5D    (0x5D, Operation.INV),
+    TST_RIM     (0x5C, Operation.TST),
+    PTST_RIMP   (0x5D, Operation.PTST),
     UNDEF_5E    (0x5E, Operation.INV),
     UNDEF_5F    (0x5F, Operation.INV),
     

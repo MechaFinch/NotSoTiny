@@ -127,14 +127,14 @@ public class NotSoTinyUI extends Application {
                                 TEXT_FONT_FILE = "data\\text.dat";
     */
     
-    private static final String //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernelv2\\src\\",
+    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernelv2\\src\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\testing\\",
-                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\playground\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\playground\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\minesweeper\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\fakeos\\",
-                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "forth.oex",
+                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "forth.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "testing-mdbt.oex",
-                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "playground.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "playground.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "minesweeper.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_shell.oex",
                                 DISK_FOLDER = PROGRAM_DATA_FOLDER + "disk\\",
@@ -335,6 +335,7 @@ public class NotSoTinyUI extends Application {
                  frameElapsedTimens,
                  cpuTimens,
                  breakpointAddress,
+                 memwatchSourceAddress,
                  memwatchAddress;
     
     private double lastAverageMIPS;
@@ -344,13 +345,16 @@ public class NotSoTinyUI extends Application {
                     traceEnabled,
                     disassemblyEnabled,
                     stackTraceEnabled,
-                    rtcEnabled,
-                    memwatchIsNumber;
+                    rtcEnabled;
     
     private String breakpointSymbol,
                    memwatchRegister;
     
     private Deque<String> instructionTrace;
+    
+    private enum MemwatchType { NONE, NUMBER, REGISTER, NUMBER_INDIRECT, REGISTER_INDIRECT }
+    
+    private MemwatchType memwatchType;
     
     /**
      * Initialize the simulator
@@ -396,6 +400,7 @@ public class NotSoTinyUI extends Application {
         this.mmu.registerSegment(ivtController, IVT_START, IVT_SIZE);
         ((CachingMemoryManager)this.mmu).registerSegment(lowramController, LOWRAM_START, LOWRAM_SIZE, true);
         //this.mmu.registerSegment(lowramController, LOWRAM_START, LOWRAM_SIZE);
+        this.mmu.registerSegment(crashramController, CRASHRAM_START, CRASHRAM_SIZE);
         this.mmu.registerSegment(placeholder_spiController, SPI_START, SPI_SIZE);
         this.mmu.registerSegment(placeholder_cacheController, CC_START, CC_SIZE);
         this.mmu.registerSegment(keyboardBufferController, KEYBOARD_START, KEYBOARD_SIZE);
@@ -425,15 +430,17 @@ public class NotSoTinyUI extends Application {
         // misc
         this.breakpointAddress = -1l;
         this.lastAverageMIPS = 0;
+        this.memwatchSourceAddress = 0;
         this.memwatchAddress = 0;
         this.enableBreakpoints = false;
         this.freerunEnabled = false;
         this.traceEnabled = false;
         this.disassemblyEnabled = false;
         this.stackTraceEnabled = false;
-        this.memwatchIsNumber = true;
         this.breakpointSymbol = "";
         this.memwatchRegister = "";
+        this.memwatchType = MemwatchType.NUMBER;
+        
         this.pic.setNonMaskable(VECTOR_NMI);
         
         //this.mmu.printMap();
@@ -592,6 +599,7 @@ public class NotSoTinyUI extends Application {
             else NotSoTinyUI.this.dummyTrace();
         }
         
+        this.pic.step(this.sim);
         this.sim.step();
         this.instructionsExecutedLast++;
         
@@ -845,13 +853,24 @@ public class NotSoTinyUI extends Application {
         
         // memwatch text field
         this.fieldMemwatch.setOnAction(e -> {
+            String memwatchText = this.fieldMemwatch.getText();
+            boolean indirect = memwatchText.startsWith("[");
+            
+            if(indirect) {
+                if(memwatchText.endsWith("]")) {
+                    memwatchText = memwatchText.substring(1, memwatchText.length() - 1);
+                } else {
+                    memwatchText = memwatchText.substring(1);
+                }
+            }
+            
             try {
-                this.memwatchAddress = Long.parseLong(this.fieldMemwatch.getText(), 16);
-                this.memwatchIsNumber = true;
+                this.memwatchSourceAddress = Long.parseLong(memwatchText, 16);
+                this.memwatchType = indirect ? MemwatchType.NUMBER_INDIRECT : MemwatchType.NUMBER;
             } catch(Exception ex1) {
                 try {
-                    this.memwatchAddress = this.relocator.getReference(this.fieldMemwatch.getText());
-                    this.memwatchIsNumber = true;
+                    this.memwatchSourceAddress = this.relocator.getReference(memwatchText);
+                    this.memwatchType = indirect ? MemwatchType.NUMBER_INDIRECT : MemwatchType.NUMBER;
                 } catch(Exception ex2) {
                     String str = this.fieldMemwatch.getText().toUpperCase(); 
                     
@@ -866,12 +885,12 @@ public class NotSoTinyUI extends Application {
                         case "SP":
                         case "IP":
                             this.memwatchRegister = str;
-                            this.memwatchIsNumber = false;
+                            this.memwatchType = indirect ? MemwatchType.REGISTER_INDIRECT : MemwatchType.REGISTER;
                             break;
                             
                         default:
-                            this.memwatchAddress = 0;
-                            this.memwatchIsNumber = true;
+                            this.memwatchSourceAddress = 0;
+                            this.memwatchType = MemwatchType.NONE;
                     }
                 }
             }
@@ -879,7 +898,12 @@ public class NotSoTinyUI extends Application {
         
         // clock speed text field
         this.fieldClockSpeed.setOnAction(e -> {
-            long period = Long.parseLong(this.fieldClockSpeed.getText());
+            long period = 0;
+            try {
+                period = Long.parseLong(this.fieldClockSpeed.getText());
+            } catch(NumberFormatException e1) {
+                // no action
+            }
             
             if(period >= 0) {
                 long oldPeriod = this.simThread.periodns;
@@ -1035,19 +1059,25 @@ public class NotSoTinyUI extends Application {
                 state += "\n\n" + this.relocator.getAddressName(Integer.toUnsignedLong(sim.getRegIP()));
                 
                 // If watching a pointer, update address
-                if(!this.memwatchIsNumber) {
-                    this.memwatchAddress = switch(this.memwatchRegister) {
-                        case "D:A"  -> ((this.sim.getRegD() << 16) | this.sim.getRegA()) & 0xFFFF_FFFFl;
-                        case "A:B"  -> ((this.sim.getRegA() << 16) | this.sim.getRegB()) & 0xFFFF_FFFFl;
-                        case "B:C"  -> ((this.sim.getRegB() << 16) | this.sim.getRegC()) & 0xFFFF_FFFFl;
-                        case "C:D"  -> ((this.sim.getRegC() << 16) | this.sim.getRegD()) & 0xFFFF_FFFFl;
-                        case "J:I"  -> ((this.sim.getRegJ() << 16) | this.sim.getRegI()) & 0xFFFF_FFFFl;
-                        case "L:K"  -> ((this.sim.getRegL() << 16) | this.sim.getRegK()) & 0xFFFF_FFFFl;
-                        case "BP"   -> this.sim.getRegBP() & 0xFFFF_FFFFl;
-                        case "SP"   -> this.sim.getRegSP() & 0xFFFF_FFFFl;
-                        case "IP"   -> this.sim.getRegIP() & 0xFFFF_FFFFl;
-                        default     -> 0l;
-                    };
+                this.memwatchAddress = switch(this.memwatchType) {
+                    case NUMBER, NUMBER_INDIRECT        -> this.memwatchSourceAddress;
+                    case REGISTER, REGISTER_INDIRECT    -> switch(this.memwatchRegister) {
+                            case "D:A"  -> ((this.sim.getRegD() << 16) | (this.sim.getRegA() & 0x0000_FFFF)) & 0xFFFF_FFFFl;
+                            case "A:B"  -> ((this.sim.getRegA() << 16) | (this.sim.getRegB() & 0x0000_FFFF)) & 0xFFFF_FFFFl;
+                            case "B:C"  -> ((this.sim.getRegB() << 16) | (this.sim.getRegC() & 0x0000_FFFF)) & 0xFFFF_FFFFl;
+                            case "C:D"  -> ((this.sim.getRegC() << 16) | (this.sim.getRegD() & 0x0000_FFFF)) & 0xFFFF_FFFFl;
+                            case "J:I"  -> ((this.sim.getRegJ() << 16) | (this.sim.getRegI() & 0x0000_FFFF)) & 0xFFFF_FFFFl;
+                            case "L:K"  -> ((this.sim.getRegL() << 16) | (this.sim.getRegK() & 0x0000_FFFF)) & 0xFFFF_FFFFl;
+                            case "BP"   -> this.sim.getRegBP() & 0xFFFF_FFFFl;
+                            case "SP"   -> this.sim.getRegSP() & 0xFFFF_FFFFl;
+                            case "IP"   -> this.sim.getRegIP() & 0xFFFF_FFFFl;
+                            default     -> 0l;
+                        };
+                    case NONE -> 0;
+                };
+                
+                if(this.memwatchType.toString().endsWith("INDIRECT")) {
+                    this.memwatchAddress = this.mmu.read4BytesPrivileged(this.memwatchAddress);
                 }
                 
                 // trace/disassembly
