@@ -280,6 +280,7 @@ public class NotSoTinySimulator {
                 updateIP(desc);
             }
         } catch(UnprivilegedAccessException e) {
+            System.out.printf("%08X\n", e.getAddress());
             this.memoryProtectionFault = true;
         }
         

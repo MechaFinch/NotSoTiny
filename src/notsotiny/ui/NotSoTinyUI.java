@@ -43,6 +43,7 @@ import notsotiny.sim.NotSoTinySimulator;
 import notsotiny.sim.memory.CachingMemoryManager;
 import notsotiny.sim.memory.DiskBufferController;
 import notsotiny.sim.memory.FlatMemoryController;
+import notsotiny.sim.memory.HookController;
 import notsotiny.sim.memory.InterruptController;
 import notsotiny.sim.memory.MemoryManager;
 import notsotiny.sim.memory.RandomController;
@@ -68,11 +69,13 @@ public class NotSoTinyUI extends Application {
      * PARAMETERS
      */
     
-    private static final long CLOCK_PERIOD = 0l;
+    private static final long CLOCK_PERIOD = 0l,
+                              PIT_PERIOD = 1_000l;
     
     private static final boolean USE_SCREEN = true,
                                  START_IMMEDIATELY = false,
-                                 START_WITH_CLOCK = false;
+                                 START_WITH_CLOCK = true,
+                                 TRACK_CPUTIME = false;
     
     private static final int TRACE_SIZE = 16;
     
@@ -93,6 +96,7 @@ public class NotSoTinyUI extends Application {
                               RANDOM_START =    0xF004_0000,
                               PIC_START =       0xF005_0000,
                               DISK_START =      0xF006_0000,
+                              RESET_START =     0xF007_0000,
                               BOOTROM_START =   0xFFFF_FC00;
     
     private static final int IVT_SIZE =         0x0000_0400,
@@ -101,12 +105,13 @@ public class NotSoTinyUI extends Application {
                              SPI_SIZE =         0x0000_0004,
                              KEYPAD_SIZE =      0x0000_0008,
                              CC_SIZE =          0x0000_0002,
-                             KEYBOARD_SIZE =    0x0000_0004,
+                             KEYBOARD_SIZE =    0x0000_0010,
                              SOUND_SIZE =       0x0000_0008,
                              VIDEO_SIZE =       0x0002_0000,
                              RANDOM_SIZE =      0x0000_0010,
                              PIC_SIZE =         0x0000_0200,
                              DISK_SIZE =        0x0000_000C,
+                             RESET_SIZE =       0x0000_0010,
                              BOOTROM_SIZE =     0x0000_0400;
     
     private static final int VIDEO_BUFFER_SIZE =    0x0001_4000,
@@ -127,16 +132,19 @@ public class NotSoTinyUI extends Application {
                                 TEXT_FONT_FILE = "data\\text.dat";
     */
     
-    private static final String PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernelv2\\src\\",
+    private static final String //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernelv2\\src\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\testing\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\playground\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\minesweeper\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\fakeos\\",
-                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "forth.oex",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GTMK-jam-2023\\game\\src\\",
+                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GMTK-Game-Jam-2024\\game\\src\\",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "forth.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "testing-mdbt.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "playground.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "minesweeper.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_shell.oex",
+                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "game.oex",
                                 DISK_FOLDER = PROGRAM_DATA_FOLDER + "disk\\",
                                 TEXT_FONT_FILE = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\textsmall.dat";
     
@@ -164,6 +172,8 @@ public class NotSoTinyUI extends Application {
     private InterruptController pic;
     
     private DiskBufferController dbc;
+    
+    private HookController resetHookController;
     
     private Relocator relocator;
     
@@ -345,7 +355,8 @@ public class NotSoTinyUI extends Application {
                     traceEnabled,
                     disassemblyEnabled,
                     stackTraceEnabled,
-                    rtcEnabled;
+                    rtcEnabled,
+                    fullResetPending;
     
     private String breakpointSymbol,
                    memwatchRegister;
@@ -395,6 +406,7 @@ public class NotSoTinyUI extends Application {
         rand = new RandomController();
         pic = new InterruptController();
         dbc = new DiskBufferController(this.mmu, Paths.get(DISK_FOLDER));
+        resetHookController = new HookController(() -> { System.out.println("Reset!"); this.fullResetPending = true; });
         screenBufferController = new ScreenBuffer(videoBufferArray); // 3FFFC
         
         this.mmu.registerSegment(ivtController, IVT_START, IVT_SIZE);
@@ -410,6 +422,7 @@ public class NotSoTinyUI extends Application {
         this.mmu.registerSegment(pic, PIC_START, PIC_SIZE);
         this.mmu.registerSegment(dbc, DISK_START, DISK_SIZE);
         this.mmu.registerSegment(bootromController, BOOTROM_START, BOOTROM_SIZE);
+        this.mmu.registerSegment(resetHookController, RESET_START, RESET_SIZE);
         
         this.mmu.registerSegment(sic, SOUND_START, SOUND_SIZE);
         this.mmu.registerSegment(rand, RANDOM_START, RANDOM_SIZE);
@@ -440,6 +453,7 @@ public class NotSoTinyUI extends Application {
         this.breakpointSymbol = "";
         this.memwatchRegister = "";
         this.memwatchType = MemwatchType.NUMBER;
+        this.fullResetPending = false;
         
         this.pic.setNonMaskable(VECTOR_NMI);
         
@@ -483,7 +497,7 @@ public class NotSoTinyUI extends Application {
             if(this.rtcEnabled) {
                 runInterrupt(VECTOR_RTC);
             }
-        }, 1_000_000l, 1_000l, TimeUnit.MICROSECONDS);
+        }, 1_000_000l, PIT_PERIOD, TimeUnit.MICROSECONDS);
         // 1000 hz
         
         //this.halter.writeByte(0l, (byte) 0);
@@ -989,15 +1003,20 @@ public class NotSoTinyUI extends Application {
     /**
      * Update information for UI objects
      */
+    @SuppressWarnings("unused")
     private void updateUI() {
         Platform.runLater(() -> {
+            if(NotSoTinyUI.this.fullResetPending) {
+                restartSimulator(false);
+            }
+            
             long nanoTime = System.nanoTime();
             long mipsTime = nanoTime - this.mipsElapsedTimens,
                  frameTime = nanoTime - this.frameElapsedTimens;
             
             // calculate CPU time every frame
             this.frameElapsedTimens = nanoTime;
-            if(this.freerunEnabled && !this.sim.getHalted()) {
+            if(this.freerunEnabled && !this.sim.getHalted() && TRACK_CPUTIME) {
                 this.cpuTimens += frameTime;
             }
             

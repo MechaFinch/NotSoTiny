@@ -154,7 +154,7 @@ public class CachingMemoryManager extends MemoryManager {
         if(this.tags[block] == tag) {
             // value in cache
             if(DEBUG) System.out.printf("from cache block %02X index %02X ", block, (int)address & INDEX_MASK);
-            if(this.readPrivilege[block]) throw new UnprivilegedAccessException();
+            if(this.readPrivilege[block]) throw new UnprivilegedAccessException((int)address);
             return this.cache[block][index]; 
         } else {
             // not in cache, retrieve
@@ -243,7 +243,7 @@ public class CachingMemoryManager extends MemoryManager {
         
         if(this.tags[block] == tag) {
             // value in cache
-            if(this.writePrivilege[block]) throw new UnprivilegedAccessException();
+            if(this.writePrivilege[block]) throw new UnprivilegedAccessException((int) address);
             this.cache[block][index] = value;
             this.dirty[block] = true;
         } else {
@@ -295,7 +295,7 @@ public class CachingMemoryManager extends MemoryManager {
         if(this.tags[block] == tag && index < BLOCK_SIZE - 1) {
             // value in cache & doesn't cross lines
             if(DEBUG) System.out.printf("from cache block %02X index %02X ", block, (int)address & INDEX_MASK);
-            if(this.readPrivilege[block]) throw new UnprivilegedAccessException();
+            if(this.readPrivilege[block]) throw new UnprivilegedAccessException((int)address);
             
             return new byte[] {
                 this.cache[block][index + 0],
@@ -321,7 +321,7 @@ public class CachingMemoryManager extends MemoryManager {
         if(this.tags[block] == tag && index < BLOCK_SIZE - 2) {
             // value in cache & doesn't cross lines
             if(DEBUG) System.out.printf("from cache block %02X index %02X ", block, (int)address & INDEX_MASK);
-            if(this.readPrivilege[block]) throw new UnprivilegedAccessException();
+            if(this.readPrivilege[block]) throw new UnprivilegedAccessException((int)address);
             
             return new byte[] {
                 this.cache[block][index + 0],
@@ -349,7 +349,7 @@ public class CachingMemoryManager extends MemoryManager {
         if(this.tags[block] == tag && index < BLOCK_SIZE - 3) {
             // value in cache & doesn't cross lines
             if(DEBUG) System.out.printf("from cache block %02X index %02X ", block, (int)address & INDEX_MASK);
-            if(this.readPrivilege[block]) throw new UnprivilegedAccessException();
+            if(this.readPrivilege[block]) throw new UnprivilegedAccessException((int)address);
             
             return new byte[] {
                 this.cache[block][index + 0],

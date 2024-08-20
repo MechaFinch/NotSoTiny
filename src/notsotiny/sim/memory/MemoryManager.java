@@ -113,7 +113,7 @@ public class MemoryManager {
            (read && segment.getValue().readRequiresPrivilege()) ||
            (!read && segment.getValue().writeRequiresPrivilege())
         )) {
-            throw new UnprivilegedAccessException();
+            throw new UnprivilegedAccessException((int)startAddress);
         }
         
         return segment;

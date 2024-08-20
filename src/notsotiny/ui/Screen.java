@@ -70,6 +70,9 @@ public class Screen extends Canvas {
     public void update(byte[] mem, int startAddress) {
         if(!this.enabled) return;
         
+        byte[] framebuffer = new byte[mem.length];
+        System.arraycopy(mem, 0, framebuffer, 0, mem.length);
+        
         GraphicsContext g = this.getGraphicsContext2D();
         int paletteAddress = startAddress + (screenWidth * screenHeight);
         
@@ -80,12 +83,12 @@ public class Screen extends Canvas {
         // draw
         for(int y = 0; y < this.screenHeight; y++) {
             for(int x = 0; x < this.screenWidth; x++) {
-                byte b = mem[startAddress + x + (y * this.screenWidth)];
+                byte b = framebuffer[startAddress + x + (y * this.screenWidth)];
                 
                 // palette
-                int red = mem[paletteAddress + 3*(b & 0xFF) + 2] & 0xFF,
-                    green = mem[paletteAddress + 3*(b & 0xFF) + 1] & 0xFF,
-                    blue = mem[paletteAddress + 3*(b & 0xFF) + 0] & 0xFF;
+                int red = framebuffer[paletteAddress + 3*(b & 0xFF) + 2] & 0xFF,
+                    green = framebuffer[paletteAddress + 3*(b & 0xFF) + 1] & 0xFF,
+                    blue = framebuffer[paletteAddress + 3*(b & 0xFF) + 0] & 0xFF;
                 
                 /*
                 // 332
