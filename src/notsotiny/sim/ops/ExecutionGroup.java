@@ -1,0 +1,60 @@
+package notsotiny.sim.ops;
+
+/**
+ * Groups opcode by their execution function
+ */
+public enum ExecutionGroup {
+    NOP                 (),
+    HLT                 (),
+    MOVS                (),
+    MOVZ                (),
+    MOV_SHORTCUT_SRC    (),
+    MOV_SHORTCUT_DST    (),
+    MOV_SHORTCUT_REG    (),
+    MOV_PROTECTED       (),
+    MOV                 (),
+    CMOV                (),
+    XCHG                (),
+    PUSH_SHORTCUT       (),
+    POP_SHORTCUT        (),
+    BPP_SHORTCUT        (),
+    PUSH                (),
+    BPUSH               (),
+    POP                 (),
+    BPOP                (),
+    PUSHA               (),
+    POPA                (),
+    TST                 (),
+    F_OPS               (),
+    CMP                 (),
+    PCMP                (),
+    ADD_SHORTCUT        (),
+    ADD                 (),
+    ADC                 (),
+    PADD                (),
+    SUB_SHORTCUT        (),
+    SUB                 (),
+    SBB                 (),
+    PSUB                (),
+    INC_SHORTCUT        (),
+    INC                 (),
+    PINC                (),
+    MUL                 (),
+    DIV                 (),
+    SHIFT               (),
+    LOGIC               (),
+    NEG                 (),
+    CALL                (),
+    CALLA               (),
+    JMP                 (),
+    JMPA                (),
+    RET                 (),
+    IRET                (),
+    INT                 (),
+    JCC                 (),
+    UNDEF               (),
+    ;
+    
+    private ExecutionGroup() {
+    }
+}

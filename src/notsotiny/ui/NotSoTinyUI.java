@@ -39,7 +39,8 @@ import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import notsotiny.asm.Disassembler;
-import notsotiny.sim.NotSoTinySimulator;
+import notsotiny.sim.NotSoTinySimulatorV2;
+import notsotiny.sim.NotSoTinySimulatorV1;
 import notsotiny.sim.memory.CachingMemoryManager;
 import notsotiny.sim.memory.DiskBufferController;
 import notsotiny.sim.memory.FlatMemoryController;
@@ -53,7 +54,7 @@ import notsotiny.sim.memory.SoundInterfaceController;
 public class NotSoTinyUI extends Application {
 
     public static void main(String[] args) {
-        System.out.println("launching");
+        //System.out.println("launching");
         Application.launch(args);
     }
     
@@ -70,14 +71,15 @@ public class NotSoTinyUI extends Application {
      */
     
     private static final long CLOCK_PERIOD = 0l,
-                              PIT_PERIOD = 1_000l;
+                              PIT_PERIOD = 33_333_333l;
     
     private static final boolean USE_SCREEN = true,
                                  START_IMMEDIATELY = false,
-                                 START_WITH_CLOCK = true,
-                                 TRACK_CPUTIME = false;
+                                 START_WITH_CLOCK = false,
+                                 TRACK_CPUTIME = true;
     
-    private static final int TRACE_SIZE = 16;
+    private static final int TRACE_SIZE = 16,
+                             MEMWATCH_BYTES = 64;
     
     /*
      * == SIMULATION ==
@@ -85,8 +87,8 @@ public class NotSoTinyUI extends Application {
     
     // memory map constants
     private static final long IVT_START =       0x0000_0000,
-                              LOWRAM_START =    0x0000_0400,
-                              CRASHRAM_START =  0x4000_0000,
+                              PRIVRAM_START =   0x0000_0400,
+                              LOWRAM_START =    0x0000_0800,
                               SPI_START =       0x8000_0000,
                               KEYPAD_START =    0x8001_0000,
                               CC_START =        0x8002_0000,
@@ -100,8 +102,8 @@ public class NotSoTinyUI extends Application {
                               BOOTROM_START =   0xFFFF_FC00;
     
     private static final int IVT_SIZE =         0x0000_0400,
-                             LOWRAM_SIZE =      0x000F_FC00,
-                             CRASHRAM_SIZE =    0x0000_1000,
+                             PRIVRAM_SIZE =     0x0000_0400,
+                             LOWRAM_SIZE =      0x0FFF_F800,
                              SPI_SIZE =         0x0000_0004,
                              KEYPAD_SIZE =      0x0000_0008,
                              CC_SIZE =          0x0000_0002,
@@ -128,35 +130,39 @@ public class NotSoTinyUI extends Application {
     
     /*
     private static final String PROGRAM_DATA_FOLDER = "data\\",
-                                PROGRAM_EXEC_FILE = "game.oex",
+                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "game.oex",
+                                DISK_FOLDER = PROGRAM_DATA_FOLDER + "disk\\",
                                 TEXT_FONT_FILE = "data\\text.dat";
     */
     
     private static final String //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernelv2\\src\\",
-                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\testing\\",
+                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\testing\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\playground\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\forth-based\\aoc\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\minesweeper\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\fakeos\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GTMK-jam-2023\\game\\src\\",
-                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GMTK-Game-Jam-2024\\game\\src\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GMTK-Game-Jam-2024\\game\\src\\",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "forth.oex",
+                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test-badapple.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "testing-mdbt.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "playground.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "minesweeper.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_shell.oex",
-                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "game.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "game.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "aoc.oex",
                                 DISK_FOLDER = PROGRAM_DATA_FOLDER + "disk\\",
                                 TEXT_FONT_FILE = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\textsmall.dat";
     
     
     // sim vars
-    private NotSoTinySimulator sim;
+    private NotSoTinySimulatorV2 sim;
     
     private MemoryManager mmu;
     
     private FlatMemoryController ivtController,
+                                 privramController,
                                  lowramController,
-                                 crashramController,
                                  placeholder_spiController,
                                  placeholder_cacheController,
                                  keyboardBufferController,
@@ -183,8 +189,8 @@ public class NotSoTinyUI extends Application {
     
     // actual memory arrays
     private byte[] ivtArray,
+                   privramArray,
                    lowramArray,
-                   crashramArray,
                    placeholder_spiArray,
                    placeholder_cacheArray,
                    keyboardBufferArray,
@@ -194,7 +200,9 @@ public class NotSoTinyUI extends Application {
                    bootromArray;
     
     // real time clock stuff
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4);
+    
+    private ScheduledFuture<?> rtcHandler;
     
     private SimulatorThread simThread;
     
@@ -293,7 +301,6 @@ public class NotSoTinyUI extends Application {
                         NotSoTinyUI.this.sim.setRegC((short)sourceAddr);
                         NotSoTinyUI.this.sim.setRegI((short) 0);
                         
-                        NotSoTinyUI.this.sim.setRegSP((int)(CRASHRAM_START + CRASHRAM_SIZE)); // ensure SP is valid
                         NotSoTinyUI.this.sim.fireNonMaskableInterrupt(VECTOR_MEMORY_ERROR);
                     } else {
                         System.out.printf("%08X: ", NotSoTinyUI.this.sim.getRegIP() - 1);
@@ -303,7 +310,7 @@ public class NotSoTinyUI extends Application {
                         throw e;
                     }
                 }
-                NotSoTinyUI.this.instructionsExecutedLast++;
+                NotSoTinyUI.this.instructionsExecutedTotal++;
             }
             
             // sanity check
@@ -380,8 +387,8 @@ public class NotSoTinyUI extends Application {
         
         // initialize flat memory segments]
         ivtArray = new byte[IVT_SIZE];
+        privramArray = new byte[PRIVRAM_SIZE];
         lowramArray = new byte[LOWRAM_SIZE];
-        crashramArray = new byte[CRASHRAM_SIZE];
         placeholder_spiArray = new byte[SPI_SIZE];
         placeholder_cacheArray = new byte[CC_SIZE];
         keyboardBufferArray = new byte[KEYBOARD_SIZE];
@@ -391,8 +398,8 @@ public class NotSoTinyUI extends Application {
         bootromArray = new byte[BOOTROM_SIZE];
         
         ivtController = new FlatMemoryController(ivtArray, true, true);
+        privramController = new FlatMemoryController(privramArray, true, true);
         lowramController = new FlatMemoryController(lowramArray, false, false);
-        crashramController = new FlatMemoryController(crashramArray, false, false);
         placeholder_spiController = new FlatMemoryController(placeholder_spiArray, false, false);
         placeholder_cacheController = new FlatMemoryController(placeholder_cacheArray, true, true);
         keyboardBufferController = new FlatMemoryController(keyboardBufferArray, false, true);
@@ -406,13 +413,13 @@ public class NotSoTinyUI extends Application {
         rand = new RandomController();
         pic = new InterruptController();
         dbc = new DiskBufferController(this.mmu, Paths.get(DISK_FOLDER));
-        resetHookController = new HookController(() -> { System.out.println("Reset!"); this.fullResetPending = true; });
+        resetHookController = new HookController(() -> { /*System.out.println("Reset!");*/ this.fullResetPending = true; });
         screenBufferController = new ScreenBuffer(videoBufferArray); // 3FFFC
         
         this.mmu.registerSegment(ivtController, IVT_START, IVT_SIZE);
+        this.mmu.registerSegment(privramController, PRIVRAM_START, PRIVRAM_SIZE);
         ((CachingMemoryManager)this.mmu).registerSegment(lowramController, LOWRAM_START, LOWRAM_SIZE, true);
         //this.mmu.registerSegment(lowramController, LOWRAM_START, LOWRAM_SIZE);
-        this.mmu.registerSegment(crashramController, CRASHRAM_START, CRASHRAM_SIZE);
         this.mmu.registerSegment(placeholder_spiController, SPI_START, SPI_SIZE);
         this.mmu.registerSegment(placeholder_cacheController, CC_START, CC_SIZE);
         this.mmu.registerSegment(keyboardBufferController, KEYBOARD_START, KEYBOARD_SIZE);
@@ -471,20 +478,22 @@ public class NotSoTinyUI extends Application {
             this.entrySymbol = (String) relocatorPair.get(1);
         }
         
-        int relStart = this.relocator.hasReference("ORIGIN", false) ? 0 : 1024;
+        int relStart = this.relocator.hasReference("ORIGIN", false) ? 0 : (IVT_SIZE + PRIVRAM_SIZE);
         
-        byte[] relocatedData = new byte[IVT_SIZE + LOWRAM_SIZE];
+        byte[] relocatedData = new byte[IVT_SIZE + PRIVRAM_SIZE + LOWRAM_SIZE];
         long entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, relocatedData, relStart, relStart);
         
         System.arraycopy(relocatedData, 0, ivtArray, 0, ivtArray.length);
-        System.arraycopy(relocatedData, IVT_SIZE, lowramArray, 0, LOWRAM_SIZE);
+        System.arraycopy(relocatedData, IVT_SIZE, privramArray, 0, PRIVRAM_SIZE);
+        System.arraycopy(relocatedData, IVT_SIZE + PRIVRAM_SIZE, lowramArray, 0, LOWRAM_SIZE);
         
         // write entry vector
         this.mmu.write4BytesPrivileged(VECTOR_RESET * 4, (int) entry);
         
         // simulator
-        this.sim = new NotSoTinySimulator(this.mmu);
+        this.sim = new NotSoTinySimulatorV2(this.mmu);
         this.sim.setRegSP((int)(LOWRAM_START + LOWRAM_SIZE));
+        this.sim.setRegISP((int)(PRIVRAM_START + PRIVRAM_SIZE));
         
         // timing stuff
         this.simThread = new SimulatorThread(CLOCK_PERIOD);
@@ -493,11 +502,11 @@ public class NotSoTinyUI extends Application {
         
         // start real time clock
         this.rtcEnabled = START_WITH_CLOCK;
-        this.scheduler.scheduleAtFixedRate(() -> {
+        this.rtcHandler = this.scheduler.scheduleAtFixedRate(() -> {
             if(this.rtcEnabled) {
                 runInterrupt(VECTOR_RTC);
             }
-        }, 1_000_000l, PIT_PERIOD, TimeUnit.MICROSECONDS);
+        }, 1_000l, PIT_PERIOD, TimeUnit.NANOSECONDS);
         // 1000 hz
         
         //this.halter.writeByte(0l, (byte) 0);
@@ -517,6 +526,9 @@ public class NotSoTinyUI extends Application {
         
         // stop ui updater
         while(!this.uiUpdateFuture.isDone()) this.uiUpdateFuture.cancel(false);
+        
+        // stop RTC
+        while(!this.rtcHandler.isDone()) this.rtcHandler.cancel(false);
         
         // reset
         try {
@@ -615,7 +627,7 @@ public class NotSoTinyUI extends Application {
         
         this.pic.step(this.sim);
         this.sim.step();
-        this.instructionsExecutedLast++;
+        this.instructionsExecutedTotal++;
         
         if(this.enableBreakpoints && this.breakpointAddress != -1l) {
             if(this.sim.getRegIP() == (this.breakpointAddress & 0xFFFF_FFFF)) {
@@ -1022,13 +1034,12 @@ public class NotSoTinyUI extends Application {
             
             // calculate average mips every half second
             if(mipsTime > 1_000_000_000l) {
-                long executed = this.instructionsExecutedLast;
-                this.instructionsExecutedLast = 0;
+                long executed = this.instructionsExecutedTotal - this.instructionsExecutedLast;
+                this.instructionsExecutedLast = this.instructionsExecutedTotal;
                 this.mipsElapsedTimens = nanoTime;
                 
                 double mips = (((double) executed) / ((double) mipsTime)) * 1_000_000_000;
                 this.lastAverageMIPS = mips;
-                this.instructionsExecutedTotal += executed;
             }
             
             // basic info
@@ -1066,11 +1077,13 @@ public class NotSoTinyUI extends Application {
                         sim.getRegIP(), sim.getRegBP(), sim.getRegSP());
                 
                 try {
-                    state += dis.disassemble(this.mmu, Integer.toUnsignedLong(sim.getRegIP())) + "\n";
+                    synchronized(this.mmu) {
+                        state += dis.disassemble(this.mmu, Integer.toUnsignedLong(sim.getRegIP())) + "\n";
                     
-                    for(int j = 0; j < dis.getLastInstructionLength(); j++) {
-                        byte b = this.mmu.readBytePrivileged(Integer.toUnsignedLong(sim.getRegIP()) + ((long) j));
-                        state += String.format("%02X ", b);
+                        for(int j = 0; j < dis.getLastInstructionLength(); j++) {
+                            byte b = this.mmu.readBytePrivileged(Integer.toUnsignedLong(sim.getRegIP()) + ((long) j));
+                            state += String.format("%02X ", b);
+                        }
                     }
                 } catch(IndexOutOfBoundsException e) {
                 } catch(NullPointerException e) {}
@@ -1096,7 +1109,9 @@ public class NotSoTinyUI extends Application {
                 };
                 
                 if(this.memwatchType.toString().endsWith("INDIRECT")) {
-                    this.memwatchAddress = this.mmu.read4BytesPrivileged(this.memwatchAddress);
+                    synchronized(this.mmu) {
+                        this.memwatchAddress = this.mmu.read4BytesPrivileged(this.memwatchAddress);
+                    }
                 }
                 
                 // trace/disassembly
@@ -1112,7 +1127,7 @@ public class NotSoTinyUI extends Application {
                     state += "\n\n";
                     
                     // disassemble memwatch area
-                    for(int i = 0, j = 0; i < 64 && j < TRACE_SIZE; j++) {
+                    for(int i = 0, j = 0; i < MEMWATCH_BYTES && j < TRACE_SIZE; j++) {
                         String disasm = dis.disassemble(this.mmu, this.memwatchAddress + i),
                                disBytes = "";
                         

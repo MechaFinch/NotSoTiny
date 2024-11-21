@@ -1,6 +1,6 @@
 package notsotiny.sim;
 
-import notsotiny.sim.LocationDescriptor.LocationType;
+import notsotiny.sim.LocationDescriptorV1.LocationType;
 import notsotiny.sim.memory.MemoryController;
 import notsotiny.sim.memory.MemoryManager;
 import notsotiny.sim.memory.UnprivilegedAccessException;
@@ -11,11 +11,16 @@ import notsotiny.sim.ops.Operation;
 /**
  * Simulates the NotSoTiny architecture
  * 
+ * First iteration. Code is a mess, and doesn't account for exceptions correctly (faults can cause side effects)
+ * Missing architectural updates:
+ *  sign extend indexes -> zero extend indexes
+ *  ISP register
+ * 
  * @author Mechafinch
  */
-public class NotSoTinySimulator {
+public class NotSoTinySimulatorV1 {
     
-    private static final byte VECTOR_DECODING_ERROR = 0x08,
+    private static final byte VECTOR_DECODING_ERROR = 0x0F,
                               VECTOR_GENERAL_PROTECTION_FAULT = 0x10,
                               VECTOR_MEMORY_PROTECTION_FAULT = 0x11;
     
@@ -58,7 +63,8 @@ public class NotSoTinySimulator {
      * @param memory
      * @param entry
      */
-    public NotSoTinySimulator(MemoryManager memory, int entry) {
+    public NotSoTinySimulatorV1(MemoryManager memory, int entry) {
+        
         this.memory = memory;
         this.reg_ip = entry;
         
@@ -87,7 +93,7 @@ public class NotSoTinySimulator {
      * 
      * @param memory
      */
-    public NotSoTinySimulator(MemoryManager memory) {
+    public NotSoTinySimulatorV1(MemoryManager memory) {
         this(memory, memory.read4BytesPrivileged(0));
     }
     
@@ -224,7 +230,7 @@ public class NotSoTinySimulator {
             this.prev_ip = this.reg_ip;
             this.reg_ip++;
             
-            InstructionDescriptor desc = new InstructionDescriptor();
+            InstructionDescriptorV1 desc = new InstructionDescriptorV1();
             desc.op = Opcode.fromOp(this.fetchBuffer[0]);
             
             if(desc.op == Opcode.NOP) return; 
@@ -301,7 +307,7 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void stepMiscFamily(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void stepMiscFamily(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
@@ -327,7 +333,7 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void stepLogicFamily(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void stepLogicFamily(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
@@ -365,10 +371,10 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void run2Logic(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void run2Logic(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         // operands
-        LocationDescriptor dst = switch(desc.op) {
-            case AND_F_RIM, OR_F_RIM, XOR_F_RIM -> LocationDescriptor.REGISTER_F;
+        LocationDescriptorV1 dst = switch(desc.op) {
+            case AND_F_RIM, OR_F_RIM, XOR_F_RIM -> LocationDescriptorV1.REGISTER_F;
             default                             -> getNormalRIMDestinationDescriptor(desc);
         };
         
@@ -443,11 +449,11 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void run1Logic(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void run1Logic(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         if(desc.op == Opcode.NOT_F) {
             this.reg_f = (short)(~this.reg_f);
         } else {
-            LocationDescriptor dst = getNormalRIMDestinationDescriptor(desc);
+            LocationDescriptorV1 dst = getNormalRIMDestinationDescriptor(desc);
             int v = ~readLocation(dst);
             
             if(desc.op == Opcode.NEG_RIM) {
@@ -477,8 +483,8 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runRotateLogic(InstructionDescriptor desc) throws UnprivilegedAccessException {
-        LocationDescriptor dst = getNormalRIMDestinationDescriptor(desc);
+    private void runRotateLogic(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
+        LocationDescriptorV1 dst = getNormalRIMDestinationDescriptor(desc);
         
         int mask = switch(dst.size()) {
             case 1  -> 0x0000_00FF;
@@ -625,7 +631,7 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void stepMultiplicationFamily(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void stepMultiplicationFamily(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
@@ -666,8 +672,8 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runMUL(InstructionDescriptor desc) throws UnprivilegedAccessException {
-        LocationDescriptor thinDst = getNormalRIMDestinationDescriptor(desc);
+    private void runMUL(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
+        LocationDescriptorV1 thinDst = getNormalRIMDestinationDescriptor(desc);
         
         boolean high = desc.op == Opcode.MULH_RIM || desc.op == Opcode.MULSH_RIM,
                 signed = desc.op == Opcode.MULSH_RIM;
@@ -684,7 +690,7 @@ public class NotSoTinySimulator {
                     default     -> thinDst.type();
                 };
                 
-                LocationDescriptor wideDst = new LocationDescriptor(type, 2, 0);
+                LocationDescriptorV1 wideDst = new LocationDescriptorV1(type, 2, 0);
                 int a = getNormalRIMSource(desc),
                     b = readLocation(wideDst) & 0x0000_00FF;
                 
@@ -698,7 +704,7 @@ public class NotSoTinySimulator {
                     default     -> thinDst.type();
                 };
                 
-                LocationDescriptor wideDst = new LocationDescriptor(type, 4, 0);
+                LocationDescriptorV1 wideDst = new LocationDescriptorV1(type, 4, 0);
                 int a = getNormalRIMSource(desc),
                     b = readLocation(wideDst) & 0x0000_FFFF;
                 
@@ -727,8 +733,8 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runPMUL(InstructionDescriptor desc) throws UnprivilegedAccessException {
-        LocationDescriptor thinDst = getNormalRIMDestinationDescriptor(desc);
+    private void runPMUL(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
+        LocationDescriptorV1 thinDst = getNormalRIMDestinationDescriptor(desc);
         
         int a = getPackedRIMSource(thinDst, desc),
             b = getPackedRIMSource(getNormalRIMSourceDescriptor(desc), desc);
@@ -751,8 +757,8 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runDIV(InstructionDescriptor desc) throws UnprivilegedAccessException {
-        LocationDescriptor thinDst = getNormalRIMDestinationDescriptor(desc);
+    private void runDIV(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
+        LocationDescriptorV1 thinDst = getNormalRIMDestinationDescriptor(desc);
         
         int size = thinDst.size();
         
@@ -760,7 +766,7 @@ public class NotSoTinySimulator {
                 signed = desc.op == Opcode.DIVS_RIM || desc.op == Opcode.DIVMS_RIM;
         
         if(mod && thinDst.size() != 4) {
-            thinDst = new LocationDescriptor(thinDst.type(), thinDst.size() * 2, thinDst.address());
+            thinDst = new LocationDescriptorV1(thinDst.type(), thinDst.size() * 2, thinDst.address());
         }
         
         int a = readLocation(thinDst),
@@ -786,8 +792,8 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runPDIV(InstructionDescriptor desc) throws UnprivilegedAccessException {
-        LocationDescriptor thinDst = getNormalRIMDestinationDescriptor(desc),
+    private void runPDIV(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
+        LocationDescriptorV1 thinDst = getNormalRIMDestinationDescriptor(desc),
                            src = getNormalRIMSourceDescriptor(desc);
         
         boolean mod = desc.op == Opcode.PDIVM_RIMP || desc.op == Opcode.PDIVMS_RIMP,
@@ -818,7 +824,7 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void stepAdditionFamily(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void stepAdditionFamily(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
@@ -861,16 +867,16 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runINC(InstructionDescriptor desc) throws UnprivilegedAccessException {
-        LocationDescriptor dst = switch(desc.op) {
-            case ICC_A, DCC_A               -> LocationDescriptor.REGISTER_A;
-            case ICC_B, DCC_B               -> LocationDescriptor.REGISTER_B;
-            case ICC_C, DCC_C               -> LocationDescriptor.REGISTER_C;
-            case ICC_D, DCC_D               -> LocationDescriptor.REGISTER_D;
-            case INC_I, ICC_I, DEC_I, DCC_I -> LocationDescriptor.REGISTER_I;
-            case INC_J, ICC_J, DEC_J, DCC_J -> LocationDescriptor.REGISTER_J;
-            case INC_K, ICC_K, DEC_K, DCC_K -> LocationDescriptor.REGISTER_K;
-            case INC_L, ICC_L, DEC_L, DCC_L -> LocationDescriptor.REGISTER_L;
+    private void runINC(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
+        LocationDescriptorV1 dst = switch(desc.op) {
+            case ICC_A, DCC_A               -> LocationDescriptorV1.REGISTER_A;
+            case ICC_B, DCC_B               -> LocationDescriptorV1.REGISTER_B;
+            case ICC_C, DCC_C               -> LocationDescriptorV1.REGISTER_C;
+            case ICC_D, DCC_D               -> LocationDescriptorV1.REGISTER_D;
+            case INC_I, ICC_I, DEC_I, DCC_I -> LocationDescriptorV1.REGISTER_I;
+            case INC_J, ICC_J, DEC_J, DCC_J -> LocationDescriptorV1.REGISTER_J;
+            case INC_K, ICC_K, DEC_K, DCC_K -> LocationDescriptorV1.REGISTER_K;
+            case INC_L, ICC_L, DEC_L, DCC_L -> LocationDescriptorV1.REGISTER_L;
             default                         -> getNormalRIMDestinationDescriptor(desc);
         };
         
@@ -888,8 +894,8 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runPINC(InstructionDescriptor desc) throws UnprivilegedAccessException {
-        LocationDescriptor dst = getNormalRIMDestinationDescriptor(desc);
+    private void runPINC(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
+        LocationDescriptorV1 dst = getNormalRIMDestinationDescriptor(desc);
         
         boolean bytes = dst.size() != 1,
                 subtract = desc.op == Opcode.PDEC_RIMP || desc.op == Opcode.PDCC_RIMP;
@@ -912,18 +918,18 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runADD(InstructionDescriptor desc) throws UnprivilegedAccessException {
-        LocationDescriptor dst = switch(desc.op) {
-            case ADD_A_I8, SUB_A_I8     -> LocationDescriptor.REGISTER_A;
-            case ADD_B_I8, SUB_B_I8     -> LocationDescriptor.REGISTER_B;
-            case ADD_C_I8, SUB_C_I8     -> LocationDescriptor.REGISTER_C;
-            case ADD_D_I8, SUB_D_I8     -> LocationDescriptor.REGISTER_D;
-            case ADD_I_I8, SUB_I_I8     -> LocationDescriptor.REGISTER_I;
-            case ADD_J_I8, SUB_J_I8     -> LocationDescriptor.REGISTER_J;
-            case ADD_K_I8, SUB_K_I8     -> LocationDescriptor.REGISTER_K;
-            case ADD_L_I8, SUB_L_I8     -> LocationDescriptor.REGISTER_L;
-            case ADD_SP_I8, SUB_SP_I8   -> LocationDescriptor.REGISTER_SP;
-            case ADD_BP_I8, SUB_BP_I8   -> LocationDescriptor.REGISTER_BP; 
+    private void runADD(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
+        LocationDescriptorV1 dst = switch(desc.op) {
+            case ADD_A_I8, SUB_A_I8     -> LocationDescriptorV1.REGISTER_A;
+            case ADD_B_I8, SUB_B_I8     -> LocationDescriptorV1.REGISTER_B;
+            case ADD_C_I8, SUB_C_I8     -> LocationDescriptorV1.REGISTER_C;
+            case ADD_D_I8, SUB_D_I8     -> LocationDescriptorV1.REGISTER_D;
+            case ADD_I_I8, SUB_I_I8     -> LocationDescriptorV1.REGISTER_I;
+            case ADD_J_I8, SUB_J_I8     -> LocationDescriptorV1.REGISTER_J;
+            case ADD_K_I8, SUB_K_I8     -> LocationDescriptorV1.REGISTER_K;
+            case ADD_L_I8, SUB_L_I8     -> LocationDescriptorV1.REGISTER_L;
+            case ADD_SP_I8, SUB_SP_I8   -> LocationDescriptorV1.REGISTER_SP;
+            case ADD_BP_I8, SUB_BP_I8   -> LocationDescriptorV1.REGISTER_BP; 
             default                     -> getNormalRIMDestinationDescriptor(desc);
         };
         
@@ -964,8 +970,8 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runPADD(InstructionDescriptor desc) throws UnprivilegedAccessException {
-        LocationDescriptor dst = getNormalRIMDestinationDescriptor(desc);
+    private void runPADD(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
+        LocationDescriptorV1 dst = getNormalRIMDestinationDescriptor(desc);
         
         boolean bytes = dst.size() != 1,
                 subtract = desc.op == Opcode.PSUB_RIMP || desc.op == Opcode.PSBB_RIMP,
@@ -989,7 +995,7 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void stepJumpFamily(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void stepJumpFamily(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
@@ -1035,7 +1041,7 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runJMP(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void runJMP(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         // get value
         int val = 0;
         
@@ -1087,7 +1093,7 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runCALL(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void runCALL(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         int target = 0;
         
         switch(desc.op) {
@@ -1149,7 +1155,7 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runRET(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void runRET(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         if(desc.op == Opcode.IRET) {
             // IRET also pops flags
             this.setRegPF(this.memory.read2Bytes(this.reg_sp, this.pf_pv));
@@ -1168,7 +1174,7 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runINT(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void runINT(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         byte b;
         
         // vector
@@ -1231,7 +1237,7 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runLEA(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void runLEA(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         // souper simple
         putWideRIMDestination(desc, getNormalRIMSourceDescriptor(desc).address());
     }
@@ -1242,8 +1248,8 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runCMP(InstructionDescriptor desc) throws UnprivilegedAccessException {
-        LocationDescriptor dest = getNormalRIMDestinationDescriptor(desc);
+    private void runCMP(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
+        LocationDescriptorV1 dest = getNormalRIMDestinationDescriptor(desc);
         
         int a = readLocation(dest);
                 
@@ -1266,8 +1272,8 @@ public class NotSoTinySimulator {
      * @param desc
      * @throws UnprivilegedAccessException 
      */
-    private void runPCMP(InstructionDescriptor desc) throws UnprivilegedAccessException {
-        LocationDescriptor dest = getNormalRIMDestinationDescriptor(desc);
+    private void runPCMP(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
+        LocationDescriptorV1 dest = getNormalRIMDestinationDescriptor(desc);
         
         int a = getPackedRIMSource(dest, desc),
             b = getPackedRIMSource(getNormalRIMSourceDescriptor(desc), desc);
@@ -1282,9 +1288,9 @@ public class NotSoTinySimulator {
      * @param desc
      * @throws UnprivilegedAccessException 
      */
-    private void runCMOV(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void runCMOV(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         // make sure RIM is read properly
-        LocationDescriptor srcDesc = getNormalRIMSourceDescriptor(desc),
+        LocationDescriptorV1 srcDesc = getNormalRIMSourceDescriptor(desc),
                            dstDesc = getNormalRIMDestinationDescriptor(desc);
         
         // add EI8
@@ -1311,9 +1317,9 @@ public class NotSoTinySimulator {
      * @param desc
      * @throws UnprivilegedAccessException 
      */
-    private void runPCMOV(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void runPCMOV(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         // make sure RIM is read properly
-        LocationDescriptor srcDesc = getPackedRIMSourceDescriptor(getNormalRIMSourceDescriptor(desc), desc),
+        LocationDescriptorV1 srcDesc = getPackedRIMSourceDescriptor(getNormalRIMSourceDescriptor(desc), desc),
                            ndstDesc = getNormalRIMDestinationDescriptor(desc),
                            dstDesc = getPackedRIMSourceDescriptor(ndstDesc, desc);
         
@@ -1402,7 +1408,7 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runJCC(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void runJCC(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         int offset = 0;
         
         // target
@@ -1444,7 +1450,7 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void stepMoveFamily(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void stepMoveFamily(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         //System.out.println(desc.op.getType());
         
         switch(desc.op.getType()) {
@@ -1489,7 +1495,7 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runMOV(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void runMOV(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         //System.out.println(desc.op);
         
         // deal with register-register moves
@@ -1640,7 +1646,7 @@ public class NotSoTinySimulator {
                 src = this.reg_f;
                 break;
             
-            case MOV_RIM_PF:
+            case MOV_RIM_PR:
                 if(this.pf_pv) {
                     src = this.getRegPF();
                 } else {
@@ -1653,7 +1659,7 @@ public class NotSoTinySimulator {
             case MOVS_RIM:
             case MOVZ_RIM:
             case MOV_F_RIM:
-            case MOV_PF_RIM:
+            case MOV_PR_RIM:
                 src = getNormalRIMSource(desc);
                 break;
             
@@ -1747,7 +1753,7 @@ public class NotSoTinySimulator {
                 this.reg_f = (short) src;
                 break;
             
-            case MOV_PF_RIM:
+            case MOV_PR_RIM:
                 if(this.pf_pv) {
                     this.setRegPF((short) src);
                 } else {
@@ -1779,7 +1785,7 @@ public class NotSoTinySimulator {
                 }
                 return;
             
-            case MOV_RIM_PF:
+            case MOV_RIM_PR:
                 if(this.generalProtectionFault) {
                     // Ensure complete decoding without actually writing
                     getNormalRIMDestinationDescriptor(desc);
@@ -1803,9 +1809,9 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runXCHG(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void runXCHG(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         // i love abstraction
-        LocationDescriptor srcDesc = getNormalRIMSourceDescriptor(desc),
+        LocationDescriptorV1 srcDesc = getNormalRIMSourceDescriptor(desc),
                            dstDesc = getNormalRIMDestinationDescriptor(desc);
         
         if(desc.op == Opcode.XCHG_RIM) {
@@ -1827,7 +1833,7 @@ public class NotSoTinySimulator {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    private void runPUSH(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void runPUSH(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         // deal with this separately cause of multiple registers and whatnot
         if(desc.op == Opcode.PUSHA) {
             this.reg_sp -= 20;
@@ -1924,7 +1930,7 @@ public class NotSoTinySimulator {
      * @param op
      * @throws UnprivilegedAccessException 
      */
-    private void runPOP(InstructionDescriptor desc) throws UnprivilegedAccessException {
+    private void runPOP(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
         // deal with POPA separately
         if(desc.op == Opcode.POPA) {
             this.reg_bp = this.memory.read4Bytes(this.reg_sp + 0, this.pf_pv);
@@ -2485,7 +2491,7 @@ public class NotSoTinySimulator {
      * 
      * @return
      */
-    private LocationDescriptor getNormalRIMDestinationDescriptor(InstructionDescriptor desc) {
+    private LocationDescriptorV1 getNormalRIMDestinationDescriptor(InstructionDescriptorV1 desc) {
         byte rim;
         
         if(desc.hasRIMByte) {
@@ -2509,27 +2515,27 @@ public class NotSoTinySimulator {
             if(size) {
                 // 16 bit
                 return switch(reg) {
-                    case 0  -> LocationDescriptor.REGISTER_A;
-                    case 1  -> LocationDescriptor.REGISTER_B;
-                    case 2  -> LocationDescriptor.REGISTER_C;
-                    case 3  -> LocationDescriptor.REGISTER_D;
-                    case 4  -> LocationDescriptor.REGISTER_I;
-                    case 5  -> LocationDescriptor.REGISTER_J;
-                    case 6  -> LocationDescriptor.REGISTER_K;
-                    case 7  -> LocationDescriptor.REGISTER_L;
+                    case 0  -> LocationDescriptorV1.REGISTER_A;
+                    case 1  -> LocationDescriptorV1.REGISTER_B;
+                    case 2  -> LocationDescriptorV1.REGISTER_C;
+                    case 3  -> LocationDescriptorV1.REGISTER_D;
+                    case 4  -> LocationDescriptorV1.REGISTER_I;
+                    case 5  -> LocationDescriptorV1.REGISTER_J;
+                    case 6  -> LocationDescriptorV1.REGISTER_K;
+                    case 7  -> LocationDescriptorV1.REGISTER_L;
                     default -> null;
                 };
             } else {
                 // 8 bit
                 return switch(reg) {
-                    case 0  -> LocationDescriptor.REGISTER_AL;
-                    case 1  -> LocationDescriptor.REGISTER_BL;
-                    case 2  -> LocationDescriptor.REGISTER_CL;
-                    case 3  -> LocationDescriptor.REGISTER_DL;
-                    case 4  -> LocationDescriptor.REGISTER_AH;
-                    case 5  -> LocationDescriptor.REGISTER_BH;
-                    case 6  -> LocationDescriptor.REGISTER_CH;
-                    case 7  -> LocationDescriptor.REGISTER_DH;
+                    case 0  -> LocationDescriptorV1.REGISTER_AL;
+                    case 1  -> LocationDescriptorV1.REGISTER_BL;
+                    case 2  -> LocationDescriptorV1.REGISTER_CL;
+                    case 3  -> LocationDescriptorV1.REGISTER_DL;
+                    case 4  -> LocationDescriptorV1.REGISTER_AH;
+                    case 5  -> LocationDescriptorV1.REGISTER_BH;
+                    case 6  -> LocationDescriptorV1.REGISTER_CH;
+                    case 7  -> LocationDescriptorV1.REGISTER_DH;
                     default -> null;
                 };
             }
@@ -2547,7 +2553,7 @@ public class NotSoTinySimulator {
                 addr = getBIOAddress(desc, true, (rim & 0x01) == 1);
             }
             
-            return new LocationDescriptor(LocationType.MEMORY, size ? 2 : 1, addr);
+            return new LocationDescriptorV1(LocationType.MEMORY, size ? 2 : 1, addr);
         }
     }
     
@@ -2557,7 +2563,7 @@ public class NotSoTinySimulator {
      * @param val
      * @throws UnprivilegedAccessException 
      */
-    private void writeLocation(LocationDescriptor desc, int val) throws UnprivilegedAccessException {
+    private void writeLocation(LocationDescriptorV1 desc, int val) throws UnprivilegedAccessException {
         //System.out.println("writing location " + desc + " with " + val);
         
         // what we dealin with
@@ -2715,7 +2721,7 @@ public class NotSoTinySimulator {
      * @param val
      * @throws UnprivilegedAccessException 
      */
-    private void putNormalRIMDestination(InstructionDescriptor desc, int val) throws UnprivilegedAccessException {
+    private void putNormalRIMDestination(InstructionDescriptorV1 desc, int val) throws UnprivilegedAccessException {
         writeLocation(getNormalRIMDestinationDescriptor(desc), val);
     }
     
@@ -2725,8 +2731,8 @@ public class NotSoTinySimulator {
      * @param val
      * @throws UnprivilegedAccessException 
      */
-    private void putWideRIMDestination(InstructionDescriptor desc, int val) throws UnprivilegedAccessException {
-        LocationDescriptor normalDesc = getNormalRIMDestinationDescriptor(desc);
+    private void putWideRIMDestination(InstructionDescriptorV1 desc, int val) throws UnprivilegedAccessException {
+        LocationDescriptorV1 normalDesc = getNormalRIMDestinationDescriptor(desc);
         
         writeWideLocation(normalDesc, val);
     }
@@ -2739,7 +2745,7 @@ public class NotSoTinySimulator {
      * @param val
      * @throws UnprivilegedAccessException 
      */
-    private void writeWideLocation(LocationDescriptor normalDesc, int val) throws UnprivilegedAccessException {
+    private void writeWideLocation(LocationDescriptorV1 normalDesc, int val) throws UnprivilegedAccessException {
         int size = normalDesc.size();
         
         if(size < 4) {
@@ -2757,7 +2763,7 @@ public class NotSoTinySimulator {
             };
             
             // size < 4, double it
-            writeLocation(new LocationDescriptor(type, size * 2, normalDesc.address()), val);
+            writeLocation(new LocationDescriptorV1(type, size * 2, normalDesc.address()), val);
         } else {
             // size is 4 write as normal
             writeLocation(normalDesc, val);
@@ -2771,8 +2777,8 @@ public class NotSoTinySimulator {
      * @param val
      * @throws UnprivilegedAccessException 
      */
-    private void putPackedRIMDestination(LocationDescriptor normalDesc, int val) throws UnprivilegedAccessException {
-        writeLocation(new LocationDescriptor(normalDesc.type(), 2, normalDesc.address()), val);
+    private void putPackedRIMDestination(LocationDescriptorV1 normalDesc, int val) throws UnprivilegedAccessException {
+        writeLocation(new LocationDescriptorV1(normalDesc.type(), 2, normalDesc.address()), val);
     }
     
     /**
@@ -2782,8 +2788,8 @@ public class NotSoTinySimulator {
      * @param val
      * @throws UnprivilegedAccessException 
      */
-    private void putWidePackedRIMDestination(LocationDescriptor normalDesc, int val) throws UnprivilegedAccessException {
-        writeLocation(new LocationDescriptor(normalDesc.type(), 4, normalDesc.address()), val);
+    private void putWidePackedRIMDestination(LocationDescriptorV1 normalDesc, int val) throws UnprivilegedAccessException {
+        writeLocation(new LocationDescriptorV1(normalDesc.type(), 4, normalDesc.address()), val);
     }
     
     /**
@@ -2791,7 +2797,7 @@ public class NotSoTinySimulator {
      * 
      * @return
      */
-    private int getNormalRIMSourceWidth(InstructionDescriptor desc) {
+    private int getNormalRIMSourceWidth(InstructionDescriptorV1 desc) {
         byte rim;
         
         // use cache
@@ -2813,7 +2819,7 @@ public class NotSoTinySimulator {
      * 
      * @return
      */
-    private LocationDescriptor getNormalRIMSourceDescriptor(InstructionDescriptor desc) {
+    private LocationDescriptorV1 getNormalRIMSourceDescriptor(InstructionDescriptorV1 desc) {
         byte rim;
         
         // use cache
@@ -2839,14 +2845,14 @@ public class NotSoTinySimulator {
             int src = regreg ? rimem : reg;
             
             return switch(src) {
-                case 0  -> size ? LocationDescriptor.REGISTER_A : LocationDescriptor.REGISTER_AL;
-                case 1  -> size ? LocationDescriptor.REGISTER_B : LocationDescriptor.REGISTER_BL;
-                case 2  -> size ? LocationDescriptor.REGISTER_C : LocationDescriptor.REGISTER_CL;
-                case 3  -> size ? LocationDescriptor.REGISTER_D : LocationDescriptor.REGISTER_DL;
-                case 4  -> size ? LocationDescriptor.REGISTER_I : LocationDescriptor.REGISTER_AH;
-                case 5  -> size ? LocationDescriptor.REGISTER_J : LocationDescriptor.REGISTER_BH;
-                case 6  -> size ? LocationDescriptor.REGISTER_K : LocationDescriptor.REGISTER_CH;
-                case 7  -> size ? LocationDescriptor.REGISTER_L : LocationDescriptor.REGISTER_DH;
+                case 0  -> size ? LocationDescriptorV1.REGISTER_A : LocationDescriptorV1.REGISTER_AL;
+                case 1  -> size ? LocationDescriptorV1.REGISTER_B : LocationDescriptorV1.REGISTER_BL;
+                case 2  -> size ? LocationDescriptorV1.REGISTER_C : LocationDescriptorV1.REGISTER_CL;
+                case 3  -> size ? LocationDescriptorV1.REGISTER_D : LocationDescriptorV1.REGISTER_DL;
+                case 4  -> size ? LocationDescriptorV1.REGISTER_I : LocationDescriptorV1.REGISTER_AH;
+                case 5  -> size ? LocationDescriptorV1.REGISTER_J : LocationDescriptorV1.REGISTER_BH;
+                case 6  -> size ? LocationDescriptorV1.REGISTER_K : LocationDescriptorV1.REGISTER_CH;
+                case 7  -> size ? LocationDescriptorV1.REGISTER_L : LocationDescriptorV1.REGISTER_DH;
                 default -> null;
             };
         } else if(rimem == 0) {
@@ -2854,7 +2860,7 @@ public class NotSoTinySimulator {
             desc.hasImmediateValue = true;
             desc.immediateWidth = size ? 2 : 1;
             
-            return new LocationDescriptor(LocationType.MEMORY, size ? 2 : 1, this.reg_ip + 1);
+            return new LocationDescriptorV1(LocationType.MEMORY, size ? 2 : 1, this.reg_ip + 1);
         } else if(rimem == 1) {
             // source is an immediate address
             desc.hasImmediateAddress = true;
@@ -2863,12 +2869,12 @@ public class NotSoTinySimulator {
             int addr = get4FetchBytes(2);
             //int addr = this.memory.read4Bytes(this.reg_ip + 1);
             
-            return new LocationDescriptor(LocationType.MEMORY, size ? 2 : 1, addr);
+            return new LocationDescriptorV1(LocationType.MEMORY, size ? 2 : 1, addr);
         } else {
             // source is a BIO
             int addr = getBIOAddress(desc, true, (rim & 1) == 1);
             
-            return new LocationDescriptor(LocationType.MEMORY, size ? 2 : 1, addr);
+            return new LocationDescriptorV1(LocationType.MEMORY, size ? 2 : 1, addr);
         }
     }
     
@@ -2879,7 +2885,7 @@ public class NotSoTinySimulator {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    private int readLocation(LocationDescriptor desc) throws UnprivilegedAccessException {
+    private int readLocation(LocationDescriptorV1 desc) throws UnprivilegedAccessException {
         //System.out.println("reading location " + desc);
         
         // what we workin with
@@ -2948,8 +2954,8 @@ public class NotSoTinySimulator {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    private int getNormalRIMSource(InstructionDescriptor desc) throws UnprivilegedAccessException {
-        LocationDescriptor locDesc = getNormalRIMSourceDescriptor(desc); 
+    private int getNormalRIMSource(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
+        LocationDescriptorV1 locDesc = getNormalRIMSourceDescriptor(desc); 
         desc.sourceWidth = getNormalRIMSourceWidth(desc);
         return readLocation(locDesc);
     }
@@ -2960,8 +2966,8 @@ public class NotSoTinySimulator {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    private int getWideRIMSource(InstructionDescriptor desc) throws UnprivilegedAccessException {
-        LocationDescriptor normalDesc = getNormalRIMSourceDescriptor(desc);
+    private int getWideRIMSource(InstructionDescriptorV1 desc) throws UnprivilegedAccessException {
+        LocationDescriptorV1 normalDesc = getNormalRIMSourceDescriptor(desc);
         desc.sourceWidth = 4;
         
         return readWideLocation(desc, normalDesc);
@@ -2974,7 +2980,7 @@ public class NotSoTinySimulator {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    private int readWideLocation(InstructionDescriptor idesc, LocationDescriptor normalDesc) throws UnprivilegedAccessException {
+    private int readWideLocation(InstructionDescriptorV1 idesc, LocationDescriptorV1 normalDesc) throws UnprivilegedAccessException {
         if(idesc.hasImmediateValue) {
             idesc.immediateWidth = 4;
         }
@@ -2988,7 +2994,7 @@ public class NotSoTinySimulator {
         };
         
         // change the size to 4 bytes
-        return readLocation(new LocationDescriptor(type, 4, normalDesc.address()));
+        return readLocation(new LocationDescriptorV1(type, 4, normalDesc.address()));
     }
     
     /**
@@ -2998,12 +3004,12 @@ public class NotSoTinySimulator {
      * @param idesc
      * @return
      */
-    private LocationDescriptor getPackedRIMSourceDescriptor(LocationDescriptor normalDesc, InstructionDescriptor idesc) {
+    private LocationDescriptorV1 getPackedRIMSourceDescriptor(LocationDescriptorV1 normalDesc, InstructionDescriptorV1 idesc) {
         // override immediate size
         if(idesc.hasImmediateValue) idesc.immediateWidth = 2;
         idesc.sourceWidth = 2;
         
-        return new LocationDescriptor(normalDesc.type(), 2, normalDesc.address());
+        return new LocationDescriptorV1(normalDesc.type(), 2, normalDesc.address());
     }
     
     /**
@@ -3013,7 +3019,7 @@ public class NotSoTinySimulator {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    private int getPackedRIMSource(LocationDescriptor normalDesc, InstructionDescriptor idesc) throws UnprivilegedAccessException {
+    private int getPackedRIMSource(LocationDescriptorV1 normalDesc, InstructionDescriptorV1 idesc) throws UnprivilegedAccessException {
         return readLocation(getPackedRIMSourceDescriptor(normalDesc, idesc));
     }
     
@@ -3024,10 +3030,10 @@ public class NotSoTinySimulator {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    private int getWidePackedRIMSource(LocationDescriptor normalDesc, InstructionDescriptor idesc) throws UnprivilegedAccessException {
+    private int getWidePackedRIMSource(LocationDescriptorV1 normalDesc, InstructionDescriptorV1 idesc) throws UnprivilegedAccessException {
         if(idesc.hasImmediateValue) idesc.immediateWidth = 4;
         idesc.sourceWidth = 4;
-        return readLocation(new LocationDescriptor(normalDesc.type(), 4, normalDesc.address()));
+        return readLocation(new LocationDescriptorV1(normalDesc.type(), 4, normalDesc.address()));
     }
     
     /**
@@ -3042,7 +3048,7 @@ public class NotSoTinySimulator {
      * @param hasOffset
      * @return
      */
-    private int getBIOAddress(InstructionDescriptor desc, boolean hasRIM, boolean hasOffset) {
+    private int getBIOAddress(InstructionDescriptorV1 desc, boolean hasRIM, boolean hasOffset) {
         byte bio = this.fetchBuffer[hasRIM ? 2 : 1];
         //byte bio = this.memory.readByte(this.reg_ip + (hasRIM ? 1 : 0));
         
@@ -4092,7 +4098,7 @@ public class NotSoTinySimulator {
      * @param desc
      * @return
      */
-    private byte getRIMI8(InstructionDescriptor desc) {
+    private byte getRIMI8(InstructionDescriptorV1 desc) {
         // figure out where our immediate is
         int offset = 2;                 // rim
         if(desc.hasBIOByte) offset++;   // bio
@@ -4109,7 +4115,7 @@ public class NotSoTinySimulator {
      * 
      * @param desc
      */
-    private void updateIP(InstructionDescriptor desc) {
+    private void updateIP(InstructionDescriptorV1 desc) {
         // RIM byte
         if(desc.hasRIMByte) {
             this.reg_ip += 1;

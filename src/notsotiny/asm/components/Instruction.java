@@ -191,23 +191,23 @@ public class Instruction implements Component {
                 break;
             
             // source only
-            case PUSH_RIM, BPUSH_RIM, AND_F_RIM, OR_F_RIM, XOR_F_RIM, MOV_F_RIM, MOV_PF_RIM, JMP_RIM, CALL_RIM,
+            case PUSH_RIM, BPUSH_RIM, AND_F_RIM, OR_F_RIM, XOR_F_RIM, MOV_F_RIM, JMP_RIM, CALL_RIM,
                  INT_RIM, JC_RIM, JNC_RIM, JS_RIM, JNS_RIM, JO_RIM, JNO_RIM, JZ_RIM, JNZ_RIM, JA_RIM,
                  JBE_RIM, JG_RIM, JGE_RIM, JL_RIM, JLE_RIM:
                 data.addAll(getRIMData(false, true, false, false, false));
                 break;
             
-            case JMPA_RIM32, CALLA_RIM32, PUSHW_RIM, BPUSHW_RIM:
+            case JMPA_RIM32, CALLA_RIM32, PUSHW_RIM, BPUSHW_RIM, MOV_PR_RIM:
                 data.addAll(getRIMData(false, true, false, false, true));
                 break;
             
             // destination only
-            case POP_RIM, BPOP_RIM, AND_RIM_F, OR_RIM_F, XOR_RIM_F, MOV_RIM_F, MOV_RIM_PF, INC_RIM, ICC_RIM,
+            case POP_RIM, BPOP_RIM, AND_RIM_F, OR_RIM_F, XOR_RIM_F, MOV_RIM_F, INC_RIM, ICC_RIM,
                  DEC_RIM, DCC_RIM, NOT_RIM, NEG_RIM, CMP_RIM_0:
                 data.addAll(getRIMData(true, false, false, false, false));
                 break;
             
-            case POPW_RIM, BPOPW_RIM:
+            case POPW_RIM, BPOPW_RIM, MOV_RIM_PR:
                 data.addAll(getRIMData(true, false, false, true, false));
                 break;
             
@@ -290,13 +290,21 @@ public class Instruction implements Component {
                     break;
                 
                 // destination only 16 bit
-                case AND_RIM_F, OR_RIM_F, XOR_RIM_F, MOV_RIM_F, MOV_RIM_PF:
+                case AND_RIM_F, OR_RIM_F, XOR_RIM_F, MOV_RIM_F:
                     destSize = 2;
                     break;
                 
                 // source only 16 bit
-                case AND_F_RIM, OR_F_RIM, XOR_F_RIM, MOV_F_RIM, MOV_PF_RIM, INT_RIM:
+                case AND_F_RIM, OR_F_RIM, XOR_F_RIM, MOV_F_RIM, INT_RIM:
                     sourceSize = 2;
+                    break;
+                
+                case MOV_PR_RIM:
+                    sourceSize = this.destination.getSize();
+                    break;
+                
+                case MOV_RIM_PR:
+                    destSize = this.source.getSize();
                     break;
                 
                 default:
@@ -370,32 +378,36 @@ public class Instruction implements Component {
         
         // reg
         // this is the destination register unless dest is memory
-        if(includeDestination && destType == LocationType.REGISTER) {
-            rim |= switch(this.destination.getRegister()) {
-                case AL, A, DA      -> 0b00_000_000;
-                case BL, B, AB      -> 0b00_001_000;
-                case CL, C, BC      -> 0b00_010_000;
-                case DL, D, CD      -> 0b00_011_000;
-                case AH, I, JI      -> 0b00_100_000;
-                case BH, J, LK      -> 0b00_101_000;
-                case CH, K, BP      -> 0b00_110_000;
-                case DH, L, SP      -> 0b00_111_000;
-                case NONE, F, PF    -> 0;
-                default             -> throw new IllegalArgumentException("Invalid destination register " + this.destination.getRegister());
-            };
-        } else if(includeSource && sourceType == LocationType.REGISTER) {
-            rim |= switch(this.source.getRegister()) {
-                case AL, A, DA      -> 0b00_000_000;
-                case BL, B, AB      -> 0b00_001_000;
-                case CL, C, BC      -> 0b00_010_000;
-                case DL, D, CD      -> 0b00_011_000;
-                case AH, I, JI      -> 0b00_100_000;
-                case BH, J, LK      -> 0b00_101_000;
-                case CH, K, BP      -> 0b00_110_000;
-                case DH, L, SP      -> 0b00_111_000;
-                case NONE, F, PF    -> 0;
-                default             -> throw new IllegalArgumentException("Invalid source register " + this.source.getRegister());
-            };
+        if(includeDestination) {
+            if(destType == LocationType.REGISTER) {
+                rim |= switch(this.destination.getRegister()) {
+                    case AL, A, DA      -> 0b00_000_000;
+                    case BL, B, AB      -> 0b00_001_000;
+                    case CL, C, BC      -> 0b00_010_000;
+                    case DL, D, CD      -> 0b00_011_000;
+                    case AH, I, JI      -> 0b00_100_000;
+                    case BH, J, LK      -> 0b00_101_000;
+                    case CH, K, BP      -> 0b00_110_000;
+                    case DH, L, SP      -> 0b00_111_000;
+                    case PF, ISP        -> 0b00_000_000;
+                    case NONE, F        -> 0;
+                    default             -> throw new IllegalArgumentException("Invalid destination register " + this.destination.getRegister());
+                };
+            } else if(includeSource && sourceType == LocationType.REGISTER) {
+                rim |= switch(this.source.getRegister()) {
+                    case AL, A, DA      -> 0b00_000_000;
+                    case BL, B, AB      -> 0b00_001_000;
+                    case CL, C, BC      -> 0b00_010_000;
+                    case DL, D, CD      -> 0b00_011_000;
+                    case AH, I, JI      -> 0b00_100_000;
+                    case BH, J, LK      -> 0b00_101_000;
+                    case CH, K, BP      -> 0b00_110_000;
+                    case DH, L, SP      -> 0b00_111_000;
+                    case PF, ISP        -> 0b00_000_000;
+                    case NONE, F        -> 0;
+                    default             -> throw new IllegalArgumentException("Invalid source register " + this.source.getRegister());
+                };
+            }
         }
         
         // rim

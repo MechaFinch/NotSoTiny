@@ -5,7 +5,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-import notsotiny.sim.NotSoTinySimulator;
+import notsotiny.sim.NotSoTinySimulatorV2;
+import notsotiny.sim.NotSoTinySimulatorV1;
 
 /**
  * Interrupt Controller
@@ -52,7 +53,32 @@ public class InterruptController implements MemoryController {
     /**
      * Attempts to fire an interrupt if any are requested
      */
-    public synchronized void step(NotSoTinySimulator sim) {
+    public synchronized void step(NotSoTinySimulatorV1 sim) {
+        if(!this.requestedInterrupts.isEmpty()) {
+            // try in whatever order we're given
+            for(int i : requestedInterrupts) {
+                boolean fired;
+                
+                if(this.maskable.get(i)) {
+                    fired = sim.fireMaskableInterrupt((byte) i);
+                } else {
+                    sim.fireNonMaskableInterrupt((byte) i);
+                    fired = true;
+                }
+                
+                if(fired) {
+                    //System.out.println("Fired interrupt " + i);
+                    this.requestedInterrupts.remove(i);
+                    break;
+                }
+            }
+        }
+    }
+        
+    /**
+     * Attempts to fire an interrupt if any are requested
+     */
+    public synchronized void step(NotSoTinySimulatorV2 sim) {
         if(!this.requestedInterrupts.isEmpty()) {
             // try in whatever order we're given
             for(int i : requestedInterrupts) {

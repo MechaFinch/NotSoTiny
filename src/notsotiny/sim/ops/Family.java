@@ -1,7 +1,7 @@
 package notsotiny.sim.ops;
 
 /**
- * A family of operations
+ * Groups Operations by function/group
  * 
  * @author Mechafinch
  */

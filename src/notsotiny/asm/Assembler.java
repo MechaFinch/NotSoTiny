@@ -74,6 +74,17 @@ public class Assembler {
     }
     
     /**
+     * Mutable string
+     */
+    private static class StringContainer {
+        public String s;
+        
+        public StringContainer(String s) {
+            this.s = s;
+        }
+    }
+    
+    /**
      * A record with all the information needed to assemble an object
      * 
      * @param allInstructions List<Component>
@@ -129,8 +140,11 @@ public class Assembler {
             }
         }
         
-        // from the VeryTinyAssembler
-        List<RenameableRelocatableObject> objects = assemble(Paths.get(args[flagCount]), optimize, debug, (args.length > flagCount + 2) ? args[flagCount + 2] : "");
+        // entry symbol
+        StringContainer entrySymbolContainer = new StringContainer((args.length > flagCount + 2) ? args[flagCount + 2] : "");
+        
+        // assemble
+        List<RenameableRelocatableObject> objects = assemble(Paths.get(args[flagCount]), optimize, debug, entrySymbolContainer);
         
         // write object files
         LOG.info("Writing object files...");
@@ -163,7 +177,7 @@ public class Assembler {
             
             try(PrintWriter execWriter = new PrintWriter(fn)) {
                 // entry point
-                execWriter.println("#entry " + args[flagCount + 2]);
+                execWriter.println("#entry " + entrySymbolContainer.s);
                 
                 // object files
                 execContents.forEach(execWriter::println);
@@ -207,6 +221,17 @@ public class Assembler {
      * @throws IOException
      */
     public static List<RenameableRelocatableObject> assemble(Path file, boolean optimizeInstructionWidth, boolean debugFriendlyOutput, String entrySymbolName) throws IOException {
+        return assemble(file, optimizeInstructionWidth, debugFriendlyOutput, new StringContainer(entrySymbolName));
+    }
+    
+    /**
+     * Assembles a file and its dependencies
+     * 
+     * @param f
+     * @return
+     * @throws IOException
+     */
+    public static List<RenameableRelocatableObject> assemble(Path file, boolean optimizeInstructionWidth, boolean debugFriendlyOutput, StringContainer entrySymbolName) throws IOException {
         LOG.info("Assembling from main file: " + file + "...");
         
         ArrayList<RenameableRelocatableObject> objects = new ArrayList<>();
@@ -259,24 +284,36 @@ public class Assembler {
             int id = 0,
                 lid = 0;
             
+            // Generate names
             for(RenameableRelocatableObject obj : objects) {
-                libraryIDMap.put(obj.getName(), Integer.toHexString(lid++));
+                libraryIDMap.put(obj.getName(), Integer.toString(lid++, Character.MAX_RADIX));
                 
                 for(String s : obj.getOutgoingReferenceNames()) {
                     String n = obj.getName() + ".";
                     
-                    if((n + s).equals(entrySymbolName) || s.equals("ORIGIN")) continue;
+                    if(s.equals("ORIGIN")) {
+                        continue;
+                    }
                     
-                    nameIDMap.put(n + s, n + Integer.toHexString(id++));
+                    String ids = Integer.toString(id++, Character.MAX_RADIX);
+                    
+                    if((n + s).equals(entrySymbolName.s)) {
+                        // Update entry symbol
+                        entrySymbolName.s = libraryIDMap.get(obj.getName()) + "." + ids;
+                    }
+                    
+                    nameIDMap.put(n + s, n + ids);
                 }
             }
             
+            // Rename symbols
             for(RenameableRelocatableObject obj : objects) {
                 for(String old : nameIDMap.keySet()) {
                     obj.renameGlobal(old, nameIDMap.get(old));
                 }
             }
             
+            // Rename libraries
             for(RenameableRelocatableObject obj : objects) {
                 for(String old : libraryIDMap.keySet()) {
                     obj.renameLibrary(old, libraryIDMap.get(old));
@@ -1910,9 +1947,9 @@ public class Assembler {
                         secondIsLByte = secondRegister == Register.AL || secondRegister == Register.BL || secondRegister == Register.CL || secondRegister == Register.DL,
                         //secondIsHByte = secondRegister == Register.AH || secondRegister == Register.BH || secondRegister == Register.CH || secondRegister == Register.DH,
                         firstIsFlags = firstRegister == Register.F,
-                        firstIsPFlags = firstRegister == Register.PF,
+                        firstIsProtected = firstRegister == Register.PF || firstRegister == Register.ISP,
                         secondIsFlags = secondRegister == Register.F,
-                        secondIsPFlags = secondRegister == Register.PF;
+                        secondIsProtected = secondRegister == Register.PF || secondRegister == Register.ISP;
                 
                 int firstSize = firstOperand.getSize(),
                     secondSize = secondOperand.getSize(),
@@ -1948,12 +1985,12 @@ public class Assembler {
                             break;
                         }
                         
-                        // PF
-                        if(firstIsPFlags) {
-                            opcode = Opcode.MOV_PF_RIM;
+                        // PR
+                        if(firstIsProtected) {
+                            opcode = Opcode.MOV_PR_RIM;
                             break;
-                        } else if(secondIsPFlags) {
-                            opcode = Opcode.MOV_RIM_PF;
+                        } else if(secondIsProtected) {
+                            opcode = Opcode.MOV_RIM_PR;
                             break;
                         }
                         
@@ -2672,7 +2709,7 @@ public class Assembler {
         LOG.finest("Parsing operand expression: " + es);
         
         // double registers
-        if(es.symbols().get(0) instanceof RegisterSymbol rs) return new ResolvableLocationDescriptor(LocationType.REGISTER, parseRegister(es.symbols(), 0));
+        if(es.symbols().get(0) instanceof RegisterSymbol) return new ResolvableLocationDescriptor(LocationType.REGISTER, parseRegister(es.symbols(), 0));
         
         // TODO i think there are non-constant cases for this?
         return new ResolvableLocationDescriptor(LocationType.IMMEDIATE, -1, ConstantExpressionParser.parse(new LinkedList<Symbol>(es.symbols())));
@@ -2791,7 +2828,7 @@ public class Assembler {
             default -> throw new IllegalArgumentException("Invalid repetition count: " + s);
         };
         
-        if(symbolQueue.peek() instanceof SeparatorSymbol ss) symbolQueue.poll();
+        if(symbolQueue.peek() instanceof SeparatorSymbol) symbolQueue.poll();
         
         return new Repetition(parseLine(symbolQueue.poll(), symbolQueue, workingDirectory, -1), reps);
     }

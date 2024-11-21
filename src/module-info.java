@@ -8,4 +8,5 @@ module NotSoTiny {
     exports notsotiny.ui;
     exports notsotiny.sim;
     exports notsotiny.sim.memory;
+    exports notsotiny.sim.ops;
 }
