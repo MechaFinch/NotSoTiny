@@ -146,7 +146,7 @@ public class Disassembler {
                 break;
             
             case MOV_PR_RIM:
-                s += " PR," + disassembleRIM(memory, false, true, false, false, false);
+                s += " PR," + disassembleRIM(memory, false, true, false, true, true);
                 break;
             
             case JMPA_RIM32, CALLA_RIM32, PUSHW_RIM, BPUSHW_RIM:
@@ -167,7 +167,7 @@ public class Disassembler {
                 break;
             
             case MOV_RIM_PR:
-                s += disassembleRIM(memory, true, false, false, false, false) + ", PR";
+                s += disassembleRIM(memory, true, false, false, true, true) + ", PR";
                 break;
             
             case PINC_RIMP, PICC_RIMP, PDEC_RIMP, PDCC_RIMP:

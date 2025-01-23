@@ -10,6 +10,7 @@ import notsotiny.asm.resolution.ResolvableLocationDescriptor.LocationType;
 import notsotiny.asm.resolution.ResolvableMemory;
 import notsotiny.asm.resolution.ResolvableValue;
 import notsotiny.sim.ops.Opcode;
+import notsotiny.sim.ops.Operation;
 
 /**
  * Represents an instruction for assembly
@@ -355,6 +356,8 @@ public class Instruction implements Component {
             // this turns out simpler than i thought lol
             if(includeSource) {
                 if(sourceSize == 1 || (wideSource && sourceSize == 2)) rim |= 0b10_000_000;
+            } else if(this.source.getRegister() == Register.PF) {
+                rim |= 0b10_000_000;
             } else {
                 if(destSize == 1) rim |= 0b10_000_000;
             }
@@ -421,7 +424,8 @@ public class Instruction implements Component {
                 case BH, J, LK      -> 0b00_000_101;
                 case CH, K, BP      -> 0b00_000_110;
                 case DH, L, SP      -> 0b00_000_111;
-                case NONE, F, PF    -> 0;
+                case PF, ISP        -> 0b00_000_000;
+                case NONE, F        -> 0;
                 default             -> throw new IllegalArgumentException("Invalid source register " + this.source.getRegister());
             };
         //} else if(includeSource && sourceType == LocationType.IMMEDIATE) { // do nothing
@@ -640,7 +644,7 @@ public class Instruction implements Component {
         if(this.source.getType() == LocationType.REGISTER && this.source.getSize() == 4) {
             switch(this.op) {
                 // opcodes that allow wide sources
-                case MOVW_RIM, XCHGW_RIM, CALLA_RIM32, JMPA_RIM32, PUSH_BP, BPUSH_SP, PUSHW_RIM, BPUSHW_RIM:
+                case MOVW_RIM, XCHGW_RIM, CALLA_RIM32, JMPA_RIM32, PUSH_BP, BPUSH_SP, PUSHW_RIM, BPUSHW_RIM, MOV_RIM_PR, MOV_PR_RIM:
                     break;
                 
                 default:
@@ -651,7 +655,7 @@ public class Instruction implements Component {
         if(this.destination.getType() == LocationType.REGISTER && this.destination.getSize() == 4) {
             switch(this.op) {
                 // opcodes that allow wide destiantions
-                case MOVW_RIM, MOVS_RIM, MOVZ_RIM, XCHGW_RIM, LEA_RIM,
+                case MOVW_RIM, MOVS_RIM, MOVZ_RIM, XCHGW_RIM, LEA_RIM, MOV_RIM_PR, MOV_PR_RIM,
                      POP_BP, BPOP_SP, POPW_RIM, BPOPW_RIM,
                      ADD_SP_I8, SUB_SP_I8, ADD_BP_I8, SUB_BP_I8,
                      MULH_RIM, MULSH_RIM, PMULH_RIMP, PMULSH_RIMP,
@@ -705,29 +709,45 @@ public class Instruction implements Component {
         return this.source.isResolved() && this.destination.isResolved();
     }
     
+    /**
+     * @param mnemonic If true, uses mnemonic for opcode
+     * @return
+     */
+    public String toString(boolean mnemonic) {
+        String src = this.source.toString(),
+                dst = this.destination.toString(),
+                str = this.op.toString();
+         
+         if(this.op == Opcode.CMOVCC_RIM || this.op == Opcode.PCMOVCC_RIMP) {
+             str = this.op == Opcode.CMOVCC_RIM ? "CMOV" : "PCMOV";
+             
+             str += Opcode.fromOp((byte) this.ei8).toString().substring(1);
+         }
+         
+         if(mnemonic) {
+             str = str.replace("_RIM", "");
+             str = str.replace("_I8", "");
+             str = str.replace("_I16", "");
+             str = str.replace("_I32", "");
+             str = str.replace("_", " ");
+         }
+         
+         if(!dst.equals("")) {
+             str += " " + dst;
+             
+             if(!src.equals("")) {
+                 str += ", " + src;
+             }
+         } else if(!src.equals("")) {
+             str += " " + src;
+         }
+         
+         return str;
+    }
+    
     @Override
     public String toString() {
-        String src = this.source.toString(),
-               dst = this.destination.toString(),
-               str = this.op.toString();
-        
-        if(this.op == Opcode.CMOVCC_RIM || this.op == Opcode.PCMOVCC_RIMP) {
-            str = this.op == Opcode.CMOVCC_RIM ? "CMOV" : "PCMOV";
-            
-            str += Opcode.fromOp((byte) this.ei8).toString().substring(1);
-        }
-        
-        if(!dst.equals("")) {
-            str += " " + dst;
-            
-            if(!src.equals("")) {
-                str += ", " + src;
-            }
-        } else if(!src.equals("")) {
-            str += " " + src;
-        }
-        
-        return str;
+        return this.toString(false);
     }
     
     /**

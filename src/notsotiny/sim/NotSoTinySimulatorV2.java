@@ -122,27 +122,27 @@ public class NotSoTinySimulatorV2 {
             } catch(GPFException e) {
                 this.reg_ip = this.previousIP;
                 System.out.printf("General Protection Fault: %08X\n", this.reg_ip);
-                System.out.println(e.getMessage());
+                if(e.getMessage() != null) System.out.println(e.getMessage());
                 runInterrupt(VECTOR_GENERAL_PROTECTION_FAULT);
             } catch(UnprivilegedAccessException e) {
                 this.reg_ip = this.previousIP;
                 System.out.printf("Memory Protection Fault: %08X\n", this.reg_ip);
-                System.out.println(e.getMessage());
+                if(e.getMessage() != null) System.out.println(e.getMessage());
                 runInterrupt(VECTOR_MEMORY_PROTECTION_FAULT);
             } catch(DecodingException e) {
                 this.reg_ip = this.previousIP;
                 System.out.printf("Decoding Error: %08X\n", this.reg_ip);
-                System.out.println(e.getMessage());
+                if(e.getMessage() != null) System.out.println(e.getMessage());
                 runInterrupt(VECTOR_DECODING_ERROR);
             } catch(ArithmeticException e) {
                 this.reg_ip = this.previousIP;
                 System.out.printf("Division Error: %08X\n", this.reg_ip);
-                System.out.println(e.getMessage());
+                if(e.getMessage() != null) System.out.println(e.getMessage());
                 runInterrupt(VECTOR_DIVISION_ERROR);
             } catch(IndexOutOfBoundsException e) {
                 this.reg_ip = this.previousIP;
                 System.out.printf("Memory Error: %08X\n", this.reg_ip);
-                System.out.println(e.getMessage());
+                if(e.getMessage() != null) System.out.println(e.getMessage());
                 runInterrupt(VECTOR_MEMORY_ERROR);
             }
         }
@@ -2413,7 +2413,7 @@ public class NotSoTinySimulatorV2 {
                     break;
                 
                 case A:
-                    this.reg_a = (short) val;
+                    this.setRegPF((short) val);
                     break;
                 
                 default:

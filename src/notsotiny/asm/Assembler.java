@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -98,6 +99,97 @@ public class Assembler {
      * @author Mechafinch
      */
     public record AssemblyObject(List<Component> allInstructions, Map<String, Integer> labelIndexMap, String libraryName, HashMap<File, String> libraryFilesMap, HashMap<String, List<Integer>> incomingReferences, HashMap<String, Integer> outgoingReferences, HashMap<String, Integer> incomingReferenceWidths, HashMap<String, Integer> outgoingReferenceWidths) {
+        
+        private class Printer {
+            
+            // I should just refactor the printer util from the compiler but uhhh fuck you
+            
+            private OutputStream stream;
+            
+            /**
+             * @param stream
+             */
+            Printer(OutputStream stream) {
+                this.stream = stream;
+            }
+            
+            public void print(String s) throws IOException {
+                this.stream.write(s.getBytes());
+            }
+            
+            public void println(String s) throws IOException {
+                this.print(s);
+                this.stream.write((byte) '\n');
+            }
+            
+        }
+        
+        public void print(OutputStream stream) throws IOException {
+            Printer p = new Printer(stream);
+            
+            for(int i = 0; i < this.allInstructions.size(); i++) {
+                // If this index is labeled, print relevant labels
+                boolean hasLabel =false;
+                
+                for(String lbl : labelIndexMap.keySet()) {
+                    if(labelIndexMap.get(lbl) == i) {
+                        if(!hasLabel) {
+                            p.println("");
+                            hasLabel = true;
+                        }
+                        
+                        p.println(lbl + ":");
+                    }
+                }
+                
+                // Print component
+                switch(this.allInstructions.get(i)) {
+                    case InitializedData id: {
+                        p.print(switch(id.getWordSize()) {
+                            case 1  -> "\tresb ";
+                            case 2  -> "\tresw ";
+                            case 4  -> "\tresp ";
+                            default -> "\tres" + (id.getWordSize() * 8) + " ";
+                        });
+                        
+                        boolean first = true;
+                        for(ResolvableValue rd : id.getData()) {
+                            if(!first) {
+                                p.print(", ");
+                            } else {
+                                first = false;
+                            }
+                            
+                            p.print(rd + "");
+                        }
+                        
+                        p.println("");
+                        break;
+                    }
+                    
+                    case Instruction inst: {
+                        p.println("\t" + inst.toString(true));
+                        break;
+                    }
+                    
+                    case Repetition rep: {
+                        p.println("\t" + rep);
+                        break;
+                    }
+                    
+                    case UninitializedData ud: {
+                        if(ud.getSize() != 0) {
+                            p.println("\tresb " + ud.getSize());
+                        }
+                        break;
+                    }
+                    
+                    case Object o:
+                        throw new IllegalArgumentException("Attempt to print unknown component class " + o.getClass());
+                }
+                
+            }
+        }
         
     }
     
@@ -457,6 +549,13 @@ public class Assembler {
                             outgoingReferences.put("ORIGIN", (int) origin);
                             outgoingReferenceWidths.put("ORIGIN", 4);
                             
+                            handled = true;
+                            break;
+                        
+                        // flag as privilaged
+                        case "%PRIVILAGED":
+                            outgoingReferences.put("PRIVILAGED", 1);
+                            outgoingReferenceWidths.put("PRIVILAGED", 4);
                             handled = true;
                             break;
                         
@@ -2163,6 +2262,19 @@ public class Assembler {
                         }
                         
                         opcode = Opcode.MOV_RIM;
+                        break;
+                    
+                    case MOVW:
+                        // PR
+                        if(firstIsProtected) {
+                            opcode = Opcode.MOV_PR_RIM;
+                            break;
+                        } else if(secondIsProtected) {
+                            opcode = Opcode.MOV_RIM_PR;
+                            break;
+                        }
+                        
+                        opcode = Opcode.MOVW_RIM;
                         break;
                     
                     case MOVS:

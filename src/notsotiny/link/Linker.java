@@ -97,7 +97,7 @@ public class Linker {
         String entrySymbol = (String) relocatorPair.get(1);
         
         byte[] data,
-               relData = relocator.relocate(Integer.toUnsignedLong(origin));
+               relData = relocator.relocate(Integer.toUnsignedLong(origin), false, false);
         
         if(truncate) {
             data = relData;

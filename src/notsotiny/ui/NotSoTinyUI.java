@@ -28,6 +28,8 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.TextField;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.DataFormat;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
@@ -86,24 +88,8 @@ public class NotSoTinyUI extends Application {
      */
     
     // memory map constants
-    private static final long IVT_START =       0x0000_0000,
-                              PRIVRAM_START =   0x0000_0400,
-                              LOWRAM_START =    0x0000_0800,
-                              SPI_START =       0x8000_0000,
-                              KEYPAD_START =    0x8001_0000,
-                              CC_START =        0x8002_0000,
-                              KEYBOARD_START =  0xF000_0000,
-                              SOUND_START =     0xF001_0000,
-                              VIDEO_START =     0xF002_0000,
-                              RANDOM_START =    0xF004_0000,
-                              PIC_START =       0xF005_0000,
-                              DISK_START =      0xF006_0000,
-                              RESET_START =     0xF007_0000,
-                              BOOTROM_START =   0xFFFF_FC00;
-    
-    private static final int IVT_SIZE =         0x0000_0400,
-                             PRIVRAM_SIZE =     0x0000_0400,
-                             LOWRAM_SIZE =      0x0FFF_F800,
+    private static final int PRIVRAM_SIZE =     0x0000_4000,
+                             LOWRAM_SIZE =      0x1000_0000 - PRIVRAM_SIZE,
                              SPI_SIZE =         0x0000_0004,
                              KEYPAD_SIZE =      0x0000_0008,
                              CC_SIZE =          0x0000_0002,
@@ -115,6 +101,20 @@ public class NotSoTinyUI extends Application {
                              DISK_SIZE =        0x0000_000C,
                              RESET_SIZE =       0x0000_0010,
                              BOOTROM_SIZE =     0x0000_0400;
+    
+    private static final long PRIVRAM_START =   0x0000_0000,
+                              LOWRAM_START =    PRIVRAM_START + PRIVRAM_SIZE,
+                              SPI_START =       0x8000_0000,
+                              KEYPAD_START =    0x8001_0000,
+                              CC_START =        0x8002_0000,
+                              KEYBOARD_START =  0xF000_0000,
+                              SOUND_START =     0xF001_0000,
+                              VIDEO_START =     0xF002_0000,
+                              RANDOM_START =    0xF004_0000,
+                              PIC_START =       0xF005_0000,
+                              DISK_START =      0xF006_0000,
+                              RESET_START =     0xF007_0000,
+                              BOOTROM_START =   0xFFFF_FC00;
     
     private static final int VIDEO_BUFFER_SIZE =    0x0001_4000,
                              VIDEO_CHARSET_SIZE =   0x0000_1000,
@@ -136,21 +136,24 @@ public class NotSoTinyUI extends Application {
     */
     
     private static final String //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernelv2\\src\\",
-                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\testing\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\testing\\",
+                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\aoc\\2018\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\playground\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\forth-based\\aoc\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\minesweeper\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\fakeos\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GTMK-jam-2023\\game\\src\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GMTK-Game-Jam-2024\\game\\src\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\java\\eclipse-workspace\\NSTLCompiler\\test\\oir\\",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "forth.oex",
-                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test-badapple.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test-badapple.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "testing-mdbt.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_mandel.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "playground.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "minesweeper.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_shell.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "game.oex",
-                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "aoc.oex",
+                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "advent.oex",
                                 DISK_FOLDER = PROGRAM_DATA_FOLDER + "disk\\",
                                 TEXT_FONT_FILE = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\textsmall.dat";
     
@@ -160,8 +163,7 @@ public class NotSoTinyUI extends Application {
     
     private MemoryManager mmu;
     
-    private FlatMemoryController ivtController,
-                                 privramController,
+    private FlatMemoryController privramController,
                                  lowramController,
                                  placeholder_spiController,
                                  placeholder_cacheController,
@@ -188,8 +190,7 @@ public class NotSoTinyUI extends Application {
     private ScreenBuffer screenBufferController;
     
     // actual memory arrays
-    private byte[] ivtArray,
-                   privramArray,
+    private byte[] privramArray,
                    lowramArray,
                    placeholder_spiArray,
                    placeholder_cacheArray,
@@ -386,7 +387,6 @@ public class NotSoTinyUI extends Application {
         //this.mmu = new MemoryManager();
         
         // initialize flat memory segments]
-        ivtArray = new byte[IVT_SIZE];
         privramArray = new byte[PRIVRAM_SIZE];
         lowramArray = new byte[LOWRAM_SIZE];
         placeholder_spiArray = new byte[SPI_SIZE];
@@ -397,7 +397,6 @@ public class NotSoTinyUI extends Application {
         videoOtherArray = new byte[VIDEO_OTHER_SIZE];
         bootromArray = new byte[BOOTROM_SIZE];
         
-        ivtController = new FlatMemoryController(ivtArray, true, true);
         privramController = new FlatMemoryController(privramArray, true, true);
         lowramController = new FlatMemoryController(lowramArray, false, false);
         placeholder_spiController = new FlatMemoryController(placeholder_spiArray, false, false);
@@ -416,7 +415,6 @@ public class NotSoTinyUI extends Application {
         resetHookController = new HookController(() -> { /*System.out.println("Reset!");*/ this.fullResetPending = true; });
         screenBufferController = new ScreenBuffer(videoBufferArray); // 3FFFC
         
-        this.mmu.registerSegment(ivtController, IVT_START, IVT_SIZE);
         this.mmu.registerSegment(privramController, PRIVRAM_START, PRIVRAM_SIZE);
         ((CachingMemoryManager)this.mmu).registerSegment(lowramController, LOWRAM_START, LOWRAM_SIZE, true);
         //this.mmu.registerSegment(lowramController, LOWRAM_START, LOWRAM_SIZE);
@@ -478,15 +476,13 @@ public class NotSoTinyUI extends Application {
             this.entrySymbol = (String) relocatorPair.get(1);
         }
         
-        int relStart = this.relocator.hasReference("ORIGIN", false) ? 0 : (IVT_SIZE + PRIVRAM_SIZE);
+        byte[] privilagedData = new byte[PRIVRAM_SIZE];
+        byte[] relocatedData = new byte[LOWRAM_SIZE];
+        long entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, relocatedData, privilagedData, LOWRAM_START, 0, 0, 0);
         
-        byte[] relocatedData = new byte[IVT_SIZE + PRIVRAM_SIZE + LOWRAM_SIZE];
-        long entry = ExecLoader.loadRelocator(this.relocator, entrySymbol, relocatedData, relStart, relStart);
-        
-        System.arraycopy(relocatedData, 0, ivtArray, 0, ivtArray.length);
-        System.arraycopy(relocatedData, IVT_SIZE, privramArray, 0, PRIVRAM_SIZE);
-        System.arraycopy(relocatedData, IVT_SIZE + PRIVRAM_SIZE, lowramArray, 0, LOWRAM_SIZE);
-        
+        System.arraycopy(privilagedData, 0, privramArray, 0, PRIVRAM_SIZE);
+        System.arraycopy(relocatedData, 0, lowramArray, 0, LOWRAM_SIZE);
+                
         // write entry vector
         this.mmu.write4BytesPrivileged(VECTOR_RESET * 4, (int) entry);
         
@@ -515,6 +511,8 @@ public class NotSoTinyUI extends Application {
     }
     
     private void restartSimulator(boolean reload) {
+        this.paster.stopPasting();
+        
         // kill simThread
         this.simThread.interrupt();
         
@@ -668,6 +666,7 @@ public class NotSoTinyUI extends Application {
                       fieldClockSpeed;
     
     private Button buttonToggleAdvanced,
+                   buttonPasteText,
                    buttonAwaken,
                    buttonToggleRunning,
                    buttonStepSim,
@@ -686,6 +685,9 @@ public class NotSoTinyUI extends Application {
     private boolean advancedViewVisisble = false;
     
     private ScheduledFuture<?> uiUpdateFuture;
+    
+    private Clipboard clipboard;
+    private PasteThread paster;
     
     private synchronized void traceInstruction() {
         String descriptor;
@@ -718,6 +720,9 @@ public class NotSoTinyUI extends Application {
      * Initialize the UI 
      */
     private void createUI() {
+        this.clipboard = Clipboard.getSystemClipboard();
+        this.paster = new PasteThread("");
+        
         // layout tree
         // initialize components in post-order
         // screen
@@ -732,6 +737,7 @@ public class NotSoTinyUI extends Application {
         // basic info
         this.infoTotalInstructions = new Text("Total instrctions: 0");
         this.infoAverageMIPS = new Text("Average MIPS:  0.00");
+        this.buttonPasteText = new Button("Paste Text");
         this.buttonAwaken = new Button("Awaken CPU");
         this.buttonToggleRunning = new Button("Start CPU");
         this.buttonToggleAdvanced = new Button("Show debug/advanced view");
@@ -742,7 +748,7 @@ public class NotSoTinyUI extends Application {
         HBox.setHgrow(rBasicInfoSeparator, Priority.ALWAYS);
         
         HBox boxBasicInfoHUpper = new HBox(rBasicInfoSeparator, this.infoAverageMIPS);
-        HBox boxBasicInfoHLower = new HBox(this.buttonAwaken, this.buttonToggleRunning, this.buttonToggleAdvanced);
+        HBox boxBasicInfoHLower = new HBox(this.buttonPasteText, this.buttonAwaken, this.buttonToggleRunning, this.buttonToggleAdvanced);
         VBox boxBasicInfoV = new VBox(boxBasicInfoHUpper, boxBasicInfoHLower);
         
         this.buttonReset = new Button("Reset");
@@ -837,6 +843,7 @@ public class NotSoTinyUI extends Application {
         
         // bindings
         this.buttonToggleAdvanced.setOnAction(e -> toggleAdvancedView());
+        this.buttonPasteText.setOnAction(e -> pasteText());
         this.buttonAwaken.setOnAction(e -> runInterrupt(VECTOR_NMI));
         this.buttonToggleRunning.setOnAction(e -> toggleRunSimulator());
         this.buttonStepSim.setOnAction(e -> stepSim());
@@ -1070,10 +1077,10 @@ public class NotSoTinyUI extends Application {
                 Disassembler dis = new Disassembler();
                 String state = "-- Processor State --\n";
                 
-                state += String.format("A    B    C    D%n%04X %04X %04X %04X%nI    J    K    L%n%04X %04X %04X %04X%nF    PF%n%04X %04X%nip       bp       sp%n%08X %08X %08X%n",
+                state += String.format("A    B    C    D%n%04X %04X %04X %04X%nI    J    K    L%n%04X %04X %04X %04X%nF    PF   ISP%n%04X %04X %08X%nIP       BP       SP%n%08X %08X %08X%n",
                         sim.getRegA(), sim.getRegB(), sim.getRegC(), sim.getRegD(),
                         sim.getRegI(), sim.getRegJ(), sim.getRegK(), sim.getRegL(),
-                        sim.getRegF(), sim.getRegPF(),
+                        sim.getRegF(), sim.getRegPF(), sim.getRegISP(),
                         sim.getRegIP(), sim.getRegBP(), sim.getRegSP());
                 
                 try {
@@ -1257,4 +1264,91 @@ public class NotSoTinyUI extends Application {
         this.advancedView.setVisible(this.advancedViewVisisble);
         this.stage.sizeToScene();
     }
+    
+    private class PasteThread extends Thread {
+        
+        private String text;
+        private boolean canRun = false;
+        
+        public PasteThread(String text) {
+            this.text = text;
+        }
+        
+        public void stopPasting() {
+            this.canRun = false;
+        }
+        
+        @Override
+        public void run() {
+            this.canRun = true;
+            
+            // Make sure the cpu is running to recieve characters
+            boolean pastFreerun = NotSoTinyUI.this.freerunEnabled;
+            if(!NotSoTinyUI.this.freerunEnabled) {
+                toggleRunSimulator();
+            }
+            
+            pasteCodeDown(KeyCode.ALT.getCode());
+            
+            for(char c : text.toCharArray()) {
+                if(!this.canRun) {
+                    break;
+                }
+                
+                pasteCodeDown(c);
+                pasteCodeUp(c);
+            }
+            
+            pasteCodeUp(KeyCode.ALT.getCode());
+            
+            if(NotSoTinyUI.this.freerunEnabled != pastFreerun) {
+                toggleRunSimulator();
+            }
+        }
+        
+        private void pasteCodeDown(int code) {
+            // Wait for sim halted
+            do {
+                try {
+                    Thread.sleep(1);
+                } catch(InterruptedException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+            } while(!NotSoTinyUI.this.sim.getHalted());
+            
+            // Key down
+            NotSoTinyUI.this.keyboardBufferController.write4Bytes(0, code);
+            runInterrupt(VECTOR_KEYDOWN);
+        }
+        
+        private void pasteCodeUp(int code) {
+            // Wait for sim halted
+            do {
+                try {
+                    Thread.sleep(1);
+                } catch(InterruptedException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+            } while(!NotSoTinyUI.this.sim.getHalted());
+            
+            // Key up
+            NotSoTinyUI.this.keyboardBufferController.write4Bytes(0, code);
+            runInterrupt(VECTOR_KEYUP);
+        }
+    }
+    
+    /**
+     * Pastes text from the clipboard
+     */
+    private void pasteText() {
+        if(this.clipboard.hasString()) {
+            String text = (String) this.clipboard.getContent(DataFormat.PLAIN_TEXT);
+            
+            this.paster = new PasteThread(text);
+            this.paster.start();
+        }
+    }
+    
 }

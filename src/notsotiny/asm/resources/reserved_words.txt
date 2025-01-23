@@ -211,6 +211,7 @@ k
 l
 bp
 sp
+isp
 ip
 f
 pf
@@ -225,6 +226,7 @@ import
 %libname
 %define
 %org
+%privilaged
 %nlo
 resb
 resw
