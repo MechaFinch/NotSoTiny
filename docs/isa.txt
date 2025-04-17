@@ -26,6 +26,12 @@ Registers
 	Special Purpose Registers
 	16-bit
 	F		Arithmetic Flags
+	
+	Protected Registers
+	32-bit
+	ISP		Interrupt Stack Pointer
+	
+	16-bit
 	PF		Processor Flags
 
 	F layout
@@ -43,11 +49,12 @@ Registers
 	|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|
 	|  F |  E |  D |  C |  B |  A |  9 |  8 |  7 |  6 |  5 |  4 |  3 |  2 |  1 |  0 |
 	|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|
-	|                                                                     | PV | IE |
-	|---------------------------------------------------------------------|----|----|
+	|                                                                | II | PV | IE |
+	|----------------------------------------------------------------|----|----|----|
 	Field					Startup		Interrupt	Description
 	IE: Interrupt Enable	0			0			If 1, maskable interrupts are allowed. If 0, maskable interrupts are ignored.
 	PV:	Privilege Level		1			1			If 1, privileged. If 0, unprivileged.
+	II: In Interrupt		1			1			Set to 1 when an interrupt is fired (INT executed)
 
 
 
@@ -71,14 +78,14 @@ Instruction Encoding
 	1	'rim' field specifies memory
 	
 	's' field (Size)
-		normal	wide	packed
-	0	16-bit	32-bit	2x8-bit
-	1	8-bit	16-bit	4x4-bit
+		normal	wide	packed	protected
+	0	16-bit	32-bit	2x8-bit	p32
+	1	8-bit	16-bit	4x4-bit	p16
 	
 	'reg' and 'rim' fields
 	value	register			memory
-			8  16	32
-	000		AL	A	D:A			immediate value source
+			8  16	32	p16	p32
+	000		AL	A	D:A	PF	ISP	immediate value source
 	001		BL	B	A:B			immediate address source
 	010		CL	C	B:C			base + index source
 	011		DL	D	C:D			base + index + offset source
@@ -116,7 +123,7 @@ Instruction Encoding
 	11		4
 	
 	The address of a memory location specified by the BIO byte and Immediate bytes is
-		base + (signext(index) * scale) + signext(offset)
+		base + (zeroext(index) * scale) + signext(offset)
 	If scale = 0, the 'index' field specifies the size of the offset immediate and whether to use
 	IP-relative addressing.
 	In IP-relative addressing, IP is used as the base, and the 'base' field is used to specify an index.
@@ -132,12 +139,23 @@ Packed Operations
 
 
 
+Exceptions
+	A processor reset branches to the reset vector (0x00)
+	Reading or writing memory that does not exist raises a memory error (0x08)
+	Division by zero raises a division error (0x0D)
+	Invalid opcodes and RIM bytes (no invalid BIO bytes exist) raise a decoding error (0x0F)
+	Reading or writing protected registers while unprivileged raises a general protection fault (0x10)
+		INT may write to protected registers for select vectors
+	Reading or writing protected memory while unprivileged raises a memory protection fault (0x11)
+
+
+
 Other Notes
 	Conditions use the same flag combinations as x86 conditions
+	Division truncates towards zero.
 	Division sets the carry and overflow flags if the quotient is too large for the destination;
 	the zero flag is set if both the quotient and remainder (if applicable) are zero; the sign flag
 	is set according to the quotient.
-	Reading or writing PF while unprivileged raises a general protection fault (0x10).
 	
 	Calling Convention
 	- A, B, C, D caller-saved
@@ -210,10 +228,10 @@ Instruction Descriptions
 		BP					<- BP + size
 	
 	PUSHA
-		Pushes, in order, A, B, C, D, I, J, K, L, BP
+		Pushes, in order, A, B, C, D, I, J, K, L
 	
 	POPA
-		Pops, in order, BP, L, K, J, I, D, C, B, A
+		Pops, in order, L, K, J, I, D, C, B, A
 	
 	LEA
 		wide destination <- address(source)
@@ -255,19 +273,32 @@ Instruction Descriptions
 		SP	<- SP + 4
 	
 	INT
-		[SP - 4]	<- IP
-		[SP - 6]	<- F
-		[SP - 8]	<- PF
-		SP			<- SP - 8
-		IP			<- [source * 4]
-		PF			<- IE=0, PV=1
-		Source must be 8 bits
+		If II = 1
+			[SP - 4]	<- IP
+			[SP - 8]	<- BP
+			[SP - 12]	<- SP
+			[SP - 14]	<- F
+			[SP - 16]	<- PF
+			SP			<- SP - 16
+			IP			<- [source * 4]
+			PF			<- IE = 0, PV = 1, II = 1
+			
+		If II = 0
+			[ISP - 4]	<- IP
+			[ISP - 8]	<- BP
+			[ISP - 12]	<- SP
+			[ISP - 14]	<- F
+			[ISP - 16]	<- PF
+			SP			<- ISP - 16
+			IP			<- [source * 4]
+			PF			<- IE = 0, PV = 1, II = 1
 	
 	IRET
-		IP	<- [SP + 4]
+		IP	<- [SP + 12]
+		BP	<- [SP + 8]
+		SP	<- [SP + 4]
 		F	<- [SP + 2]
-		PF	<- [SP]
-		SP	<- SP + 8
+		PF	<- [SP + 0]
 	
 	HLT
 		Halts execution until an external interrupt
@@ -331,6 +362,12 @@ Instruction Descriptions
 		Remainder in upper half of dest
 		Full value of wide destination used
 		When packed, a packed quotient and packed remainder are each produced.
+	
+	TST
+		Set arithmetic flags according to destination & source
+	
+	PTST
+		Set arithmetic flags according to destination & source, split by packing
 	
 	AND
 		destination <- destination & source

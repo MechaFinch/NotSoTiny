@@ -146,10 +146,10 @@ public class Assembler {
                 switch(this.allInstructions.get(i)) {
                     case InitializedData id: {
                         p.print(switch(id.getWordSize()) {
-                            case 1  -> "\tresb ";
-                            case 2  -> "\tresw ";
-                            case 4  -> "\tresp ";
-                            default -> "\tres" + (id.getWordSize() * 8) + " ";
+                            case 1  -> "\tdb ";
+                            case 2  -> "\tdw ";
+                            case 4  -> "\tdp ";
+                            default -> "\td" + (id.getWordSize() * 8) + " ";
                         });
                         
                         boolean first = true;

@@ -2,7 +2,6 @@ package notsotiny.sim;
 
 import notsotiny.sim.memory.MemoryManager;
 import notsotiny.sim.memory.UnprivilegedAccessException;
-import notsotiny.sim.ops.ExecutionGroup;
 import notsotiny.sim.ops.Opcode;
 import notsotiny.sim.ops.Operation;
 
@@ -26,6 +25,9 @@ public class NotSoTinySimulatorV2 {
                               VECTOR_GENERAL_PROTECTION_FAULT = 0x10,
                               VECTOR_MEMORY_PROTECTION_FAULT = 0x11;
     
+    // Vectors for interrupts allowed to be fired by unprivileged code
+    private static final byte VECTOR_SYSCALL = 0x20;
+    
     // MMU
     private MemoryManager memory;
     
@@ -48,7 +50,8 @@ public class NotSoTinySimulatorV2 {
     
     // PF Fields
     private boolean pf_ie,  // Interrupts Enabled
-                    pf_pv;  // PriVilege
+                    pf_pv,  // Privilege
+                    pf_ii;  // In Interrupt
     
     // Other State
     private boolean halted,
@@ -85,6 +88,7 @@ public class NotSoTinySimulatorV2 {
         
         this.pf_ie = false;
         this.pf_pv = true;
+        this.pf_ii = true;
         
         this.halted = false;
         this.pendingExternalInterrupt = false;
@@ -2277,7 +2281,7 @@ public class NotSoTinySimulatorV2 {
                     return;
                 
                 case INT:
-                    runInterrupt((byte) this.cid.sourceValue);
+                    runINT();
                     return;
                     
                 default:
@@ -2556,7 +2560,6 @@ public class NotSoTinySimulatorV2 {
      * @throws UnprivilegedAccessException 
      */
     private void runPUSHA() throws UnprivilegedAccessException {
-        this.memory.write4Bytes(this.reg_sp - 20, this.reg_bp, this.pf_pv);
         this.memory.write2Bytes(this.reg_sp - 16, this.reg_l, this.pf_pv);
         this.memory.write2Bytes(this.reg_sp - 14, this.reg_k, this.pf_pv);
         this.memory.write2Bytes(this.reg_sp - 12, this.reg_j, this.pf_pv);
@@ -2566,7 +2569,7 @@ public class NotSoTinySimulatorV2 {
         this.memory.write2Bytes(this.reg_sp - 4, this.reg_b, this.pf_pv);
         this.memory.write2Bytes(this.reg_sp - 2, this.reg_a, this.pf_pv);
         
-        this.reg_sp -= 20;
+        this.reg_sp -= 16;
     }
     
     /**
@@ -2574,17 +2577,16 @@ public class NotSoTinySimulatorV2 {
      * @throws UnprivilegedAccessException 
      */
     private void runPOPA() throws UnprivilegedAccessException {
-        this.reg_bp = this.memory.read4Bytes(this.reg_sp + 0, this.pf_pv);
-        this.reg_l = this.memory.read2Bytes(this.reg_sp + 4, this.pf_pv);
-        this.reg_k = this.memory.read2Bytes(this.reg_sp + 6, this.pf_pv);
-        this.reg_j = this.memory.read2Bytes(this.reg_sp + 8, this.pf_pv);
-        this.reg_i = this.memory.read2Bytes(this.reg_sp + 10, this.pf_pv);
-        this.reg_d = this.memory.read2Bytes(this.reg_sp + 12, this.pf_pv);
-        this.reg_c = this.memory.read2Bytes(this.reg_sp + 14, this.pf_pv);
-        this.reg_b = this.memory.read2Bytes(this.reg_sp + 16, this.pf_pv);
-        this.reg_a = this.memory.read2Bytes(this.reg_sp + 18, this.pf_pv);
+        this.reg_l = this.memory.read2Bytes(this.reg_sp + 0, this.pf_pv);
+        this.reg_k = this.memory.read2Bytes(this.reg_sp + 2, this.pf_pv);
+        this.reg_j = this.memory.read2Bytes(this.reg_sp + 4, this.pf_pv);
+        this.reg_i = this.memory.read2Bytes(this.reg_sp + 6, this.pf_pv);
+        this.reg_d = this.memory.read2Bytes(this.reg_sp + 8, this.pf_pv);
+        this.reg_c = this.memory.read2Bytes(this.reg_sp + 10, this.pf_pv);
+        this.reg_b = this.memory.read2Bytes(this.reg_sp + 12, this.pf_pv);
+        this.reg_a = this.memory.read2Bytes(this.reg_sp + 14, this.pf_pv);
         
-        this.reg_sp += 20;
+        this.reg_sp += 16;
     }
     
     /**
@@ -3169,17 +3171,38 @@ public class NotSoTinySimulatorV2 {
             throw new GPFException();
         }
         
-        // Pop F, PF, IP, SP
-        short tmpPF = this.memory.read2Bytes(this.reg_isp + 4, this.pf_pv);
-        short tmpF = this.memory.read2Bytes(this.reg_isp + 6, this.pf_pv);
-        int tmpIP = this.memory.read4Bytes(this.reg_isp + 8, this.pf_pv);
-        this.reg_sp = this.memory.read4Bytes(this.reg_isp + 12, this.pf_pv);
+        // Pop PF, F, SP, BP, IP
+        short tmpPF = this.memory.read2Bytes(this.reg_sp + 0, this.pf_pv);
+        short tmpF = this.memory.read2Bytes(this.reg_sp + 2, this.pf_pv);
+        int tmpSP = this.memory.read4Bytes(this.reg_sp + 4, this.pf_pv);
+        int tmpBP = this.memory.read4Bytes(this.reg_sp + 8, this.pf_pv);
+        int tmpIP = this.memory.read4Bytes(this.reg_sp + 12, this.pf_pv);
         
         // Write flags now that all exception causers are done
         this.reg_f = tmpF;
         this.setRegPF(tmpPF);
+        this.reg_sp = tmpSP;
+        this.reg_bp = tmpBP;
         this.reg_ip = tmpIP;
-        this.reg_isp += 16;
+    }
+    
+    /**
+     * Software interrupt
+     * @throws UnprivilegedAccessException
+     * @throws GPFException
+     */
+    private void runINT() throws GPFException {
+        byte vector = (byte) this.cid.sourceValue;
+        
+        // TODO
+        if(!this.pf_pv) {
+            // Only select software interrupts are allowed when unprivileged
+            if(vector != VECTOR_SYSCALL) {
+                throw new GPFException();
+            }
+        }
+        
+        runInterrupt(vector);
     }
     
     /**
@@ -3192,8 +3215,6 @@ public class NotSoTinySimulatorV2 {
         writeLocation(this.cid.destinationDescriptor, res[0]);
         this.reg_f = (short) res[1];
     }
-    
-    // TODO
     
     /*
      * Helpers
@@ -3878,30 +3899,32 @@ public class NotSoTinySimulatorV2 {
         };
     }
     
-    // TODO
-    
     /*
      * Interrupts
      */
     
     /**
-     * Execute a software interrupt
+     * Execute an interrupt
      * 
      * @param vector
      * @throws UnprivilegedAccessException
      */
     private void runInterrupt(byte vector) {
-        // Push SP, IP, F, PF
-        this.memory.write4BytesPrivileged(this.reg_isp - 4, this.reg_sp);
-        this.memory.write4BytesPrivileged(this.reg_isp - 8, this.reg_ip);
-        this.memory.write4BytesPrivileged(this.reg_isp - 12, (this.reg_f << 16) | this.getRegPF());
-        this.reg_sp = this.reg_isp - 12;
-        this.reg_isp = this.reg_isp - 16;   // Gives space for a pair to be pushed without precluding reentrancy
+        // What pointer are we using
+        // In interrupt -> SP, ISP otherwise
+        int pointer = (this.pf_ii) ? this.reg_sp : this.reg_isp;
+        
+        this.memory.write4BytesPrivileged(pointer - 4, this.reg_ip);
+        this.memory.write4BytesPrivileged(pointer - 8, this.reg_bp);
+        this.memory.write4BytesPrivileged(pointer - 12, this.reg_sp);
+        this.memory.write4BytesPrivileged(pointer - 16, (this.reg_f << 16) | this.getRegPF());
+        this.reg_sp = pointer - 16;
         
         // Get vector & jump
         this.reg_ip = this.memory.read4BytesPrivileged((vector & 0x00FFl) << 2);
-        this.pf_ie = false; // Prevent interrupt nesting
+        this.pf_ie = false; // Discourage interrupt nesting
         this.pf_pv = true;  // Set privilege
+        this.pf_ii = true;  // We're in an interrupt now
     }
     
     /*
@@ -3969,7 +3992,8 @@ public class NotSoTinySimulatorV2 {
     public short getRegPF() {
         return (short)(
             (this.pf_ie ? 0x01 : 0x00) |
-            (this.pf_pv ? 0x02 : 0x00)
+            (this.pf_pv ? 0x02 : 0x00) |
+            (this.pf_ii ? 0x04 : 0x00)
         );
     }
     
@@ -4002,5 +4026,6 @@ public class NotSoTinySimulatorV2 {
     public void setRegPF(short pf) {
         this.pf_ie = (pf & 0x01) != 0;
         this.pf_pv = (pf & 0x02) != 0;
+        this.pf_ii = (pf & 0x04) != 0;
     }
 }

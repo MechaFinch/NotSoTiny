@@ -73,12 +73,14 @@ public class NotSoTinyUI extends Application {
      */
     
     private static final long CLOCK_PERIOD = 0l,
+                              //PIT_PERIOD = 1_000_000;
                               PIT_PERIOD = 33_333_333l;
     
     private static final boolean USE_SCREEN = true,
                                  START_IMMEDIATELY = false,
                                  START_WITH_CLOCK = false,
-                                 TRACK_CPUTIME = true;
+                                 TRACK_CPUTIME = true,
+                                 USE_PRIVRAM = false;
     
     private static final int TRACE_SIZE = 16,
                              MEMWATCH_BYTES = 64;
@@ -88,8 +90,8 @@ public class NotSoTinyUI extends Application {
      */
     
     // memory map constants
-    private static final int PRIVRAM_SIZE =     0x0000_4000,
-                             LOWRAM_SIZE =      0x1000_0000 - PRIVRAM_SIZE,
+    private static final int PRIVRAM_SIZE =     USE_PRIVRAM ? 0x0000_4000 : 0,
+                             LOWRAM_SIZE =      0x0010_0000 - PRIVRAM_SIZE,
                              SPI_SIZE =         0x0000_0004,
                              KEYPAD_SIZE =      0x0000_0008,
                              CC_SIZE =          0x0000_0002,
@@ -137,23 +139,28 @@ public class NotSoTinyUI extends Application {
     
     private static final String //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernelv2\\src\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\testing\\",
-                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\aoc\\2018\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\aoc\\2018\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\playground\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\forth-based\\aoc\\",
-                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\minesweeper\\",
+                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\minesweeper\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\maths\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\euler\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\fakeos\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\rosetta\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GTMK-jam-2023\\game\\src\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GMTK-Game-Jam-2024\\game\\src\\",
-                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\java\\eclipse-workspace\\NSTLCompiler\\test\\oir\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\java\\eclipse-workspace\\NSTLCompiler\\test\\",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "forth.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test-badapple.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "badappleplayer.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "testing-mdbt.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_mandel.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "playground.oex",
-                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "minesweeper.oex",
+                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "minesweeper.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_shell.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "game.oex",
-                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "advent.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "advent.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "e2.oex",
                                 DISK_FOLDER = PROGRAM_DATA_FOLDER + "disk\\",
                                 TEXT_FONT_FILE = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\textsmall.dat";
     
@@ -415,7 +422,7 @@ public class NotSoTinyUI extends Application {
         resetHookController = new HookController(() -> { /*System.out.println("Reset!");*/ this.fullResetPending = true; });
         screenBufferController = new ScreenBuffer(videoBufferArray); // 3FFFC
         
-        this.mmu.registerSegment(privramController, PRIVRAM_START, PRIVRAM_SIZE);
+        if(USE_PRIVRAM) { this.mmu.registerSegment(privramController, PRIVRAM_START, PRIVRAM_SIZE); }
         ((CachingMemoryManager)this.mmu).registerSegment(lowramController, LOWRAM_START, LOWRAM_SIZE, true);
         //this.mmu.registerSegment(lowramController, LOWRAM_START, LOWRAM_SIZE);
         this.mmu.registerSegment(placeholder_spiController, SPI_START, SPI_SIZE);
@@ -488,8 +495,14 @@ public class NotSoTinyUI extends Application {
         
         // simulator
         this.sim = new NotSoTinySimulatorV2(this.mmu);
-        this.sim.setRegSP((int)(LOWRAM_START + LOWRAM_SIZE));
-        this.sim.setRegISP((int)(PRIVRAM_START + PRIVRAM_SIZE));
+        
+        if(USE_PRIVRAM) {
+            this.sim.setRegSP((int)(LOWRAM_START + LOWRAM_SIZE));
+            this.sim.setRegISP((int)(PRIVRAM_START + PRIVRAM_SIZE));
+        } else {
+            this.sim.setRegSP((int)(LOWRAM_START + LOWRAM_SIZE) - 1024);
+            this.sim.setRegISP((int)(LOWRAM_START + LOWRAM_SIZE));
+        }
         
         // timing stuff
         this.simThread = new SimulatorThread(CLOCK_PERIOD);
