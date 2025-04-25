@@ -91,7 +91,7 @@ public class NotSoTinyUI extends Application {
     
     // memory map constants
     private static final int PRIVRAM_SIZE =     USE_PRIVRAM ? 0x0000_4000 : 0,
-                             LOWRAM_SIZE =      0x0010_0000 - PRIVRAM_SIZE,
+                             LOWRAM_SIZE =      0x1010_0000 - PRIVRAM_SIZE,
                              SPI_SIZE =         0x0000_0004,
                              KEYPAD_SIZE =      0x0000_0008,
                              CC_SIZE =          0x0000_0002,
@@ -138,11 +138,11 @@ public class NotSoTinyUI extends Application {
     */
     
     private static final String //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernelv2\\src\\",
-                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\testing\\",
+                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\testing\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\aoc\\2018\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\playground\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\forth-based\\aoc\\",
-                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\minesweeper\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\minesweeper\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\maths\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\euler\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\fakeos\\",
@@ -151,12 +151,12 @@ public class NotSoTinyUI extends Application {
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GMTK-Game-Jam-2024\\game\\src\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\java\\eclipse-workspace\\NSTLCompiler\\test\\",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "forth.oex",
-                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test-badapple.oex",
+                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test-badapple.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "badappleplayer.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "testing-mdbt.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_mandel.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "playground.oex",
-                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "minesweeper.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "minesweeper.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_shell.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "game.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "advent.oex",

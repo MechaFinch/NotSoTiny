@@ -279,8 +279,10 @@ Instruction Descriptions
 			[SP - 12]	<- SP
 			[SP - 14]	<- F
 			[SP - 16]	<- PF
+			BP			<- vector-specific value
 			SP			<- SP - 16
 			IP			<- [source * 4]
+			F			<- vector-specific value
 			PF			<- IE = 0, PV = 1, II = 1
 			
 		If II = 0
@@ -289,8 +291,10 @@ Instruction Descriptions
 			[ISP - 12]	<- SP
 			[ISP - 14]	<- F
 			[ISP - 16]	<- PF
+			BP			<- vector-specific value
 			SP			<- ISP - 16
 			IP			<- [source * 4]
+			F			<- vector-specific value
 			PF			<- IE = 0, PV = 1, II = 1
 	
 	IRET

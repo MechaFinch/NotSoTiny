@@ -98,8 +98,8 @@
 	0x59	BPUSHW i32
 	0x5A	PUSHA
 	0x5B	POPA
-	0x5C	undef
-	0x5D	undef
+	0x5C	TST rim
+	0x5D	PTST rimp
 	0x5E	undef
 	0x5F	HWI					hardware-specific extensions (for special registers and the like)
 	
@@ -112,9 +112,9 @@
 	0x66	NOT F
 	0x67	MOV F, rim			source only
 	0x68	MOV rim, F			destination only
-	0x69	MOV PF, rim			source only
-	0x6A	MOV rim, PF			destination only
-	0x6B	LEA rim				wide destination, destination must be a register, source must be memory
+	0x69	MOV pr, rim			source only
+	0x6A	MOV rim, pr			destination only
+	0x6B	LEA rim 			wide destination, destination must be a register, source must be memory
 	0x6C	CMP rim
 	0x6D	CMP rim, i8			destination only, sign extended
 	0x6E	CMP rim, 0			destination only
@@ -243,7 +243,7 @@
 	0xDC	JMP i32
 	0xDD	JMP rim
 	0xDE	JMPA i32			source only
-	0xDF	JMPA rim32			souce only, side
+	0xDF	JMPA rim32			souce only, wide
 	
 	0xE0	RET
 	0xE1	IRET
