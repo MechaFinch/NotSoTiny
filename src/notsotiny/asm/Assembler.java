@@ -1544,6 +1544,8 @@ public class Assembler {
                     relocated = resolveValue(rv, labelAddressMap, libNames, incomingReferences, libraryName, addr, 0, size, false, false, lastInstructionAddress);
                     
                     if(init.getWordSize() != 4) relocated = false;
+                    
+                    addr += init.getWordSize();
                 }
                 break;
                 

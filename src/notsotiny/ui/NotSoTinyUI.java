@@ -73,14 +73,14 @@ public class NotSoTinyUI extends Application {
      */
     
     private static final long CLOCK_PERIOD = 0l,
-                              //PIT_PERIOD = 1_000_000;
-                              PIT_PERIOD = 33_333_333l;
+                              PIT_PERIOD = 1_000_000;
+                              //PIT_PERIOD = 33_333_333l;
     
     private static final boolean USE_SCREEN = true,
                                  START_IMMEDIATELY = false,
                                  START_WITH_CLOCK = false,
-                                 TRACK_CPUTIME = true,
-                                 USE_PRIVRAM = false;
+                                 TRACK_CPUTIME = false,
+                                 USE_PRIVRAM = true;
     
     private static final int TRACE_SIZE = 16,
                              MEMWATCH_BYTES = 64;
@@ -138,29 +138,33 @@ public class NotSoTinyUI extends Application {
     */
     
     private static final String //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\forth\\kernelv2\\src\\",
-                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\testing\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\testing\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\aoc\\2018\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\playground\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\forth-based\\aoc\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\minesweeper\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\maths\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\euler\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\emulation\\ue1\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\fakeos\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\rosetta\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GTMK-jam-2023\\game\\src\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GMTK-Game-Jam-2024\\game\\src\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\java\\eclipse-workspace\\NSTLCompiler\\test\\",
+                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\java\\eclipse-workspace\\NSTLCompiler\\test\\benchmark\\",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "forth.oex",
-                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test-badapple.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test-badapple.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "badappleplayer.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "testing-mdbt.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_mandel.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "playground.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "minesweeper.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "ue1_hl.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_shell.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "game.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "advent.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "e2.oex",
+                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "benchmark.oex",
                                 DISK_FOLDER = PROGRAM_DATA_FOLDER + "disk\\",
                                 TEXT_FONT_FILE = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\textsmall.dat";
     
@@ -1063,7 +1067,12 @@ public class NotSoTinyUI extends Application {
             }
             
             // basic info
-            this.infoTotalInstructions.setText(String.format("Total instructions: %,d\nCPU Time: %,.3fs", this.instructionsExecutedTotal, ((double)(this.cpuTimens / 1_000_000)) / 1000.0));
+            if(TRACK_CPUTIME) {
+                this.infoTotalInstructions.setText(String.format("Total instructions: %,d\nCPU Time: %,.3fs", this.instructionsExecutedTotal, ((double)(this.cpuTimens / 1_000_000)) / 1000.0));
+            } else {
+                this.infoTotalInstructions.setText(String.format("Total instructions: %,d\n", this.instructionsExecutedTotal));
+            }
+            
             this.infoAverageMIPS.setText(String.format("\nAverage IPS: %,6.0f", this.lastAverageMIPS));
             
             this.buttonToggleRunning.setText(this.freerunEnabled ? "Stop CPU" : "Start CPU");
