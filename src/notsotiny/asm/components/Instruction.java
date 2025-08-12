@@ -99,135 +99,158 @@ public class Instruction implements Component {
         
         // what do we need to do
         switch(this.op) {
-            // nothing
-            case NOP, MOV_A_B, MOV_A_C, MOV_A_D, MOV_B_A, MOV_B_C, MOV_B_D, MOV_C_A, MOV_C_B, MOV_C_D,
-                 MOV_D_A, MOV_D_B, MOV_D_C, 
-                 PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L, PUSH_BP, BPUSH_SP,
-                 PUSH_F, PUSH_PF, POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L, POP_BP, 
-                 BPOP_SP, POP_F, POP_PF, NOT_F, INC_I, INC_J, INC_K, INC_L, ICC_I, ICC_J, ICC_K, ICC_L,
-                 DEC_I, DEC_J, ICC_A, ICC_B, ICC_C, ICC_D, DCC_A, DCC_B, DCC_C, DCC_D,
-                 DEC_K, DEC_L, DCC_I, DCC_J, DCC_K, DCC_L, RET, IRET, PUSHA, POPA, HLT:
+            
+            // Nothing
+            case PUSH_F, PUSH_PF, POP_F, POP_PF, NOT_F, NOP, RET, IRET, HLT,
+                 PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L,
+                 PUSHW_DA, PUSHW_BC, PUSHW_JI, PUSHW_LK, PUSHW_XP, PUSHW_YP, PUSHW_BP, PUSHA,
+                 POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L,
+                 POPW_DA, POPW_BC, POPW_JI, POPW_LK, POPW_XP, POPW_YP, POPW_BP, POPA:
                 break;
             
-            // 8 bit immediate only
-            case MOVS_A_I8, MOVS_B_I8, MOVS_C_I8, MOVS_D_I8,
+            // 8-bit immediate
+            case MOVS_A_I8, MOVS_B_I8, MOVS_C_I8, MOVS_D_I8, MOVS_I_I8, MOVS_J_I8, MOVS_K_I8, MOVS_L_I8,
                  ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADD_I_I8, ADD_J_I8, ADD_K_I8, ADD_L_I8,
+                 ADDW_DA_I8, ADDW_BC_I8, ADDW_JI_I8, ADDW_LK_I8, ADDW_XP_I8, ADDW_YP_I8, ADDW_BP_I8, ADDW_SP_I8,
                  SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SUB_I_I8, SUB_J_I8, SUB_K_I8, SUB_L_I8,
-                 ADD_SP_I8, ADD_BP_I8, SUB_SP_I8, SUB_BP_I8,
-                 JMP_I8, CALL_I8, INT_I8,
-                 JC_I8, JNC_I8, JS_I8, JNS_I8, JO_I8, JNO_I8, JZ_I8,
-                 JNZ_I8, JA_I8, JBE_I8, JG_I8, JGE_I8, JL_I8, JLE_I8:
-                this.cachedImmediateOffset = 1;
+                 SUBW_DA_I8, SUBW_BC_I8, SUBW_JI_I8, SUBW_LK_I8, SUBW_XP_I8, SUBW_YP_I8, SUBW_BP_I8, SUBW_SP_I8,
+                 JC_I8, JNC_I8, JS_I8, JNS_I8, JO_I8, JNO_I8, JZ_I8, JNZ_I8, JA_I8, JBE_I8, JG_I8, JGE_I8, JL_I8, JLE_I8,
+                 CALL_I8, JMP_I8, INT_I8:
+                this.cachedImmediateOffset = data.size();
                 data.addAll(getImmediateData(this.source.getImmediate(), 1));
                 break;
             
-            // 16 bit immediate only
-            case MOV_I_I16, MOV_J_I16, MOV_K_I16, MOV_L_I16, MOV_A_I16, MOV_B_I16, MOV_C_I16, MOV_D_I16,
-                 JMP_I16, CALL_I16:
-                this.cachedImmediateOffset = 1;
+            // 8-bit immediate with EI8
+            case JCC_I8:
+                this.cachedImmediateOffset = data.size();
+                data.addAll(getImmediateData(this.source.getImmediate(), 1));
+                data.addAll(getEI8Data(data.size(), false));
+                break;
+            
+            // 16-bit immediate
+            case MOV_A_I16, MOV_B_I16, MOV_C_I16, MOV_D_I16, MOV_I_I16, MOV_J_I16, MOV_K_I16, MOV_L_I16,
+                 CALL_I16, JMP_I16:
+                this.cachedImmediateOffset = data.size();
                 data.addAll(getImmediateData(this.source.getImmediate(), 2));
                 break;
             
-            // 32 bit immediate only
-            case PUSHW_I32, BPUSHW_I32, JMP_I32, JMPA_I32, CALL_I32, CALLA_I32:
-                this.cachedImmediateOffset = 1;
+            // 32-bit immediate
+            case CALL_I32, CALLA_I32, JMP_I32, JMPA_I32:
+                this.cachedImmediateOffset = data.size();
                 data.addAll(getImmediateData(this.source.getImmediate(), 4));
                 break;
             
-            // 32 bit address
-            case MOV_A_O, MOV_B_O, MOV_C_O, MOV_D_O:
-                this.cachedAddressOffset = 1;
-                data.addAll(getImmediateData(this.source.getMemory().getOffset(), 4));
+            // Source only RIM
+            case MOV_F_RIM, AND_F_RIM, OR_F_RIM, XOR_F_RIM, PUSH_RIM, INT_RIM,
+                 JC_RIM, JNC_RIM, JS_RIM, JNS_RIM, JO_RIM, JNO_RIM, JZ_RIM, JNZ_RIM, JA_RIM, JBE_RIM, JG_RIM, JGE_RIM, JL_RIM, JLE_RIM,
+                 CALL_RIM, JMP_RIM:
+               data.addAll(getRIMData(false, true, false, false, false));
+               break;
+            
+            // Source only RIM with EI8
+            case MOV_BP_RIM, JCC_RIM:
+                data.addAll(getRIMData(false, true, false, false, false));
+                data.addAll(getEI8Data(data.size(), false));
                 break;
             
-            case MOV_O_A, MOV_O_B, MOV_O_C, MOV_O_D:
-                this.cachedAddressOffset = 1;
-                data.addAll(getImmediateData(this.destination.getMemory().getOffset(), 4));
+            // Wide source only RIM
+            case PUSHW_RIM, CALLA_RIM32, JMPA_RIM32:
+                data.addAll(getRIMData(false, true, false, false, true));
                 break;
             
-            // BIO only
-            case MOV_A_BI, MOV_B_BI, MOV_C_BI, MOV_D_BI:
-                data.addAll(getBIOData(this.source.getMemory(), false));
+            // Wide source only RIM with EI8
+            case MOVW_BP_RIM:
+                data.addAll(getRIMData(false, true, false, false, true));
+                data.addAll(getEI8Data(data.size(), false));
                 break;
             
-            case MOV_BI_A, MOV_BI_B, MOV_BI_C, MOV_BI_D:
-                data.addAll(getBIOData(this.destination.getMemory(), false));
+            // Wide destination RIM
+            case MOVS_RIM, MOVZ_RIM,
+                 MULH_RIM, MULSH_RIM, DIVM_RIM, DIVMS_RIM:
+                data.addAll(getRIMData(true, true, false, true, false));
                 break;
             
-            case MOV_A_BIO, MOV_B_BIO, MOV_C_BIO, MOV_D_BIO:
-                data.addAll(getBIOData(this.source.getMemory(), true));
-                break;
-                
-            case MOV_BIO_A, MOV_BIO_B, MOV_BIO_C, MOV_BIO_D:
-                data.addAll(getBIOData(this.destination.getMemory(), true));
+            // Destination only RIM
+            case MOV_RIM_F, AND_RIM_F, OR_RIM_F, XOR_RIM_F, POP_RIM, NOT_RIM, NEG_RIM,
+                 CMP_RIM_0, INC_RIM, ICC_RIM, DEC_RIM, DCC_RIM,
+                 SHL_RIM_1, SHR_RIM_1, SAR_RIM_1, ROL_RIM_1, ROR_RIM_1, RCL_RIM_1, RCR_RIM_1:
+                data.addAll(getRIMData(true, false, false, false, false));
                 break;
             
-            // RIM special cases
-            // RIM + 8 bit immediate
-            case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8,
+            // Destination only RIM with EI8
+            case MOV_RIM_BP:
+                data.addAll(getRIMData(true, false, false, false, false));
+                data.addAll(getEI8Data(data.size(), false));
+                break;
+            
+                // (ei8 is source)
+            case CMP_RIM_I8, ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8,
                  SHL_RIM_I8, SHR_RIM_I8, SAR_RIM_I8, ROL_RIM_I8, ROR_RIM_I8, RCL_RIM_I8, RCR_RIM_I8:
                 data.addAll(getRIMData(true, false, false, false, false));
-                this.cachedImmediateOffset = data.size();
-                data.addAll(getImmediateData(this.hasEI8 ? new ResolvableConstant(this.ei8) : this.source.getImmediate(), 1));
+                data.addAll(getEI8Data(data.size(), true));
                 break;
             
-            // RIM + 8 bit with source
+            // Wide destination only RIM
+            case MOVW_RIM_0, POPW_RIM, CMPW_RIM_0,
+                 INCW_RIM, ICCW_RIM, DECW_RIM, DCCW_RIM:
+                data.addAll(getRIMData(true, false, false, true, false));
+                break;
+            
+            // Wide destination only RIM with EI8
+            case MOVW_RIM_BP:
+                data.addAll(getRIMData(true, false, false, false, false));
+                data.addAll(getEI8Data(data.size(), false));
+                break;
+            
+                // (ei8 is source)
+            case CMPW_RIM_I8, ADDW_RIM_I8, ADCW_RIM_I8, SUBW_RIM_I8, SBBW_RIM_I8:
+                data.addAll(getRIMData(true, false, false, false, false));
+                data.addAll(getEI8Data(data.size(), false));
+                break;
+            
+            // RIM + EI8
             case CMOVCC_RIM:
                 data.addAll(getRIMData(true, true, false, false, false));
-                data.addAll(getImmediateData(this.hasEI8 ? new ResolvableConstant(this.ei8) : this.source.getImmediate(), 1));
+                data.addAll(getEI8Data(data.size(), false));
                 break;
             
+            // Wide RIM + EI8
+            case CMOVWCC_RIM:
+                data.addAll(getRIMData(true, true, false, true, true));
+                data.addAll(getEI8Data(data.size(), false));
+                break;
+            
+            // Packed RIM
+            case PCMP_RIMP, PTST_RIMP, PADD_RIMP, PADC_RIMP, PSUB_RIMP, PSBB_RIMP,
+                 PAND_RIMP, POR_RIMP, PXOR_RIMP,
+                 PMUL_RIMP, PDIV_RIMP, PDIVS_RIMP:
+                data.addAll(getRIMData(true, true, true, false, false));
+                break;
+            
+            // Packed RIM + EI8
             case PCMOVCC_RIMP:
-                data.addAll(getRIMData(true, true, true, false, false));
-                data.addAll(getImmediateData(this.hasEI8 ? new ResolvableConstant(this.ei8) : this.source.getImmediate(), 1));
-                break;
-                 
-            // packed
-            case PADD_RIMP, PADC_RIMP, PSUB_RIMP, PSBB_RIMP, PMUL_RIMP, PDIV_RIMP, PDIVS_RIMP, PCMP_RIMP, PTST_RIMP:
-                data.addAll(getRIMData(true, true, true, false, false));
+                data.addAll(getRIMData(true, true, true, true, true));
+                data.addAll(getEI8Data(data.size(), false));
                 break;
             
+            // Packed wide destination RIM
             case PMULH_RIMP, PMULSH_RIMP, PDIVM_RIMP, PDIVMS_RIMP:
                 data.addAll(getRIMData(true, true, true, true, false));
                 break;
             
-            // source only
-            case PUSH_RIM, BPUSH_RIM, AND_F_RIM, OR_F_RIM, XOR_F_RIM, MOV_F_RIM, JMP_RIM, CALL_RIM,
-                 INT_RIM, JC_RIM, JNC_RIM, JS_RIM, JNS_RIM, JO_RIM, JNO_RIM, JZ_RIM, JNZ_RIM, JA_RIM,
-                 JBE_RIM, JG_RIM, JGE_RIM, JL_RIM, JLE_RIM:
-                data.addAll(getRIMData(false, true, false, false, false));
-                break;
-            
-            case JMPA_RIM32, CALLA_RIM32, PUSHW_RIM, BPUSHW_RIM, MOV_PR_RIM:
-                data.addAll(getRIMData(false, true, false, false, true));
-                break;
-            
-            // destination only
-            case POP_RIM, BPOP_RIM, AND_RIM_F, OR_RIM_F, XOR_RIM_F, MOV_RIM_F, INC_RIM, ICC_RIM,
-                 DEC_RIM, DCC_RIM, NOT_RIM, NEG_RIM, CMP_RIM_0:
-                data.addAll(getRIMData(true, false, false, false, false));
-                break;
-            
-            case POPW_RIM, BPOPW_RIM, MOV_RIM_PR:
-                data.addAll(getRIMData(true, false, false, true, false));
-                break;
-            
-            case PINC_RIMP, PICC_RIMP, PDEC_RIMP, PDCC_RIMP:
+            // Packed destination only RIM
+            case PINC_RIMP, PICC_RIMP, PDEC_RIMP, PDCC_RIMP, PNOT_RIMP, PNEG_RIMP:
                 data.addAll(getRIMData(true, false, true, false, false));
                 break;
             
-            // wide destination
-            case MOVS_RIM, MOVZ_RIM, MULH_RIM, MULSH_RIM, DIVM_RIM, DIVMS_RIM:
-                data.addAll(getRIMData(true, true, false, true, false));
-                break;
-            
-            // w i d e
-            case MOVW_RIM:
-            case XCHGW_RIM:
+             // Wide RIM
+            case MOVW_RIM, XCHGW_RIM, LEA_RIM, MOV_PR_RIM, MOV_RIM_PR,
+                 RPUSHW_RIM, RPOPW_RIM, CMPW_RIM,
+                 ADDW_RIM, ADCW_RIM, SUBW_RIM, SBBW_RIM:
                 data.addAll(getRIMData(true, true, false, true, true));
                 break;
-            
-            // pure RIM
+                
+            // Normal RIM
             default:
                 data.addAll(getRIMData(true, true, false, false, false));
         }
@@ -238,11 +261,11 @@ public class Instruction implements Component {
     /**
      * Constructs RIM bytes
      * 
-     * @param includeDestination
-     * @param includeSource
-     * @param packed
-     * @param wideDestination
-     * @param wideSource
+     * @param includeDestination Is the destination considered
+     * @param includeSource Is the source considered
+     * @param packed Is the operation packed
+     * @param wideDestination Is the destination wide
+     * @param wideSource Is the source wide
      * @return
      */
     private List<Byte> getRIMData(boolean includeDestination, boolean includeSource, boolean packed, boolean wideDestination, boolean wideSource) {
@@ -353,13 +376,25 @@ public class Instruction implements Component {
                 if(this.destination.getSize() == 1) rim |= 0b10_000_000;
             }
         } else {
-            // this turns out simpler than i thought lol
-            if(includeSource) {
-                if(sourceSize == 1 || (wideSource && sourceSize == 2)) rim |= 0b10_000_000;
-            } else if(this.source.getRegister() == Register.PF) {
-                rim |= 0b10_000_000;
-            } else {
-                if(destSize == 1) rim |= 0b10_000_000;
+            switch(this.op) {
+                // exceptions
+                case RPUSH_RIM, RPUSHW_RIM:
+                    if(sourceSize == 1 || (wideSource && sourceSize == 2)) rim |= 0b10_000_000;
+                    break;
+                
+                case RPOP_RIM, RPOPW_RIM:
+                    if(destSize == 1 || (wideDestination && destSize == 2)) rim |= 0b10_000_000;
+                    break;
+                
+                // typical case
+                default:
+                    if(includeSource) {
+                        if(sourceSize == 1 || (wideSource && sourceSize == 2)) rim |= 0b10_000_000;
+                    } else if(this.source.getRegister() == Register.PF) {
+                        rim |= 0b10_000_000;
+                    } else {
+                        if(destSize == 1) rim |= 0b10_000_000;
+                    }
             }
         }
         
@@ -385,11 +420,11 @@ public class Instruction implements Component {
             if(destType == LocationType.REGISTER) {
                 rim |= switch(this.destination.getRegister()) {
                     case AL, A, DA      -> 0b00_000_000;
-                    case BL, B, AB      -> 0b00_001_000;
-                    case CL, C, BC      -> 0b00_010_000;
-                    case DL, D, CD      -> 0b00_011_000;
-                    case AH, I, JI      -> 0b00_100_000;
-                    case BH, J, LK      -> 0b00_101_000;
+                    case BL, B, BC      -> 0b00_001_000;
+                    case CL, C, JI      -> 0b00_010_000;
+                    case DL, D, LK      -> 0b00_011_000;
+                    case AH, I, XP      -> 0b00_100_000;
+                    case BH, J, YP      -> 0b00_101_000;
                     case CH, K, BP      -> 0b00_110_000;
                     case DH, L, SP      -> 0b00_111_000;
                     case PF, ISP        -> 0b00_000_000;
@@ -399,11 +434,11 @@ public class Instruction implements Component {
             } else if(includeSource && sourceType == LocationType.REGISTER) {
                 rim |= switch(this.source.getRegister()) {
                     case AL, A, DA      -> 0b00_000_000;
-                    case BL, B, AB      -> 0b00_001_000;
-                    case CL, C, BC      -> 0b00_010_000;
-                    case DL, D, CD      -> 0b00_011_000;
-                    case AH, I, JI      -> 0b00_100_000;
-                    case BH, J, LK      -> 0b00_101_000;
+                    case BL, B, BC      -> 0b00_001_000;
+                    case CL, C, JI      -> 0b00_010_000;
+                    case DL, D, LK      -> 0b00_011_000;
+                    case AH, I, XP      -> 0b00_100_000;
+                    case BH, J, YP      -> 0b00_101_000;
                     case CH, K, BP      -> 0b00_110_000;
                     case DH, L, SP      -> 0b00_111_000;
                     case PF, ISP        -> 0b00_000_000;
@@ -417,11 +452,11 @@ public class Instruction implements Component {
         if((rim & 0b01_000_000) == 0) { // register-register
             rim |= switch(this.source.getRegister()) {
                 case AL, A, DA      -> 0b00_000_000;
-                case BL, B, AB      -> 0b00_000_001;
-                case CL, C, BC      -> 0b00_000_010;
-                case DL, D, CD      -> 0b00_000_011;
-                case AH, I, JI      -> 0b00_000_100;
-                case BH, J, LK      -> 0b00_000_101;
+                case BL, B, BC      -> 0b00_000_001;
+                case CL, C, JI      -> 0b00_000_010;
+                case DL, D, LK      -> 0b00_000_011;
+                case AH, I, XP      -> 0b00_000_100;
+                case BH, J, YP      -> 0b00_000_101;
                 case CH, K, BP      -> 0b00_000_110;
                 case DH, L, SP      -> 0b00_000_111;
                 case PF, ISP        -> 0b00_000_000;
@@ -492,11 +527,11 @@ public class Instruction implements Component {
         if(!ipRelative) {
             bio |= switch(rm.getBase()) {
                 case DA         -> 0b000_000;
-                case AB         -> 0b001_000;
-                case BC         -> 0b010_000;
-                case CD         -> 0b011_000;
-                case JI         -> 0b100_000;
-                case LK         -> 0b101_000;
+                case BC         -> 0b001_000;
+                case JI         -> 0b010_000;
+                case LK         -> 0b011_000;
+                case XP         -> 0b100_000;
+                case YP         -> 0b101_000;
                 case BP         -> 0b110_000;
                 case SP, NONE   -> 0b111_000;
                 default         -> throw new IllegalArgumentException("Invalid base: " + rm.getBase());
@@ -597,6 +632,25 @@ public class Instruction implements Component {
         return data;
     }
     
+    /**
+     * @param offset Offset for cachedImmediateOffset
+     * @param isSource If true, the source can be used as the immediate if hasEI8 is false 
+     * @return Data for the EI8 byte
+     */
+    private List<Byte> getEI8Data(int offset, boolean isSource) {
+        if(isSource) {
+            this.cachedImmediateOffset = offset;
+        }
+        
+        if(this.hasEI8) {
+            return getImmediateData(new ResolvableConstant(this.ei8), 1);
+        } else if(isSource) {
+            return getImmediateData(this.source.getImmediate(), 1);
+        } else {
+            throw new IllegalArgumentException("Missing EI8 byte: " + this);
+        }
+    }
+    
     @Override
     public int getSize() {
         // slower but guaranteed to work
@@ -641,29 +695,54 @@ public class Instruction implements Component {
      * @return True if the operands are (likely to be) valid
      */
     public boolean hasValidOperands() {
-        if(this.source.getType() == LocationType.REGISTER && this.source.getSize() == 4) {
-            switch(this.op) {
-                // opcodes that allow wide sources
-                case MOVW_RIM, XCHGW_RIM, CALLA_RIM32, JMPA_RIM32, PUSH_BP, BPUSH_SP, PUSHW_RIM, BPUSHW_RIM, MOV_RIM_PR, MOV_PR_RIM:
-                    break;
-                
-                default:
-                    return false;
+        if(this.source.getType() == LocationType.REGISTER) {
+            if(this.source.getSize() == 4) {
+                switch(this.op) {
+                    // opcodes that allow wide sources
+                    case MOVW_RIM, XCHGW_RIM, CMOVWCC_RIM, LEA_RIM, MOV_PR_RIM, MOVW_BP_RIM, PUSHW_RIM, RPUSHW_RIM, RPOP_RIM, RPOPW_RIM,
+                         PUSHW_DA, PUSHW_BC, PUSHW_JI, PUSHW_LK, PUSHW_XP, PUSHW_YP, PUSHW_BP,
+                         CMPW_RIM, ADDW_RIM, ADCW_RIM, SUBW_RIM, SBBW_RIM, CALLA_RIM32, JMPA_RIM32:
+                        break;
+                    
+                    default:
+                        return false;
+                }
+            } else {
+                switch(this.op) {
+                    // opcodes that require R32 source
+                    case RPOP_RIM, RPOPW_RIM, CALLA_RIM32, JMPA_RIM32:
+                        return false;
+                    
+                    default:
+                }
             }
         }
         
-        if(this.destination.getType() == LocationType.REGISTER && this.destination.getSize() == 4) {
-            switch(this.op) {
-                // opcodes that allow wide destiantions
-                case MOVW_RIM, MOVS_RIM, MOVZ_RIM, XCHGW_RIM, LEA_RIM, MOV_RIM_PR, MOV_PR_RIM,
-                     POP_BP, BPOP_SP, POPW_RIM, BPOPW_RIM,
-                     ADD_SP_I8, SUB_SP_I8, ADD_BP_I8, SUB_BP_I8,
-                     MULH_RIM, MULSH_RIM, PMULH_RIMP, PMULSH_RIMP,
-                     DIVM_RIM, DIVMS_RIM, PDIVM_RIMP, PDIVMS_RIMP:
-                    break;
-                
-                default:
-                    return false;
+        if(this.destination.getType() == LocationType.REGISTER) {
+            if(this.destination.getSize() == 4) {
+                switch(this.op) {
+                    // opcodes that allow wide destiantions
+                    case MOVW_RIM_0, MOVS_RIM, MOVZ_RIM, MOVW_RIM, XCHGW_RIM, CMOVWCC_RIM, MOV_RIM_PR, MOVW_RIM_BP,
+                         POPW_DA, POPW_BC, POPW_JI, POPW_LK, POPW_XP, POPW_YP, POPW_BP, LEA_RIM,
+                         RPUSH_RIM, RPUSHW_RIM, POPW_RIM, RPOPW_RIM, CMPW_RIM_0, CMPW_RIM_I8, CMPW_RIM,
+                         ADDW_RIM_I8, ADCW_RIM_I8, SUBW_RIM_I8, SBBW_RIM_I8, ADDW_RIM, ADCW_RIM, SUBW_RIM, SBBW_RIM,
+                         ADDW_DA_I8, ADDW_BC_I8, ADDW_JI_I8, ADDW_LK_I8, ADDW_XP_I8, ADDW_YP_I8, ADDW_BP_I8, ADDW_SP_I8,
+                         SUBW_DA_I8, SUBW_BC_I8, SUBW_JI_I8, SUBW_LK_I8, SUBW_XP_I8, SUBW_YP_I8, SUBW_BP_I8, SUBW_SP_I8,
+                         INCW_RIM, ICCW_RIM, DECW_RIM, DCCW_RIM, MULH_RIM, MULSH_RIM, PMULH_RIMP, PMULSH_RIMP,
+                         DIVM_RIM, DIVMS_RIM, PDIVM_RIMP, PDIVMS_RIMP:
+                        break;
+                    
+                    default:
+                        return false;
+                }
+            } else {
+                switch(this.op) {
+                    // opcodes that require R32 destination
+                    case RPUSH_RIM, RPUSHW_RIM:
+                        return false;
+                    
+                    default:
+                }
             }
         }
         

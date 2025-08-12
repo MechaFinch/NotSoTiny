@@ -13,23 +13,28 @@ public enum Operation {
     LEA     (Family.MISC),
     
     MOV     (Family.MOVE),
-    MOVW    (Family.MOVE),
     MOVS    (Family.MOVE),
     MOVZ    (Family.MOVE),
     CMOVCC  (Family.MOVE),
     PCMOVCC (Family.MOVE),
     XCHG    (Family.MOVE),
-    XCHGW   (Family.MOVE),
     PUSH    (Family.MOVE),
+    RPUSH   (Family.MOVE),
     PUSHA   (Family.MOVE),
     POP     (Family.MOVE),
+    RPOP    (Family.MOVE),
     POPA    (Family.MOVE),
     
     AND     (Family.LOGIC),
+    PAND    (Family.LOGIC),
     OR      (Family.LOGIC),
+    POR     (Family.LOGIC),
     XOR     (Family.LOGIC),
+    PXOR    (Family.LOGIC),
     NOT     (Family.LOGIC),
+    PNOT    (Family.LOGIC),
     NEG     (Family.LOGIC),
+    PNEG    (Family.LOGIC),
     TST     (Family.LOGIC),
     PTST    (Family.LOGIC),
     
@@ -47,11 +52,13 @@ public enum Operation {
     ADC     (Family.ADDITION),
     PADD    (Family.ADDITION),
     PADC    (Family.ADDITION),
+    AADJ    (Family.ADDITION),
     
     SUB     (Family.ADDITION),
     SBB     (Family.ADDITION),
     PSUB    (Family.ADDITION),
     PSBB    (Family.ADDITION),
+    SADJ    (Family.ADDITION),
     
     MUL     (Family.MULTIPLICATION),
     MULH    (Family.MULTIPLICATION),
@@ -121,6 +128,10 @@ public enum Operation {
                 	return Operation.PCMOVCC;
                 }
         	}
+        	
+        	if(n.endsWith("W")) {
+        	    return fromMnemonic(n.substring(0, n.length() - 1));
+        	}
             
             // JCC & aliases
             switch(n) {
@@ -142,13 +153,6 @@ public enum Operation {
                 
                 case "PMULS":
                     return Operation.PMUL;
-                
-                // PUSH/POP variants
-                case "PUSHW", "BPUSH", "BPUSHW":
-                    return Operation.PUSH;
-                
-                case "POPW", "BPOP", "BPOPW":
-                    return Operation.POP;
                 
                 default:
                     throw new IllegalArgumentException("Invalid mnemonic " + n);

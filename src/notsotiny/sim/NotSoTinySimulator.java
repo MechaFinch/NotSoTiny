@@ -3,7 +3,6 @@ package notsotiny.sim;
 import notsotiny.sim.memory.MemoryManager;
 import notsotiny.sim.memory.UnprivilegedAccessException;
 import notsotiny.sim.ops.Opcode;
-import notsotiny.sim.ops.Operation;
 
 /**
  * Simulates the NotSoTiny architecture
@@ -12,7 +11,7 @@ import notsotiny.sim.ops.Operation;
  * 
  * @author Mechafinch
  */
-public class NotSoTinySimulatorV2 {
+public class NotSoTinySimulator {
     
     private class DecodingException extends Exception { private static final long serialVersionUID = 1L; }
     
@@ -33,6 +32,8 @@ public class NotSoTinySimulatorV2 {
     
     // 32 bit registers
     private int reg_ip,
+                reg_xp,
+                reg_yp,
                 reg_sp,
                 reg_bp,
                 reg_isp;
@@ -68,7 +69,7 @@ public class NotSoTinySimulatorV2 {
     /**
      * Create a simulator instance with the given starting IP
      */
-    public NotSoTinySimulatorV2(MemoryManager memory, int entry) {
+    public NotSoTinySimulator(MemoryManager memory, int entry) {
         this.memory = memory;
         this.reg_ip = entry;
         
@@ -82,6 +83,8 @@ public class NotSoTinySimulatorV2 {
         this.reg_l = 0;
         this.reg_f = 0;
         
+        this.reg_xp = 0;
+        this.reg_yp = 0;
         this.reg_sp = 0;
         this.reg_bp = 0;
         this.reg_isp = 0;
@@ -102,7 +105,7 @@ public class NotSoTinySimulatorV2 {
     /**
      * Create a simulator instance with starting IP memory[0]
      */
-    public NotSoTinySimulatorV2(MemoryManager memory) {
+    public NotSoTinySimulator(MemoryManager memory) {
         this(memory, memory.read4BytesPrivileged(0));
     }
     
@@ -400,16 +403,21 @@ public class NotSoTinySimulatorV2 {
                 // Write-only destination RIM
                 decodeRIMNoDestRead();
                 break;
-            
-            case RIM_WIDEDST_WOD:
-                // Wide write-only destination RIM
-                decodeRIMWideDestNoRead();
-                break;
-            
+                
             case RIM_WOD_EI8:
                 // Write-only destination RIM with EI8
                 this.cid.hasEI8 = true;
                 decodeRIMNoDestReadEI8();
+                break;
+                
+            case RIM_WIDEDST:
+                // Wide destination RIM
+                decodeRIMWideDest();
+                break;
+            
+            case RIM_WIDEDST_WOD:
+                // Wide write-only destination RIM
+                decodeRIMWideDestNoRead();
                 break;
             
             case RIM_PACKED_EI8:
@@ -417,11 +425,6 @@ public class NotSoTinySimulatorV2 {
                 this.cid.hasEI8 = true;
                 this.cid.isPacked = true;
                 decodePackedRIMEI8();
-                break;
-            
-            case RIM_WIDEDST:
-                // Wide destination RIM
-                decodeRIMWideDest();
                 break;
                 
             case RIM_PACKED_WIDEDST:
@@ -439,10 +442,27 @@ public class NotSoTinySimulatorV2 {
                 // Wide source & wide write-only destination RIM
                 decodeWideRIMNoDestRead();
                 break;
+                
+            case RIM_WIDE_WOD_EI8:
+                // Wide source & wide write-only destination RIM with EI8
+                this.cid.hasEI8 = true;
+                decodeWideRIMNoDestReadEI8();
+                break;
+            
+            case RIM_WIDE_DO_WOD:
+                // Wide write-only destination only RIM
+                decodeRIMWideDestOnlyNoRead();
+                break;
             
             case RIM_SO:
                 // Source only RIM
                 decodeRIMSourceOnly();
+                break;
+                
+            case RIM_SO_EI8:
+                // Source only RIM with EI8
+                this.cid.hasEI8 = true;
+                decodeRIMSourceOnlyEI8();
                 break;
             
             case RIM_WIDE_SO:
@@ -453,6 +473,17 @@ public class NotSoTinySimulatorV2 {
             case RIM_DO:
                 // Destination only RIM
                 decodeRIMDestOnly();
+                break;
+                
+            case RIM_WIDE_DO:
+                // Wide destination only RIM
+                decodeRIMWideDestOnly();
+                break;
+                
+            case RIM_WIDE_DO_EI8:
+                // WIde destination only RIM with EI8
+                this.cid.hasEI8 = true;
+                decodeRIMWideDestOnlyEI8();
                 break;
                 
             case RIM_PACKED_DO:
@@ -471,53 +502,66 @@ public class NotSoTinySimulatorV2 {
                 // Write-only destination only RIM
                 decodeRIMDestOnlyNoRead();
                 break;
-                
-            case RIM_WIDEDST_DO_WOD:
-                // Wide write-only destination only RIM
-                decodeRIMWideDestOnlyNoRead();
-                break;
             
             case RIM_LEA:
                 // kinda does its own thing
                 decodeLEA();
                 break;
+                
+            case RIM_RS_SO_EI8:
+                // Register source only RIM with EI8
+                this.cid.hasEI8 = true;
+                decodeRIMRegisterSourceOnlyEI8();
+                break;
+                
+            case RIM_R32S_WOD:
+                // 32-bit register source RIM
+                decodeRIMR32SourceNoDestRead();
+                break;
             
-            case BI_SRC:
-                // word BIO source
-                this.cid.sourceValue = this.memory.read2Bytes(decodeBIO(), this.pf_pv);
-                break;
-                
-            case BI_DST:
-                // destination BIO
-                this.cid.destinationAddress = decodeBIO();
+            case RIM_WIDE_RS_SO_EI8:
+                // Wide register source only RIM with EI8
+                decodeRIMWideRegisterSourceOnlyEI8();
                 break;
             
-            case BIO_SRC:
-                // word BIO-offset source
-                this.cid.hasOffset = true;
-                this.cid.sourceValue = this.memory.read2Bytes(decodeBIO(), this.pf_pv);
+            case RIM_WIDE_R32S_WOD:
+                // 32-bit register source wide RIM
+                decodeWideRIMR32SourceNoDestRead();
                 break;
                 
-            case BIO_DST:
-                // destination BIO-offset
-                this.cid.hasOffset = true;
-                this.cid.destinationAddress = decodeBIO();
+            case RIM_RD_DO_WOD_EI8:
+                // Register destination only RIM with EI8
+                this.cid.hasEI8 = true;
+                decodeRIMRegisterDestinationOnlyNoReadEI8();
                 break;
-                
-            case O_SRC:
-                // Source offset
-                this.cid.sourceValue = this.memory.read2Bytes(decodeOffset(4), this.pf_pv);
+            
+            case RIM_R32D:
+                // 32-bit register destination RIM
+                decodeRIMR32Destination();
                 break;
-                
-            case O_DST:
-                // Destination offset
-                this.cid.destinationAddress = decodeOffset(4);
+            
+            case RIM_WIDE_RD_DO_WOD_EI8:
+                // Wide register destination only RIM with EI8
+                decodeWideRIMRegisterDestinationOnlyNoReadEI8();
+                break;
+            
+            case RIM_WIDE_R32D:
+                // 32-bit register destination wide RIM
+                decodeWideRIMR32Destination();
                 break;
             
             case I8:
                 // i8 source only
                 this.cid.sourceValue = decodeOffset(1);
                 this.cid.sourceDescriptor = new LocationDescriptor(LocationType.IMMEDIATE, this.cid.sourceValue, LocationSize.BYTE);
+                break;
+                
+            case I8_EI8:
+                // i8 source only with EI8
+                this.cid.hasEI8 = true;
+                this.cid.sourceValue = decodeOffset(1);
+                this.cid.sourceDescriptor = new LocationDescriptor(LocationType.IMMEDIATE, this.cid.sourceValue, LocationSize.BYTE);
+                this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
                 break;
             
             case I16:
@@ -603,6 +647,48 @@ public class NotSoTinySimulatorV2 {
     }
     
     /**
+     * Decode RIM without reading the destination. Source must be a register. Source is treated as 32-bit
+     * @throws DecodingException
+     */
+    private void decodeRIMR32SourceNoDestRead() throws UnprivilegedAccessException, DecodingException {
+        byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
+        
+        // Get parts
+        boolean s = (rimByte & 0x80) != 0;
+        boolean r = (rimByte & 0x40) != 0;
+        int reg = ((rimByte >> 3) & 0x07);
+        int rim = (rimByte & 0x07);
+        
+        if(r) {
+            // rim is memory
+            if(rim >= 0x04) {
+                // rim is destination
+                if(s) {
+                    this.cid.sourceDescriptor = decodeDwordRegField(reg);
+                    this.cid.destinationDescriptor = decodeRimField(LocationSize.BYTE, rim);                    
+                } else {
+                    this.cid.sourceDescriptor = decodeDwordRegField(reg);
+                    this.cid.destinationDescriptor = decodeRimField(LocationSize.WORD, rim);                    
+                }
+            } else {
+                // rim is source
+                throw new DecodingException();
+            }
+        } else {
+            // rim is register source
+            if(s) {
+                this.cid.sourceDescriptor = decodeDwordRegField(rim);
+                this.cid.destinationDescriptor = decodeByteRegField(reg);
+            } else {
+                this.cid.sourceDescriptor = decodeDwordRegField(rim);
+                this.cid.destinationDescriptor = decodeWordRegField(reg);
+            }
+        }
+        
+        this.cid.sourceValue = readLocation(this.cid.sourceDescriptor);
+    }
+    
+    /**
      * Decode normal RIM without reading the destination. Read EI8.
      * @throws DecodingException 
      * @throws UnprivilegedAccessException 
@@ -610,6 +696,59 @@ public class NotSoTinySimulatorV2 {
     private void decodeRIMNoDestReadEI8() throws DecodingException, UnprivilegedAccessException {
         decodeRIMNoDestRead();
         this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
+    }
+    
+    /**
+     * Decode normal RIM without reading the destination. Destination must be a register. Destination is treated as 32-bit
+     * @throws UnprivilegedAccessException
+     * @throws DecodingException
+     */
+    private void decodeRIMR32DestinationNoDestRead() throws UnprivilegedAccessException, DecodingException {
+        byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
+        
+        // Get parts
+        boolean s = (rimByte & 0x80) != 0;
+        boolean r = (rimByte & 0x40) != 0;
+        int reg = ((rimByte >> 3) & 0x07);
+        int rim = (rimByte & 0x07);
+        
+        if(r) {
+            // rim is memory
+            if(rim >= 0x04) {
+                // rim is destination
+                throw new DecodingException();
+            } else {
+                // rim is source
+                if(s) {
+                    this.cid.sourceDescriptor = decodeRimField(LocationSize.BYTE, rim);
+                    this.cid.destinationDescriptor = decodeDwordRegField(reg);
+                } else {
+                    this.cid.sourceDescriptor = decodeRimField(LocationSize.WORD, rim);
+                    this.cid.destinationDescriptor = decodeDwordRegField(reg);
+                }
+            }
+        } else {
+            // rim is register source
+            if(s) {
+                this.cid.sourceDescriptor = decodeByteRegField(rim);
+                this.cid.destinationDescriptor = decodeDwordRegField(reg);
+            } else {
+                this.cid.sourceDescriptor = decodeWordRegField(rim);
+                this.cid.destinationDescriptor = decodeDwordRegField(reg);
+            }
+        }
+        
+        this.cid.sourceValue = readLocation(this.cid.sourceDescriptor);
+    }
+    
+    /**
+     * Decode RIM. Destination must be a register. Destination is treated as 32-bit
+     * @throws UnprivilegedAccessException
+     * @throws DecodingException
+     */
+    private void decodeRIMR32Destination() throws UnprivilegedAccessException, DecodingException {
+        decodeRIMR32DestinationNoDestRead();
+        this.cid.destinationValue = readLocation(this.cid.destinationDescriptor);
     }
     
     /**
@@ -731,6 +870,112 @@ public class NotSoTinySimulatorV2 {
     }
     
     /**
+     * Decode wide RIM, don't read destination, read EI8
+     * @throws UnprivilegedAccessException
+     * @throws DecodingException
+     */
+    private void decodeWideRIMNoDestReadEI8() throws UnprivilegedAccessException, DecodingException {
+        decodeWideRIMNoDestRead();
+        this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
+    }
+    
+    /**
+     * Decode wide RIM without reading destination. Destination must be a register. Destination is treated as 32-bit
+     * @throws UnprivilegedAccessException
+     * @throws DecodingException
+     */
+    private void decodeWideRIMR32DestinationNoRead() throws UnprivilegedAccessException, DecodingException {
+        byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
+        
+        // Get parts
+        boolean s = (rimByte & 0x80) != 0;
+        boolean r = (rimByte & 0x40) != 0;
+        int reg = ((rimByte >> 3) & 0x07);
+        int rim = (rimByte & 0x07);
+        
+        if(r) {
+            // rim is memory
+            if(rim >= 0x04) {
+                // rim is destination
+                throw new DecodingException();
+            } else {
+                // rim is source
+                if(s) {
+                    this.cid.sourceDescriptor = decodeRimField(LocationSize.WORD, rim);
+                    this.cid.destinationDescriptor = decodeDwordRegField(reg);
+                } else {
+                    this.cid.sourceDescriptor = decodeRimField(LocationSize.DWORD, rim);
+                    this.cid.destinationDescriptor = decodeDwordRegField(reg);
+                }
+            }
+        } else {
+            // rim is register source
+            if(s) {
+                this.cid.sourceDescriptor = decodeWordRegField(rim);
+                this.cid.destinationDescriptor = decodeDwordRegField(reg);
+            } else {
+                this.cid.sourceDescriptor = decodeDwordRegField(rim);
+                this.cid.destinationDescriptor = decodeDwordRegField(reg);
+            }
+        }
+        
+        this.cid.sourceValue = readLocation(this.cid.sourceDescriptor);
+    }
+    
+    /**
+     * Decode wide RIM. Destination must be a register. Destination is treated as 32-bit
+     * @throws UnprivilegedAccessException
+     * @throws DecodingException
+     */
+    private void decodeWideRIMR32Destination() throws UnprivilegedAccessException, DecodingException {
+        decodeWideRIMR32DestinationNoRead();
+        this.cid.destinationValue = readLocation(this.cid.destinationDescriptor);
+    }
+    
+    /**
+     * Decode wide RIM, don't read destination, source must be a register, source is treated as 32-bit
+     * @throws UnprivilegedAccessException
+     * @throws DecodingException
+     */
+    private void decodeWideRIMR32SourceNoDestRead() throws UnprivilegedAccessException, DecodingException {
+        byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
+        
+        // Get parts
+        boolean s = (rimByte & 0x80) != 0;
+        boolean r = (rimByte & 0x40) != 0;
+        int reg = ((rimByte >> 3) & 0x07);
+        int rim = (rimByte & 0x07);
+        
+        if(r) {
+            // rim is memory
+            if(rim >= 0x04) {
+                // rim is destination
+                if(s) {
+                    this.cid.sourceDescriptor = decodeDwordRegField(reg);
+                    this.cid.destinationDescriptor = decodeRimField(LocationSize.WORD, rim);                    
+                } else {
+                    this.cid.sourceDescriptor = decodeDwordRegField(reg);
+                    this.cid.destinationDescriptor = decodeRimField(LocationSize.DWORD, rim);                    
+                }
+            } else {
+                // rim is source
+                throw new DecodingException();
+            }
+        } else {
+            // rim is register source
+            if(s) {
+                this.cid.sourceDescriptor = decodeDwordRegField(rim);
+                this.cid.destinationDescriptor = decodeWordRegField(reg);
+            } else {
+                this.cid.sourceDescriptor = decodeDwordRegField(rim);
+                this.cid.destinationDescriptor = decodeDwordRegField(reg);
+            }
+        }
+        
+        this.cid.sourceValue = readLocation(this.cid.sourceDescriptor);
+    }
+    
+    /**
      * Decode RIM source
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
@@ -771,6 +1016,65 @@ public class NotSoTinySimulatorV2 {
         }
         
         this.cid.sourceValue = readLocation(this.cid.sourceDescriptor);
+    }
+    
+    /**
+     * Decode RIM source, read EI8
+     * @throws UnprivilegedAccessException
+     * @throws DecodingException
+     */
+    private void decodeRIMSourceOnlyEI8() throws UnprivilegedAccessException, DecodingException {
+        decodeRIMSourceOnly();
+        this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
+    }
+    
+    /**
+     * Decode RIM source which must be a register
+     * @throws UnprivilegedAccessException
+     * @throws DecodingException
+     */
+    private void decodeRIMRegisterSourceOnly() throws UnprivilegedAccessException, DecodingException {
+        byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
+        
+        // Get parts
+        boolean s = (rimByte & 0x80) != 0;
+        boolean r = (rimByte & 0x40) != 0;
+        int reg = ((rimByte >> 3) & 0x07);
+        int rim = (rimByte & 0x07);
+        
+        if(r) {
+            // rim is memory
+            if(rim >= 0x04) {
+                // rim is destination
+                if(s) {
+                    this.cid.sourceDescriptor = decodeByteRegField(reg);                    
+                } else {
+                    this.cid.sourceDescriptor = decodeWordRegField(reg);                    
+                }
+            } else {
+                // rim is source
+                throw new DecodingException();
+            }
+        } else {
+            // rim is register source
+            if(s) {
+                this.cid.sourceDescriptor = decodeByteRegField(rim);
+            } else {
+                this.cid.sourceDescriptor = decodeWordRegField(rim);
+            }
+        }
+        
+        this.cid.sourceValue = readLocation(this.cid.sourceDescriptor);
+    }
+    
+    /**
+     * Decode RIM source which must be a register, read EI8
+     * @throws UnprivilegedAccessException
+     * @throws DecodingException
+     */
+    private void decodeRIMRegisterSourceOnlyEI8() throws UnprivilegedAccessException, DecodingException {
+        decodeRIMRegisterSourceOnly();
+        this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
     }
     
     /**
@@ -817,6 +1121,55 @@ public class NotSoTinySimulatorV2 {
     }
     
     /**
+     * Decode wide RIM source which must be a register
+     * @throws UnprivilegedAccessException
+     * @throws DecodingException
+     */
+    private void decodeRIMWideRegisterSourceOnly() throws UnprivilegedAccessException, DecodingException {
+        byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
+        
+        // Get parts
+        boolean s = (rimByte & 0x80) != 0;
+        boolean r = (rimByte & 0x40) != 0;
+        int reg = ((rimByte >> 3) & 0x07);
+        int rim = (rimByte & 0x07);
+        
+        if(r) {
+            // rim is memory
+            if(rim >= 0x04) {
+                // rim is destination
+                if(s) {
+                    this.cid.sourceDescriptor = decodeWordRegField(reg);                    
+                } else {
+                    this.cid.sourceDescriptor = decodeDwordRegField(reg);                    
+                }
+            } else {
+                // rim is source
+                throw new DecodingException();
+            }
+        } else {
+            // rim is register source
+            if(s) {
+                this.cid.sourceDescriptor = decodeWordRegField(rim);
+            } else {
+                this.cid.sourceDescriptor = decodeDwordRegField(rim);
+            }
+        }
+        
+        this.cid.sourceValue = readLocation(this.cid.sourceDescriptor);
+    }
+    
+    /**
+     * Decode wide RIM source which must be a register, read EI8
+     * @throws UnprivilegedAccessException
+     * @throws DecodingException
+     */
+    private void decodeRIMWideRegisterSourceOnlyEI8() throws UnprivilegedAccessException, DecodingException {
+        decodeRIMWideRegisterSourceOnly();
+        this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
+    }
+    
+    /**
      * Decode RIM destination
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
@@ -833,7 +1186,8 @@ public class NotSoTinySimulatorV2 {
      */
     private void decodeRIMDestOnlyEI8() throws UnprivilegedAccessException, DecodingException {
         decodeRIMDestOnly();
-        this.cid.sourceValue = this.fetchBuffer[this.cid.instructionSize++];
+        this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
+        this.cid.sourceValue = this.cid.i8Byte;
     }
     
     /**
@@ -877,6 +1231,52 @@ public class NotSoTinySimulatorV2 {
     }
     
     /**
+     * Decode RIM destination without reading it. Destination must be a register.
+     * @throws DecodingException
+     */
+    private void decodeRIMRegisterDestinationOnlyNoRead() throws DecodingException {
+        byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
+        
+        // Get parts
+        boolean s = (rimByte & 0x80) != 0;
+        boolean r = (rimByte & 0x40) != 0;
+        int reg = ((rimByte >> 3) & 0x07);
+        int rim = (rimByte & 0x07);
+        
+        if(r) {
+            // rim is memory
+            if(rim >= 0x04) {
+                throw new DecodingException();
+            } else {
+                // rim is source
+                if(s) {
+                    this.cid.destinationDescriptor = decodeByteRegField(reg);
+                } else {
+                    this.cid.destinationDescriptor = decodeWordRegField(reg);
+                }
+            }
+        } else {
+            // rim is register source
+            if(s) {
+                this.cid.destinationDescriptor = decodeByteRegField(reg);
+            } else {
+                this.cid.destinationDescriptor = decodeWordRegField(reg);
+            }
+        }
+    }
+    
+    /**
+     * Decode RIM destination without reading it. destination must be a register. read EI8
+     * @throws UnprivilegedAccessException
+     * @throws DecodingException
+     */
+    private void decodeRIMRegisterDestinationOnlyNoReadEI8() throws DecodingException {
+        decodeRIMRegisterDestinationOnlyNoRead();
+        this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
+        this.cid.sourceValue = this.cid.i8Byte;
+    }
+    
+    /**
      * Decode wide RIM destination without reading it
      * @throws DecodingException 
      */
@@ -914,6 +1314,73 @@ public class NotSoTinySimulatorV2 {
                 this.cid.destinationDescriptor = decodeDwordRegField(reg);
             }
         }
+    }
+    
+    /**
+     * Decode wide RIM destination
+     * @throws UnprivilegedAccessException
+     * @throws DecodingException
+     */
+    private void decodeRIMWideDestOnly() throws UnprivilegedAccessException, DecodingException {
+        decodeRIMWideDestOnlyNoRead();
+        this.cid.destinationValue = readLocation(this.cid.destinationDescriptor);
+    }
+    
+    /**
+     * Decode wide RIM destination, read EI8
+     * @throws UnprivilegedAccessException
+     * @throws DecodingException
+     */
+    private void decodeRIMWideDestOnlyEI8() throws UnprivilegedAccessException, DecodingException {
+        decodeRIMWideDestOnly();
+        this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
+        this.cid.sourceValue = this.cid.i8Byte;
+    }
+    
+    /**
+     * Decode wide RIM destination without reading it. Destination must be a register.
+     * @throws DecodingException
+     */
+    private void decodeWideRIMRegisterDestinationOnlyNoRead() throws DecodingException {
+        byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
+        
+        // Get parts
+        boolean s = (rimByte & 0x80) != 0;
+        boolean r = (rimByte & 0x40) != 0;
+        int reg = ((rimByte >> 3) & 0x07);
+        int rim = (rimByte & 0x07);
+        
+        if(r) {
+            // rim is memory
+            if(rim >= 0x04) {
+                // rim is destination
+                throw new DecodingException();
+            } else {
+                // rim is source
+                if(s) {
+                    this.cid.destinationDescriptor = decodeWordRegField(reg);
+                } else {
+                    this.cid.destinationDescriptor = decodeDwordRegField(reg);
+                }
+            }
+        } else {
+            // rim is register source
+            if(s) {
+                this.cid.destinationDescriptor = decodeWordRegField(reg);
+            } else {
+                this.cid.destinationDescriptor = decodeDwordRegField(reg);
+            }
+        }
+    }
+    
+    /**
+     * Decode wide RIM destination without reading it. Destination must be a register. Read EI8
+     * @throws DecodingException
+     */
+    private void decodeWideRIMRegisterDestinationOnlyNoReadEI8() throws DecodingException {
+        decodeWideRIMRegisterDestinationOnlyNoRead();
+        this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
+        this.cid.sourceValue = this.cid.i8Byte;
     }
     
     /**
@@ -1164,11 +1631,11 @@ public class NotSoTinySimulatorV2 {
     private LocationDescriptor decodeDwordRegField(int field) throws DecodingException {
         return switch(field) {
             case 0  -> LocationDescriptor.REG_DA;
-            case 1  -> LocationDescriptor.REG_AB;
-            case 2  -> LocationDescriptor.REG_BC;
-            case 3  -> LocationDescriptor.REG_CD;
-            case 4  -> LocationDescriptor.REG_JI;
-            case 5  -> LocationDescriptor.REG_LK;
+            case 1  -> LocationDescriptor.REG_BC;
+            case 2  -> LocationDescriptor.REG_JI;
+            case 3  -> LocationDescriptor.REG_LK;
+            case 4  -> LocationDescriptor.REG_XP;
+            case 5  -> LocationDescriptor.REG_YP;
             case 6  -> LocationDescriptor.REG_BP;
             case 7  -> LocationDescriptor.REG_SP;
             default -> throw new DecodingException();
@@ -1205,9 +1672,9 @@ public class NotSoTinySimulatorV2 {
                 address = this.reg_ip;
                 break;
             
-            case 0x08, 0x09, 0x0A, 0x0B: // A:B
+            case 0x08, 0x09, 0x0A, 0x0B: // B:C
                 offsetSize = bio - 0x07;
-                address = (this.reg_a << 16) | (this.reg_b & 0xFFFF);
+                address = (this.reg_b << 16) | (this.reg_c & 0xFFFF);
                 break;
             
             case 0x0C, 0x0D, 0x0E, 0x0F: // IP
@@ -1216,9 +1683,9 @@ public class NotSoTinySimulatorV2 {
                 address = this.reg_ip;
                 break;
             
-            case 0x10, 0x11, 0x12, 0x13: // B:C
+            case 0x10, 0x11, 0x12, 0x13: // J:I
                 offsetSize = bio - 0x0F;
-                address = (this.reg_b << 16) | (this.reg_c & 0xFFFF);
+                address = (this.reg_j << 16) | (this.reg_i & 0xFFFF);
                 break;
             
             case 0x14, 0x15, 0x16, 0x17: // IP
@@ -1227,9 +1694,9 @@ public class NotSoTinySimulatorV2 {
                 address = this.reg_ip;
                 break;
             
-            case 0x18, 0x19, 0x1A, 0x1B: // C:D
+            case 0x18, 0x19, 0x1A, 0x1B: // L:K
                 offsetSize = bio - 0x17;
-                address = (this.reg_c << 16) | (this.reg_d & 0xFFFF);
+                address = (this.reg_l << 16) | (this.reg_k & 0xFFFF);
                 break;
             
             case 0x1C, 0x1D, 0x1E, 0x1F: // IP
@@ -1238,9 +1705,9 @@ public class NotSoTinySimulatorV2 {
                 address = this.reg_ip;
                 break;
             
-            case 0x20, 0x21, 0x22, 0x23: // J:I
+            case 0x20, 0x21, 0x22, 0x23: // XP
                 offsetSize = bio - 0x1F;
-                address = (this.reg_j << 16) | (this.reg_i & 0xFFFF);
+                address = this.reg_xp;
                 break;
             
             case 0x24, 0x25, 0x26, 0x27: // IP + I
@@ -1249,9 +1716,9 @@ public class NotSoTinySimulatorV2 {
                 address = this.reg_ip + (this.reg_i & 0xFFFF);
                 break;
             
-            case 0x28, 0x29, 0x2A, 0x2B: // L:K
+            case 0x28, 0x29, 0x2A, 0x2B: // YP
                 offsetSize = bio - 0x27;
-                address = (this.reg_l << 16) | (this.reg_k & 0xFFFF);
+                address = this.reg_yp;
                 break;
             
             case 0x2C, 0x2D, 0x2E, 0x2F: // IP + J
@@ -1314,164 +1781,164 @@ public class NotSoTinySimulatorV2 {
                 address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + (this.reg_l & 0xFFFF);
                 break;
             
-            case 0x48: // A:B + A
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_a & 0xFFFF);
-                break;
-            
-            case 0x49: // A:B + B
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_b & 0xFFFF);
-                break;
-            
-            case 0x4A: // A:B + C
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_c & 0xFFFF);
-                break;
-            
-            case 0x4B: // A:B + D
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_d & 0xFFFF);
-                break;
-            
-            case 0x4C: // A:B + I
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_i & 0xFFFF);
-                break;
-            
-            case 0x4D: // A:B + J
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_j & 0xFFFF);
-                break;
-            
-            case 0x4E: // A:B + K
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_k & 0xFFFF);
-                break;
-            
-            case 0x4F: // A:B + L
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + (this.reg_l & 0xFFFF);
-                break;
-            
-            case 0x50: // B:C + A
+            case 0x48: // B:C + A
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_a & 0xFFFF);
                 break;
             
-            case 0x51: // B:C + B
+            case 0x49: // B:C + B
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_b & 0xFFFF);
                 break;
             
-            case 0x52: // B:C + C
+            case 0x4A: // B:C + C
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_c & 0xFFFF);
                 break;
             
-            case 0x53: // B:C + D
+            case 0x4B: // B:C + D
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_d & 0xFFFF);
                 break;
             
-            case 0x54: // B:C + I
+            case 0x4C: // B:C + I
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_i & 0xFFFF);
                 break;
             
-            case 0x55: // B:C + J
+            case 0x4D: // B:C + J
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_j & 0xFFFF);
                 break;
             
-            case 0x56: // B:C + K
+            case 0x4E: // B:C + K
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_k & 0xFFFF);
                 break;
             
-            case 0x57: // B:C + L
+            case 0x4F: // B:C + L
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + (this.reg_l & 0xFFFF);
                 break;
             
-            case 0x58: // C:D + A
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_a & 0xFFFF);
-                break;
-            
-            case 0x59: // C:D + B
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_b & 0xFFFF);
-                break;
-            
-            case 0x5A: // C:D + C
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_c & 0xFFFF);
-                break;
-            
-            case 0x5B: // C:D + D
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_d & 0xFFFF);
-                break;
-            
-            case 0x5C: // C:D + I
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_i & 0xFFFF);
-                break;
-            
-            case 0x5D: // C:D + J
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_j & 0xFFFF);
-                break;
-            
-            case 0x5E: // C:D + K
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_k & 0xFFFF);
-                break;
-            
-            case 0x5F: // C:D + L
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + (this.reg_l & 0xFFFF);
-                break;
-            
-            case 0x60: // J:I + A
+            case 0x50: // J:I + A
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_a & 0xFFFF);
                 break;
             
-            case 0x61: // J:I + B
+            case 0x51: // J:I + B
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_b & 0xFFFF);
                 break;
             
-            case 0x62: // J:I + C
+            case 0x52: // J:I + C
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_c & 0xFFFF);
                 break;
             
-            case 0x63: // J:I + D
+            case 0x53: // J:I + D
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_d & 0xFFFF);
                 break;
             
-            case 0x64: // J:I + I
+            case 0x54: // J:I + I
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_i & 0xFFFF);
                 break;
             
-            case 0x65: // J:I + J
+            case 0x55: // J:I + J
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_j & 0xFFFF);
                 break;
             
-            case 0x66: // J:I + K
+            case 0x56: // J:I + K
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_k & 0xFFFF);
                 break;
             
-            case 0x67: // J:I + L
+            case 0x57: // J:I + L
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + (this.reg_l & 0xFFFF);
                 break;
             
-            case 0x68: // L:K + A
+            case 0x58: // L:K + A
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_a & 0xFFFF);
                 break;
             
-            case 0x69: // L:K + B
+            case 0x59: // L:K + B
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_b & 0xFFFF);
                 break;
             
-            case 0x6A: // L:K + C
+            case 0x5A: // L:K + C
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_c & 0xFFFF);
                 break;
             
-            case 0x6B: // L:K + D
+            case 0x5B: // L:K + D
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_d & 0xFFFF);
                 break;
             
-            case 0x6C: // L:K + I
+            case 0x5C: // L:K + I
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_i & 0xFFFF);
                 break;
             
-            case 0x6D: // L:K + J
+            case 0x5D: // L:K + J
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_j & 0xFFFF);
                 break;
             
-            case 0x6E: // L:K + K
+            case 0x5E: // L:K + K
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_k & 0xFFFF);
                 break;
             
-            case 0x6F: // L:K + L
+            case 0x5F: // L:K + L
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + (this.reg_l & 0xFFFF);
+                break;
+            
+            case 0x60: // XP + A
+                address = this.reg_xp + (this.reg_a & 0xFFFF);
+                break;
+            
+            case 0x61: // XP + B
+                address = this.reg_xp + (this.reg_b & 0xFFFF);
+                break;
+            
+            case 0x62: // XP + C
+                address = this.reg_xp + (this.reg_c & 0xFFFF);
+                break;
+            
+            case 0x63: // XP + D
+                address = this.reg_xp + (this.reg_d & 0xFFFF);
+                break;
+            
+            case 0x64: // XP + I
+                address = this.reg_xp + (this.reg_i & 0xFFFF);
+                break;
+            
+            case 0x65: // XP + J
+                address = this.reg_xp + (this.reg_j & 0xFFFF);
+                break;
+            
+            case 0x66: // XP + K
+                address = this.reg_xp + (this.reg_k & 0xFFFF);
+                break;
+            
+            case 0x67: // XP + L
+                address = this.reg_xp + (this.reg_l & 0xFFFF);
+                break;
+            
+            case 0x68: // YP + A
+                address = this.reg_yp + (this.reg_a & 0xFFFF);
+                break;
+            
+            case 0x69: // YP + B
+                address = this.reg_yp + (this.reg_b & 0xFFFF);
+                break;
+            
+            case 0x6A: // YP + C
+                address = this.reg_yp + (this.reg_c & 0xFFFF);
+                break;
+            
+            case 0x6B: // YP + D
+                address = this.reg_yp + (this.reg_d & 0xFFFF);
+                break;
+            
+            case 0x6C: // YP + I
+                address = this.reg_yp + (this.reg_i & 0xFFFF);
+                break;
+            
+            case 0x6D: // YP + J
+                address = this.reg_yp + (this.reg_j & 0xFFFF);
+                break;
+            
+            case 0x6E: // YP + K
+                address = this.reg_yp + (this.reg_k & 0xFFFF);
+                break;
+            
+            case 0x6F: // YP + L
+                address = this.reg_yp + (this.reg_l & 0xFFFF);
                 break;
             
             case 0x70: // BP + A
@@ -1570,164 +2037,164 @@ public class NotSoTinySimulatorV2 {
                 address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + ((this.reg_l & 0xFFFF) << 1);
                 break;
             
-            case 0x88: // A:B + 2*A
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_a & 0xFFFF) << 1);
-                break;
-            
-            case 0x89: // A:B + 2*B
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_b & 0xFFFF) << 1);
-                break;
-            
-            case 0x8A: // A:B + 2*C
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_c & 0xFFFF) << 1);
-                break;
-            
-            case 0x8B: // A:B + 2*D
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_d & 0xFFFF) << 1);
-                break;
-            
-            case 0x8C: // A:B + 2*I
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_i & 0xFFFF) << 1);
-                break;
-            
-            case 0x8D: // A:B + 2*J
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_j & 0xFFFF) << 1);
-                break;
-                
-            case 0x8E: // A:B + 2*K
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_k & 0xFFFF) << 1);
-                break;
-            
-            case 0x8F: // A:B + 2*L
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_l & 0xFFFF) << 1);
-                break;
-            
-            case 0x90: // B:C + 2*A
+            case 0x88: // B:C + 2*A
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_a & 0xFFFF) << 1);
                 break;
             
-            case 0x91: // B:C + 2*B
+            case 0x89: // B:C + 2*B
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_b & 0xFFFF) << 1);
                 break;
             
-            case 0x92: // B:C + 2*C
+            case 0x8A: // B:C + 2*C
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_c & 0xFFFF) << 1);
                 break;
             
-            case 0x93: // B:C + 2*D
+            case 0x8B: // B:C + 2*D
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_d & 0xFFFF) << 1);
                 break;
             
-            case 0x94: // B:C + 2*I
+            case 0x8C: // B:C + 2*I
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_i & 0xFFFF) << 1);
                 break;
             
-            case 0x95: // B:C + 2*J
+            case 0x8D: // B:C + 2*J
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_j & 0xFFFF) << 1);
                 break;
                 
-            case 0x96: // B:C + 2*K
+            case 0x8E: // B:C + 2*K
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_k & 0xFFFF) << 1);
                 break;
             
-            case 0x97: // B:C + 2*L
+            case 0x8F: // B:C + 2*L
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_l & 0xFFFF) << 1);
                 break;
             
-            case 0x98: // C:D + 2*A
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_a & 0xFFFF) << 1);
-                break;
-            
-            case 0x99: // C:D + 2*B
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_b & 0xFFFF) << 1);
-                break;
-            
-            case 0x9A: // C:D + 2*C
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_c & 0xFFFF) << 1);
-                break;
-            
-            case 0x9B: // C:D + 2*D
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_d & 0xFFFF) << 1);
-                break;
-            
-            case 0x9C: // C:D + 2*I
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_i & 0xFFFF) << 1);
-                break;
-            
-            case 0x9D: // C:D + 2*J
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_j & 0xFFFF) << 1);
-                break;
-                
-            case 0x9E: // C:D + 2*K
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_k & 0xFFFF) << 1);
-                break;
-            
-            case 0x9F: // C:D + 2*L
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_l & 0xFFFF) << 1);
-                break;
-            
-            case 0xA0: // J:I + 2*A
+            case 0x90: // J:I + 2*A
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_a & 0xFFFF) << 1);
                 break;
             
-            case 0xA1: // J:I + 2*B
+            case 0x91: // J:I + 2*B
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_b & 0xFFFF) << 1);
                 break;
             
-            case 0xA2: // J:I + 2*C
+            case 0x92: // J:I + 2*C
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_c & 0xFFFF) << 1);
                 break;
             
-            case 0xA3: // J:I + 2*D
+            case 0x93: // J:I + 2*D
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_d & 0xFFFF) << 1);
                 break;
             
-            case 0xA4: // J:I + 2*I
+            case 0x94: // J:I + 2*I
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_i & 0xFFFF) << 1);
                 break;
             
-            case 0xA5: // J:I + 2*J
+            case 0x95: // J:I + 2*J
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_j & 0xFFFF) << 1);
                 break;
                 
-            case 0xA6: // J:I + 2*K
+            case 0x96: // J:I + 2*K
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_k & 0xFFFF) << 1);
                 break;
             
-            case 0xA7: // J:I + 2*L
+            case 0x97: // J:I + 2*L
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_l & 0xFFFF) << 1);
                 break;
             
-            case 0xA8: // L:K + 2*A
+            case 0x98: // L:K + 2*A
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_a & 0xFFFF) << 1);
                 break;
             
-            case 0xA9: // L:K + 2*B
+            case 0x99: // L:K + 2*B
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_b & 0xFFFF) << 1);
                 break;
             
-            case 0xAA: // L:K + 2*C
+            case 0x9A: // L:K + 2*C
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_c & 0xFFFF) << 1);
                 break;
             
-            case 0xAB: // L:K + 2*D
+            case 0x9B: // L:K + 2*D
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_d & 0xFFFF) << 1);
                 break;
             
-            case 0xAC: // L:K + 2*I
+            case 0x9C: // L:K + 2*I
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_i & 0xFFFF) << 1);
                 break;
             
-            case 0xAD: // L:K + 2*J
+            case 0x9D: // L:K + 2*J
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_j & 0xFFFF) << 1);
                 break;
                 
-            case 0xAE: // L:K + 2*K
+            case 0x9E: // L:K + 2*K
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_k & 0xFFFF) << 1);
                 break;
             
-            case 0xAF: // L:K + 2*L
+            case 0x9F: // L:K + 2*L
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_l & 0xFFFF) << 1);
+                break;
+            
+            case 0xA0: // XP + 2*A
+                address = this.reg_xp + ((this.reg_a & 0xFFFF) << 1);
+                break;
+            
+            case 0xA1: // XP + 2*B
+                address = this.reg_xp + ((this.reg_b & 0xFFFF) << 1);
+                break;
+            
+            case 0xA2: // XP + 2*C
+                address = this.reg_xp + ((this.reg_c & 0xFFFF) << 1);
+                break;
+            
+            case 0xA3: // XP + 2*D
+                address = this.reg_xp + ((this.reg_d & 0xFFFF) << 1);
+                break;
+            
+            case 0xA4: // XP + 2*I
+                address = this.reg_xp + ((this.reg_i & 0xFFFF) << 1);
+                break;
+            
+            case 0xA5: // XP + 2*J
+                address = this.reg_xp + ((this.reg_j & 0xFFFF) << 1);
+                break;
+                
+            case 0xA6: // XP + 2*K
+                address = this.reg_xp + ((this.reg_k & 0xFFFF) << 1);
+                break;
+            
+            case 0xA7: // XP + 2*L
+                address = this.reg_xp + ((this.reg_l & 0xFFFF) << 1);
+                break;
+            
+            case 0xA8: // YP + 2*A
+                address = this.reg_yp + ((this.reg_a & 0xFFFF) << 1);
+                break;
+            
+            case 0xA9: // YP + 2*B
+                address = this.reg_yp + ((this.reg_b & 0xFFFF) << 1);
+                break;
+            
+            case 0xAA: // YP + 2*C
+                address = this.reg_yp + ((this.reg_c & 0xFFFF) << 1);
+                break;
+            
+            case 0xAB: // YP + 2*D
+                address = this.reg_yp + ((this.reg_d & 0xFFFF) << 1);
+                break;
+            
+            case 0xAC: // YP + 2*I
+                address = this.reg_yp + ((this.reg_i & 0xFFFF) << 1);
+                break;
+            
+            case 0xAD: // YP + 2*J
+                address = this.reg_yp + ((this.reg_j & 0xFFFF) << 1);
+                break;
+                
+            case 0xAE: // YP + 2*K
+                address = this.reg_yp + ((this.reg_k & 0xFFFF) << 1);
+                break;
+            
+            case 0xAF: // YP + 2*L
+                address = this.reg_yp + ((this.reg_l & 0xFFFF) << 1);
                 break;
             
             case 0xB0: // BP + 2*A
@@ -1826,164 +2293,164 @@ public class NotSoTinySimulatorV2 {
                 address = ((this.reg_d << 16) | (this.reg_a & 0xFFFF)) + ((this.reg_l & 0xFFFF) << 2);
                 break;
             
-            case 0xC8: // A:B + 4*A
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_a & 0xFFFF) << 2);
-                break;
-            
-            case 0xC9: // A:B + 4*B
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_b & 0xFFFF) << 2);
-                break;
-            
-            case 0xCA: // A:B + 4*C
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_c & 0xFFFF) << 2);
-                break;
-            
-            case 0xCB: // A:B + 4*D
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_d & 0xFFFF) << 2);
-                break;
-            
-            case 0xCC: // A:B + 4*I
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_i & 0xFFFF) << 2);
-                break;
-            
-            case 0xCD: // A:B + 4*J
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_j & 0xFFFF) << 2);
-                break;
-                
-            case 0xCE: // A:B + 4*K
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_k & 0xFFFF) << 2);
-                break;
-            
-            case 0xCF: // A:B + 4*L
-                address = ((this.reg_a << 16) | (this.reg_b & 0xFFFF)) + ((this.reg_l & 0xFFFF) << 2);
-                break;
-            
-            case 0xD0: // B:C + 4*A
+            case 0xC8: // B:C + 4*A
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_a & 0xFFFF) << 2);
                 break;
             
-            case 0xD1: // B:C + 4*B
+            case 0xC9: // B:C + 4*B
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_b & 0xFFFF) << 2);
                 break;
             
-            case 0xD2: // B:C + 4*C
+            case 0xCA: // B:C + 4*C
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_c & 0xFFFF) << 2);
                 break;
             
-            case 0xD3: // B:C + 4*D
+            case 0xCB: // B:C + 4*D
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_d & 0xFFFF) << 2);
                 break;
             
-            case 0xD4: // B:C + 4*I
+            case 0xCC: // B:C + 4*I
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_i & 0xFFFF) << 2);
                 break;
             
-            case 0xD5: // B:C + 4*J
+            case 0xCD: // B:C + 4*J
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_j & 0xFFFF) << 2);
                 break;
                 
-            case 0xD6: // B:C + 4*K
+            case 0xCE: // B:C + 4*K
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_k & 0xFFFF) << 2);
                 break;
             
-            case 0xD7: // B:C + 4*L
+            case 0xCF: // B:C + 4*L
                 address = ((this.reg_b << 16) | (this.reg_c & 0xFFFF)) + ((this.reg_l & 0xFFFF) << 2);
                 break;
             
-            case 0xD8: // C:D + 4*A
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_a & 0xFFFF) << 2);
-                break;
-            
-            case 0xD9: // C:D + 4*B
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_b & 0xFFFF) << 2);
-                break;
-            
-            case 0xDA: // C:D + 4*C
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_c & 0xFFFF) << 2);
-                break;
-            
-            case 0xDB: // C:D + 4*D
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_d & 0xFFFF) << 2);
-                break;
-                
-            case 0xDC: // C:D + 4*I
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_i & 0xFFFF) << 2);
-                break;
-            
-            case 0xDD: // C:D + 4*J
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_j & 0xFFFF) << 2);
-                break;
-                
-            case 0xDE: // C:D + 4*K
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_k & 0xFFFF) << 2);
-                break;
-            
-            case 0xDF: // C:D + 4*L
-                address = ((this.reg_c << 16) | (this.reg_d & 0xFFFF)) + ((this.reg_l & 0xFFFF) << 2);
-                break;
-            
-            case 0xE0: // J:I + 4*A
+            case 0xD0: // J:I + 4*A
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_a & 0xFFFF) << 2);
                 break;
             
-            case 0xE1: // J:I + 4*B
+            case 0xD1: // J:I + 4*B
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_b & 0xFFFF) << 2);
                 break;
             
-            case 0xE2: // J:I + 4*C
+            case 0xD2: // J:I + 4*C
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_c & 0xFFFF) << 2);
                 break;
             
-            case 0xE3: // J:I + 4*D
+            case 0xD3: // J:I + 4*D
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_d & 0xFFFF) << 2);
                 break;
             
-            case 0xE4: // J:I + 4*I
+            case 0xD4: // J:I + 4*I
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_i & 0xFFFF) << 2);
                 break;
             
-            case 0xE5: // J:I + 4*J
+            case 0xD5: // J:I + 4*J
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_j & 0xFFFF) << 2);
                 break;
                 
-            case 0xE6: // J:I + 4*K
+            case 0xD6: // J:I + 4*K
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_k & 0xFFFF) << 2);
                 break;
             
-            case 0xE7: // J:I + 4*L
+            case 0xD7: // J:I + 4*L
                 address = ((this.reg_j << 16) | (this.reg_i & 0xFFFF)) + ((this.reg_l & 0xFFFF) << 2);
                 break;
             
-            case 0xE8: // L:K + 4*A
+            case 0xD8: // L:K + 4*A
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_a & 0xFFFF) << 2);
                 break;
             
-            case 0xE9: // L:K + 4*B
+            case 0xD9: // L:K + 4*B
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_b & 0xFFFF) << 2);
                 break;
             
-            case 0xEA: // L:K + 4*C
+            case 0xDA: // L:K + 4*C
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_c & 0xFFFF) << 2);
                 break;
             
-            case 0xEB: // L:K + 4*D
+            case 0xDB: // L:K + 4*D
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_d & 0xFFFF) << 2);
                 break;
-            
-            case 0xEC: // L:K + 4*I
+                
+            case 0xDC: // L:K + 4*I
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_i & 0xFFFF) << 2);
                 break;
             
-            case 0xED: // L:K + 4*J
+            case 0xDD: // L:K + 4*J
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_j & 0xFFFF) << 2);
                 break;
                 
-            case 0xEE: // L:K + 4*K
+            case 0xDE: // L:K + 4*K
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_k & 0xFFFF) << 2);
                 break;
             
-            case 0xEF: // L:K + 4*L
+            case 0xDF: // L:K + 4*L
                 address = ((this.reg_l << 16) | (this.reg_k & 0xFFFF)) + ((this.reg_l & 0xFFFF) << 2);
+                break;
+            
+            case 0xE0: // XP + 4*A
+                address = this.reg_xp + ((this.reg_a & 0xFFFF) << 2);
+                break;
+            
+            case 0xE1: // XP + 4*B
+                address = this.reg_xp + ((this.reg_b & 0xFFFF) << 2);
+                break;
+            
+            case 0xE2: // XP + 4*C
+                address = this.reg_xp + ((this.reg_c & 0xFFFF) << 2);
+                break;
+            
+            case 0xE3: // XP + 4*D
+                address = this.reg_xp + ((this.reg_d & 0xFFFF) << 2);
+                break;
+            
+            case 0xE4: // XP + 4*I
+                address = this.reg_xp + ((this.reg_i & 0xFFFF) << 2);
+                break;
+            
+            case 0xE5: // XP + 4*J
+                address = this.reg_xp + ((this.reg_j & 0xFFFF) << 2);
+                break;
+                
+            case 0xE6: // XP + 4*K
+                address = this.reg_xp + ((this.reg_k & 0xFFFF) << 2);
+                break;
+            
+            case 0xE7: // XP + 4*L
+                address = this.reg_xp + ((this.reg_l & 0xFFFF) << 2);
+                break;
+            
+            case 0xE8: // YP + 4*A
+                address = this.reg_yp + ((this.reg_a & 0xFFFF) << 2);
+                break;
+            
+            case 0xE9: // YP + 4*B
+                address = this.reg_yp + ((this.reg_b & 0xFFFF) << 2);
+                break;
+            
+            case 0xEA: // YP + 4*C
+                address = this.reg_yp + ((this.reg_c & 0xFFFF) << 2);
+                break;
+            
+            case 0xEB: // YP + 4*D
+                address = this.reg_yp + ((this.reg_d & 0xFFFF) << 2);
+                break;
+            
+            case 0xEC: // YP + 4*I
+                address = this.reg_yp + ((this.reg_i & 0xFFFF) << 2);
+                break;
+            
+            case 0xED: // YP + 4*J
+                address = this.reg_yp + ((this.reg_j & 0xFFFF) << 2);
+                break;
+                
+            case 0xEE: // YP + 4*K
+                address = this.reg_yp + ((this.reg_k & 0xFFFF) << 2);
+                break;
+            
+            case 0xEF: // YP + 4*L
+                address = this.reg_yp + ((this.reg_l & 0xFFFF) << 2);
                 break;
             
             case 0xF0: // BP + 4*A
@@ -2124,18 +2591,10 @@ public class NotSoTinySimulatorV2 {
                     runMOVZ();
                     return;
                 
-                case MOV_SHORTCUT_SRC:
-                    runShortcutSourceMOV();
-                    return;
-                
-                case MOV_SHORTCUT_DST:
-                    runShortcutDestMOV();
-                    return;
-                
-                case MOV_SHORTCUT_REG:
+                case MOV_SHORTCUT:
                     runShortcutMOV();
                     return;
-                    
+                
                 case MOV_PROTECTED:
                     runProtectedMOV();
                     return;
@@ -2152,24 +2611,20 @@ public class NotSoTinySimulatorV2 {
                     runShortcutPOP();
                     return;
                 
-                case BPP_SHORTCUT:
-                    runShortcutBPP();
-                    return;
-                
                 case PUSH:
                     runPUSH();
                     return;
                 
-                case BPUSH:
-                    runBPUSH();
+                case RPUSH:
+                    runRPUSH();
                     return;
                 
                 case POP:
                     runPOP();
                     return;
                 
-                case BPOP:
-                    runBPOP();
+                case RPOP:
+                    runRPOP();
                     return;
                 
                 case PUSHA:
@@ -2196,8 +2651,8 @@ public class NotSoTinySimulatorV2 {
                     runPADD();
                     return;
                 
-                case INC_SHORTCUT:
-                    runShortcutINC();
+                case ADJ:
+                    runADJ();
                     return;
                 
                 case INC:
@@ -2303,6 +2758,10 @@ public class NotSoTinySimulatorV2 {
             case MOVS_B_I8  -> LocationDescriptor.REG_B;
             case MOVS_C_I8  -> LocationDescriptor.REG_C;
             case MOVS_D_I8  -> LocationDescriptor.REG_D;
+            case MOVS_I_I8  -> LocationDescriptor.REG_I;
+            case MOVS_J_I8  -> LocationDescriptor.REG_J;
+            case MOVS_K_I8  -> LocationDescriptor.REG_K;
+            case MOVS_L_I8  -> LocationDescriptor.REG_L;
             default         -> this.cid.destinationDescriptor;
         };
         
@@ -2334,59 +2793,26 @@ public class NotSoTinySimulatorV2 {
     }
     
     /**
-     * MOV x, BI/BIO/O/I
-     * @throws GPFException 
-     * @throws UnprivilegedAccessException
+     * MOV shortcuts
      */
     @SuppressWarnings("incomplete-switch")
-    private void runShortcutSourceMOV() throws GPFException {
+    private void runShortcutMOV() throws UnprivilegedAccessException {
         switch(this.cid.opcode) {
-            case MOV_A_I16, MOV_A_BI, MOV_A_BIO, MOV_A_O:   this.reg_a = (short) this.cid.sourceValue; break;
-            case MOV_B_I16, MOV_B_BI, MOV_B_BIO, MOV_B_O:   this.reg_b = (short) this.cid.sourceValue; break;
-            case MOV_C_I16, MOV_C_BI, MOV_C_BIO, MOV_C_O:   this.reg_c = (short) this.cid.sourceValue; break;
-            case MOV_D_I16, MOV_D_BI, MOV_D_BIO, MOV_D_O:   this.reg_d = (short) this.cid.sourceValue; break;
-            case MOV_I_I16:     this.reg_i = (short) this.cid.sourceValue; break;
-            case MOV_J_I16:     this.reg_j = (short) this.cid.sourceValue; break;
-            case MOV_K_I16:     this.reg_k = (short) this.cid.sourceValue; break;
-            case MOV_L_I16:     this.reg_l = (short) this.cid.sourceValue; break;
-            case MOV_F_RIM:     this.reg_f = (short) this.cid.sourceValue; break;
-        }
-    }
-    
-    /**
-     * MOV BI/BIO/O, x
-     * @throws UnprivilegedAccessException
-     * @throws GPFException 
-     */
-    @SuppressWarnings("incomplete-switch")
-    private void runShortcutDestMOV() throws UnprivilegedAccessException, GPFException {
-        switch(this.cid.opcode) {
-            case MOV_BI_A, MOV_BIO_A, MOV_O_A:  this.memory.write2Bytes(this.cid.destinationAddress, this.reg_a, this.pf_pv); break;
-            case MOV_BI_B, MOV_BIO_B, MOV_O_B:  this.memory.write2Bytes(this.cid.destinationAddress, this.reg_b, this.pf_pv); break;
-            case MOV_BI_C, MOV_BIO_C, MOV_O_C:  this.memory.write2Bytes(this.cid.destinationAddress, this.reg_c, this.pf_pv); break;
-            case MOV_BI_D, MOV_BIO_D, MOV_O_D:  this.memory.write2Bytes(this.cid.destinationAddress, this.reg_d, this.pf_pv); break;
-            case MOV_RIM_F:                     writeLocation(this.cid.destinationDescriptor, this.reg_f); break;
-        }
-    }
-    
-    /**
-     * MOV x, x
-     */
-    @SuppressWarnings("incomplete-switch")
-    private void runShortcutMOV() {
-        switch(this.cid.opcode) {
-            case MOV_A_B:   this.reg_a = this.reg_b; break;
-            case MOV_A_C:   this.reg_a = this.reg_c; break;
-            case MOV_A_D:   this.reg_a = this.reg_d; break;
-            case MOV_B_A:   this.reg_b = this.reg_a; break;
-            case MOV_B_C:   this.reg_b = this.reg_c; break;
-            case MOV_B_D:   this.reg_b = this.reg_d; break;
-            case MOV_C_A:   this.reg_c = this.reg_a; break;
-            case MOV_C_B:   this.reg_c = this.reg_b; break;
-            case MOV_C_D:   this.reg_c = this.reg_d; break;
-            case MOV_D_A:   this.reg_d = this.reg_a; break;
-            case MOV_D_B:   this.reg_d = this.reg_b; break;
-            case MOV_D_C:   this.reg_d = this.reg_c; break;
+            case MOV_A_I16: this.reg_a = (short) this.cid.sourceValue; break;
+            case MOV_B_I16: this.reg_b = (short) this.cid.sourceValue; break;
+            case MOV_C_I16: this.reg_c = (short) this.cid.sourceValue; break;
+            case MOV_D_I16: this.reg_d = (short) this.cid.sourceValue; break;
+            case MOV_I_I16: this.reg_i = (short) this.cid.sourceValue; break;
+            case MOV_J_I16: this.reg_j = (short) this.cid.sourceValue; break;
+            case MOV_K_I16: this.reg_k = (short) this.cid.sourceValue; break;
+            case MOV_L_I16: this.reg_l = (short) this.cid.sourceValue; break;
+            
+            case MOV_F_RIM:                 this.reg_f = (short) this.cid.sourceValue; break;
+            case MOV_BP_RIM, MOVW_BP_RIM:   writeLocation(new LocationDescriptor(LocationType.MEMORY, this.reg_bp + this.cid.i8Byte, this.cid.sourceDescriptor.size), this.cid.sourceValue); break;
+            
+            case MOVW_RIM_0:                writeLocation(this.cid.destinationDescriptor, 0); break;
+            case MOV_RIM_F:                 writeLocation(this.cid.destinationDescriptor, this.reg_f); break;
+            case MOV_RIM_BP, MOVW_RIM_BP:   writeLocation(this.cid.destinationDescriptor, readLocation(new LocationDescriptor(LocationType.MEMORY, this.reg_bp + this.cid.i8Byte, this.cid.destinationDescriptor.size))); break;
         }
     }
     
@@ -2444,27 +2870,37 @@ public class NotSoTinySimulatorV2 {
      * @throws UnprivilegedAccessException
      * @throws GPFException
      */
+    @SuppressWarnings("incomplete-switch")
     private void runShortcutPUSH() throws UnprivilegedAccessException, GPFException {
+        int value = 0, size = 0;
+        
+        switch(this.cid.opcode) {
+            case PUSH_A:    size = 2; value = this.reg_a; break;
+            case PUSH_B:    size = 2; value = this.reg_b; break;
+            case PUSH_C:    size = 2; value = this.reg_c; break;
+            case PUSH_D:    size = 2; value = this.reg_d; break;
+            case PUSH_I:    size = 2; value = this.reg_i; break;
+            case PUSH_J:    size = 2; value = this.reg_j; break;
+            case PUSH_K:    size = 2; value = this.reg_k; break;
+            case PUSH_L:    size = 2; value = this.reg_l; break;
+            case PUSH_F:    size = 2; value = this.reg_f; break;
+            case PUSH_PF:   size = 2; value = getRegPFChecked(); break;
+            
+            case PUSHW_DA:  size = 4; value = (this.reg_d << 16) | (this.reg_a & 0xFFFF); break;
+            case PUSHW_BC:  size = 4; value = (this.reg_b << 16) | (this.reg_c & 0xFFFF); break;
+            case PUSHW_JI:  size = 4; value = (this.reg_j << 16) | (this.reg_i & 0xFFFF); break;
+            case PUSHW_LK:  size = 4; value = (this.reg_l << 16) | (this.reg_k & 0xFFFF); break;
+            case PUSHW_XP:  size = 4; value = this.reg_xp; break;
+            case PUSHW_YP:  size = 4; value = this.reg_yp; break;
+            case PUSHW_BP:  size = 4; value = this.reg_bp; break;
+        }
+        
         // Write happens before SP update so MPFs don't have side effects
-        if(this.cid.opcode == Opcode.PUSH_BP) {
-            this.memory.write4Bytes(this.reg_sp - 4, this.reg_bp, this.pf_pv);
+        if(size == 4) {
+            this.memory.write4Bytes(this.reg_sp - 4, value, this.pf_pv);
             this.reg_sp -= 4;
         } else {
-            short v = switch(this.cid.opcode) {
-                case PUSH_A     -> this.reg_a;
-                case PUSH_B     -> this.reg_b;
-                case PUSH_C     -> this.reg_c;
-                case PUSH_D     -> this.reg_d;
-                case PUSH_I     -> this.reg_i;
-                case PUSH_J     -> this.reg_j;
-                case PUSH_K     -> this.reg_k;
-                case PUSH_L     -> this.reg_l;
-                case PUSH_F     -> this.reg_f;
-                case PUSH_PF    -> getRegPFChecked();
-                default -> 0;
-            };
-            
-            this.memory.write2Bytes(this.reg_sp - 2, v, this.pf_pv);
+            this.memory.write2Bytes(this.reg_sp - 2, (short) value, this.pf_pv);
             this.reg_sp -= 2;
         }
     }
@@ -2476,8 +2912,26 @@ public class NotSoTinySimulatorV2 {
      */
     @SuppressWarnings("incomplete-switch")
     private void runShortcutPOP() throws UnprivilegedAccessException, GPFException {
-        if(this.cid.opcode == Opcode.POP_BP) {
-            this.reg_bp = this.memory.read4Bytes(this.reg_sp, this.pf_pv);
+        int size = switch(this.cid.opcode) {
+            case POPW_DA, POPW_BC, POPW_JI, POPW_LK, POPW_XP, POPW_YP, POPW_BP -> 4;
+            default -> 2;
+        };
+        
+        if(size == 4) {
+            int v = this.memory.read4Bytes(this.reg_sp, this.pf_pv);
+            short vh = (short)(v >> 16);
+            short vl = (short) v;
+            
+            switch(this.cid.opcode) {
+                case POPW_DA:   this.reg_d = vh; this.reg_a = vl; break;
+                case POPW_BC:   this.reg_b = vh; this.reg_c = vl; break;
+                case POPW_JI:   this.reg_j = vh; this.reg_i = vl; break;
+                case POPW_LK:   this.reg_l = vh; this.reg_k = vl; break;
+                case POPW_XP:   this.reg_xp = v; break;
+                case POPW_YP:   this.reg_yp = v; break;
+                case POPW_BP:   this.reg_bp = v; break;
+            }
+            
             this.reg_sp += 4;
         } else {
             short v = this.memory.read2Bytes(this.reg_sp, this.pf_pv);
@@ -2492,24 +2946,10 @@ public class NotSoTinySimulatorV2 {
                 case POP_K:     this.reg_k = v; break;
                 case POP_L:     this.reg_l = v; break;
                 case POP_F:     this.reg_f = v; break;
-                case POP_PF:    this.setRegPFChecked(v); break;
+                case POP_PF:    setRegPFChecked(v); break;
             }
             
             this.reg_sp += 2;
-        }
-    }
-    
-    /**
-     * BPUSH SP, BPOP SP
-     * @throws UnprivilegedAccessException 
-     */
-    private void runShortcutBPP() throws UnprivilegedAccessException {
-        if(this.cid.opcode == Opcode.BPUSH_SP) {
-            this.memory.write4Bytes(this.reg_bp - 4, this.reg_sp, this.pf_pv);
-            this.reg_bp -= 4;
-        } else {
-            this.reg_sp = this.memory.read4Bytes(this.reg_bp, this.pf_pv);
-            this.reg_bp += 4;
         }
     }
     
@@ -2524,13 +2964,13 @@ public class NotSoTinySimulatorV2 {
     }
     
     /**
-     * BPUSH
+     * RPUSH
      * @throws UnprivilegedAccessException 
      */
-    private void runBPUSH() throws UnprivilegedAccessException {
+    private void runRPUSH() throws UnprivilegedAccessException {
         LocationSize size = this.cid.sourceDescriptor.size;
-        writeMemory(size, this.reg_bp - size.bytes, this.cid.sourceValue);
-        this.reg_bp -= size.bytes;
+        writeMemory(size, this.cid.destinationValue - size.bytes, this.cid.sourceValue);
+        writeLocation(this.cid.destinationDescriptor, this.cid.destinationValue - size.bytes);
     }
     
     /**
@@ -2545,14 +2985,14 @@ public class NotSoTinySimulatorV2 {
     }
     
     /**
-     * BPOP
+     * RPOP
      * @throws UnprivilegedAccessException 
      */
-    private void runBPOP() throws UnprivilegedAccessException {
+    private void runRPOP() throws UnprivilegedAccessException {
         LocationSize size = this.cid.destinationDescriptor.size;
-        int v = readMemory(size, this.reg_bp);
+        int v = readMemory(size, this.cid.sourceValue);
         writeLocation(this.cid.destinationDescriptor, v);
-        this.reg_bp += size.bytes;
+        writeLocation(this.cid.sourceDescriptor, this.cid.sourceValue + size.bytes);
     }
     
     /**
@@ -2594,26 +3034,7 @@ public class NotSoTinySimulatorV2 {
      * @throws UnprivilegedAccessException 
      */
     private void runTST() {
-        // value
-        int v = this.cid.destinationValue & this.cid.sourceValue;
-        int f;
-        
-        // flags
-        if(this.cid.isPacked) {
-            if(this.cid.packedIs4s) {
-                f = (getLogicFlags((v >> 12) & 0x0F, 0) << 12) |
-                    (getLogicFlags((v >> 8) & 0x0F, 0) << 8) |
-                    (getLogicFlags((v >> 4) & 0x0F, 0) << 4) |
-                    getLogicFlags(v & 0x0F, 0);
-            } else {
-                f = (getLogicFlags((v >> 8) & 0x00FF, 1) << 8) | getLogicFlags(v & 0x00FF, 1);
-            }
-        } else {
-            f = getLogicFlags(v, this.cid.destinationDescriptor.size.bytes);
-        }
-        
-        // write
-        this.reg_f = (short) f;
+        this.reg_f = (short) getLogicFlags(this.cid.destinationValue & this.cid.sourceValue, this.cid.destinationDescriptor.size.bytes, this.cid.isPacked);
     }
     
     /**
@@ -2650,39 +3071,55 @@ public class NotSoTinySimulatorV2 {
     }
     
     /**
-     * ADD gpr, i8
+     * ADD gpr, i8 (zext)
      */
+    @SuppressWarnings("incomplete-switch")
     private void runShortcutADD() {
-        int v = switch(this.cid.opcode) {
-            case ADD_A_I8   -> this.reg_a;
-            case ADD_B_I8   -> this.reg_b;
-            case ADD_C_I8   -> this.reg_c;
-            case ADD_D_I8   -> this.reg_d;
-            case ADD_I_I8   -> this.reg_i;
-            case ADD_J_I8   -> this.reg_j;
-            case ADD_K_I8   -> this.reg_k;
-            case ADD_L_I8   -> this.reg_l;
-            case ADD_SP_I8  -> this.reg_sp;
-            case ADD_BP_I8  -> this.reg_bp;
-            default         -> 0;
-        };
+        int v = 0, size = 0;
         
-        int size = (this.cid.opcode == Opcode.ADD_SP_I8 || this.cid.opcode == Opcode.ADD_BP_I8) ? 4 : 2;
-        
-        int[] res = add(v, this.cid.sourceValue, size, false, false);
-        
+        // what are we adding
         switch(this.cid.opcode) {
-            case ADD_A_I8:  this.reg_a = (short) res[0]; break;
-            case ADD_B_I8:  this.reg_b = (short) res[0]; break;
-            case ADD_C_I8:  this.reg_c = (short) res[0]; break;
-            case ADD_D_I8:  this.reg_d = (short) res[0]; break;
-            case ADD_I_I8:  this.reg_i = (short) res[0]; break;
-            case ADD_J_I8:  this.reg_j = (short) res[0]; break;
-            case ADD_K_I8:  this.reg_k = (short) res[0]; break;
-            case ADD_L_I8:  this.reg_l = (short) res[0]; break;
-            case ADD_SP_I8: this.reg_sp = res[0]; break;
-            case ADD_BP_I8: this.reg_bp = res[0]; break;
-            default:
+            case ADD_A_I8:      size = 2; v = this.reg_a; break;
+            case ADD_B_I8:      size = 2; v = this.reg_b; break;
+            case ADD_C_I8:      size = 2; v = this.reg_c; break;
+            case ADD_D_I8:      size = 2; v = this.reg_d; break;
+            case ADD_I_I8:      size = 2; v = this.reg_i; break;
+            case ADD_J_I8:      size = 2; v = this.reg_j; break;
+            case ADD_K_I8:      size = 2; v = this.reg_k; break;
+            case ADD_L_I8:      size = 2; v = this.reg_l; break;
+            
+            case ADDW_DA_I8:    size = 4; v = (this.reg_d << 16) | (this.reg_a & 0xFFFF); break;
+            case ADDW_BC_I8:    size = 4; v = (this.reg_b << 16) | (this.reg_c & 0xFFFF); break;
+            case ADDW_JI_I8:    size = 4; v = (this.reg_j << 16) | (this.reg_i & 0xFFFF); break;
+            case ADDW_LK_I8:    size = 4; v = (this.reg_l << 16) | (this.reg_k & 0xFFFF); break;
+            case ADDW_XP_I8:    size = 4; v = this.reg_xp; break;
+            case ADDW_YP_I8:    size = 4; v = this.reg_yp; break;
+            case ADDW_BP_I8:    size = 4; v = this.reg_bp; break;
+            case ADDW_SP_I8:    size = 4; v = this.reg_sp; break;
+        }
+        
+        // add
+        int[] res = add(v, this.cid.sourceValue & 0x00FF, size, false, false);
+        
+        // write
+        switch(this.cid.opcode) {
+            case ADD_A_I8:      this.reg_a = (short) res[0]; break;
+            case ADD_B_I8:      this.reg_b = (short) res[0]; break;
+            case ADD_C_I8:      this.reg_c = (short) res[0]; break;
+            case ADD_D_I8:      this.reg_d = (short) res[0]; break;
+            case ADD_I_I8:      this.reg_i = (short) res[0]; break;
+            case ADD_J_I8:      this.reg_j = (short) res[0]; break;
+            case ADD_K_I8:      this.reg_k = (short) res[0]; break;
+            case ADD_L_I8:      this.reg_l = (short) res[0]; break;
+            
+            case ADDW_DA_I8:    this.reg_d = (short)(res[0] >> 16); this.reg_a = (short) res[0]; break;
+            case ADDW_BC_I8:    this.reg_b = (short)(res[0] >> 16); this.reg_c = (short) res[0]; break;
+            case ADDW_JI_I8:    this.reg_j = (short)(res[0] >> 16); this.reg_i = (short) res[0]; break;
+            case ADDW_LK_I8:    this.reg_l = (short)(res[0] >> 16); this.reg_k = (short) res[0]; break;
+            case ADDW_XP_I8:    this.reg_xp = res[0]; break;
+            case ADDW_YP_I8:    this.reg_yp = res[0]; break;
+            case ADDW_BP_I8:    this.reg_bp = res[0]; break;
+            case ADDW_SP_I8:    this.reg_sp = res[0]; break;
         }
         
         this.reg_f = (short) res[1];
@@ -2699,39 +3136,53 @@ public class NotSoTinySimulatorV2 {
     }
     
     /**
-     * SUB gpr, I8
+     * SUB gpr, I8 (zext)
      */
+    @SuppressWarnings("incomplete-switch")
     private void runShortcutSUB() {
-        int v = switch(this.cid.opcode) {
-            case SUB_A_I8   -> this.reg_a;
-            case SUB_B_I8   -> this.reg_b;
-            case SUB_C_I8   -> this.reg_c;
-            case SUB_D_I8   -> this.reg_d;
-            case SUB_I_I8   -> this.reg_i;
-            case SUB_J_I8   -> this.reg_j;
-            case SUB_K_I8   -> this.reg_k;
-            case SUB_L_I8   -> this.reg_l;
-            case SUB_SP_I8  -> this.reg_sp;
-            case SUB_BP_I8  -> this.reg_bp;
-            default         -> 0;
-        };
-        
-        int size = (this.cid.opcode == Opcode.SUB_SP_I8 || this.cid.opcode == Opcode.SUB_BP_I8) ? 4 : 2;
-        
-        int[] res = add(v, this.cid.sourceValue, size, true, false);
+        // what are we subtracting
+        int v = 0, size = 0;
         
         switch(this.cid.opcode) {
-            case SUB_A_I8:  this.reg_a = (short) res[0]; break;
-            case SUB_B_I8:  this.reg_b = (short) res[0]; break;
-            case SUB_C_I8:  this.reg_c = (short) res[0]; break;
-            case SUB_D_I8:  this.reg_d = (short) res[0]; break;
-            case SUB_I_I8:  this.reg_i = (short) res[0]; break;
-            case SUB_J_I8:  this.reg_j = (short) res[0]; break;
-            case SUB_K_I8:  this.reg_k = (short) res[0]; break;
-            case SUB_L_I8:  this.reg_l = (short) res[0]; break;
-            case SUB_SP_I8: this.reg_sp = res[0]; break;
-            case SUB_BP_I8: this.reg_bp = res[0]; break;
-            default:
+            case SUB_A_I8:      size = 2; v = this.reg_a; break;
+            case SUB_B_I8:      size = 2; v = this.reg_b; break;
+            case SUB_C_I8:      size = 2; v = this.reg_c; break;
+            case SUB_D_I8:      size = 2; v = this.reg_d; break;
+            case SUB_I_I8:      size = 2; v = this.reg_i; break;
+            case SUB_J_I8:      size = 2; v = this.reg_j; break;
+            case SUB_K_I8:      size = 2; v = this.reg_k; break;
+            case SUB_L_I8:      size = 2; v = this.reg_l; break;
+            
+            case SUBW_DA_I8:    size = 4; v = (this.reg_d << 16) | (this.reg_a & 0xFFFF); break;
+            case SUBW_BC_I8:    size = 4; v = (this.reg_b << 16) | (this.reg_c & 0xFFFF); break;
+            case SUBW_JI_I8:    size = 4; v = (this.reg_j << 16) | (this.reg_i & 0xFFFF); break;
+            case SUBW_LK_I8:    size = 4; v = (this.reg_l << 16) | (this.reg_k & 0xFFFF); break;
+            case SUBW_XP_I8:    size = 4; v = this.reg_xp; break;
+            case SUBW_YP_I8:    size = 4; v = this.reg_yp; break;
+            case SUBW_BP_I8:    size = 4; v = this.reg_bp; break;
+            case SUBW_SP_I8:    size = 4; v = this.reg_sp; break;
+        }
+        
+        int[] res = add(v, this.cid.sourceValue & 0x00FF, size, true, false);
+        
+        switch(this.cid.opcode) {
+            case SUB_A_I8:      this.reg_a = (short) res[0]; break;
+            case SUB_B_I8:      this.reg_b = (short) res[0]; break;
+            case SUB_C_I8:      this.reg_c = (short) res[0]; break;
+            case SUB_D_I8:      this.reg_d = (short) res[0]; break;
+            case SUB_I_I8:      this.reg_i = (short) res[0]; break;
+            case SUB_J_I8:      this.reg_j = (short) res[0]; break;
+            case SUB_K_I8:      this.reg_k = (short) res[0]; break;
+            case SUB_L_I8:      this.reg_l = (short) res[0]; break;
+            
+            case SUBW_DA_I8:    this.reg_d = (short)(res[0] >> 16); this.reg_a = (short) res[0]; break;
+            case SUBW_BC_I8:    this.reg_b = (short)(res[0] >> 16); this.reg_c = (short) res[0]; break;
+            case SUBW_JI_I8:    this.reg_j = (short)(res[0] >> 16); this.reg_i = (short) res[0]; break;
+            case SUBW_LK_I8:    this.reg_l = (short)(res[0] >> 16); this.reg_k = (short) res[0]; break;
+            case SUBW_XP_I8:    this.reg_xp = res[0]; break;
+            case SUBW_YP_I8:    this.reg_yp = res[0]; break;
+            case SUBW_BP_I8:    this.reg_bp = res[0]; break;
+            case SUBW_SP_I8:    this.reg_sp = res[0]; break;
         }
         
         this.reg_f = (short) res[1];
@@ -2788,39 +3239,55 @@ public class NotSoTinySimulatorV2 {
     }
     
     /**
-     * INC/ICC/DEC/DCC gpr
+     * AADJ, SADJ
+     * @throws UnprivilegedAccessException
      */
-    private void runShortcutINC() {
-        int v = switch(this.cid.opcode) {
-            case ICC_A, DCC_A               -> this.reg_a;
-            case ICC_B, DCC_B               -> this.reg_b;
-            case ICC_C, DCC_C               -> this.reg_c;
-            case ICC_D, DCC_D               -> this.reg_d;
-            case INC_I, ICC_I, DEC_I, DCC_I -> this.reg_i;
-            case INC_J, ICC_J, DEC_J, DCC_J -> this.reg_j;
-            case INC_K, ICC_K, DEC_K, DCC_K -> this.reg_k;
-            case INC_L, ICC_L, DEC_L, DCC_L -> this.reg_l;
-            default                         -> this.cid.destinationValue;
-        };
+    private void runADJ() throws UnprivilegedAccessException {
+        int v = this.cid.destinationValue;
+        int f = this.reg_f & 0x1111;
+        int r = 0;
         
-        int i = (this.cid.opcode.getType() == Operation.INC || this.cid.opcode.getType() == Operation.DEC || (this.reg_f & 0x01) != 0) ? 1 : 0;
-        boolean sub = this.cid.opcode.getType() == Operation.DEC || this.cid.opcode.getType() == Operation.DCC;
-        
-        int[] res = add(v, i, 2, sub, false);
-        
-        switch(this.cid.opcode) {
-            case ICC_A, DCC_A:                  this.reg_a = (short) res[0]; break;
-            case ICC_B, DCC_B:                  this.reg_b = (short) res[0]; break;
-            case ICC_C, DCC_C:                  this.reg_c = (short) res[0]; break;
-            case ICC_D, DCC_D:                  this.reg_d = (short) res[0]; break;
-            case INC_I, ICC_I, DEC_I, DCC_I:    this.reg_i = (short) res[0]; break;
-            case INC_J, ICC_J, DEC_J, DCC_J:    this.reg_j = (short) res[0]; break;
-            case INC_K, ICC_K, DEC_K, DCC_K:    this.reg_k = (short) res[0]; break;
-            case INC_L, ICC_L, DEC_L, DCC_L:    this.reg_l = (short) res[0]; break;
-            default:
+        if(this.cid.opcode == Opcode.AADJ) {
+            // Addition adjust
+            // For each 4 bits, if value (including carry) >= 10, add 6 and propagate carry
+            for(int i = 0; i < 4; i++) {
+                // 4-bit slice, with carry up top
+                int slice = ((v >> (4 * i)) & 0x0F) | ((f >> (4 * i)) << (4 * (i - 1)));
+                
+                if(slice >= 10) {
+                    // digit overflowed, adjust
+                    slice += 6;                         // adjust BCD value
+                    f |= (slice >> 4) << (4 * (i + 1)); // propagate carry
+                }
+                
+                r |= (slice & 0x0F) << (4 * i);     // place digit in result
+            }
+        } else {
+            // Subtraction adjust
+            // For each 4 bits, subtract borrow in. If value had or produced a borrow, add 10. propagate borrow. 
+            for(int i = 0; i < 4; i++) {
+                int slice = ((v >> (4 * i)) & 0x0F);
+                int borrowIn = ((f << 4) >> (4 * i)) & 1;
+                
+                // borrow in
+                if(borrowIn != 0) {
+                    slice -= 1;
+                    f |= ((slice >> 4) & 1) << (4 * (i + 1));
+                }
+                
+                int borrowOut = ((f >> (4 * i)) & 1) | borrowIn;
+                
+                // adjust
+                if(borrowOut != 0) {
+                    slice += 10;
+                }
+                
+                r |= (slice & 0x0F) << (4 * i);
+            }
         }
         
-        this.reg_f = (short) res[1];
+        writeLocation(this.cid.destinationDescriptor, r);
+        this.reg_f = (short)(getLogicFlags(r, 2, true) | ((f >> 16) & 1));
     }
     
     /**
@@ -2916,14 +3383,17 @@ public class NotSoTinySimulatorV2 {
         };
         
         int a = this.cid.destinationValue & mask;
-        int b = this.cid.sourceValue & mask;
         int c = 0;
         boolean carry = (this.reg_f & 0x0001) != 0;
         
+        int b = switch(this.cid.opcode) {
+            case SHL_RIM_1, SHR_RIM_1, SAR_RIM_1, ROL_RIM_1, ROR_RIM_1, RCL_RIM_1, RCR_RIM_1 -> 1;
+            default -> this.cid.sourceValue & mask;
+        };
+        
         // agh
         switch(this.cid.opcode) {
-            case SHL_RIM:
-            case SHL_RIM_I8:
+            case SHL_RIM, SHL_RIM_I8, SHL_RIM_1:
                 carry = ((switch(this.cid.destinationDescriptor.size) {
                     case BYTE   -> 0x80;
                     case WORD   -> 0x8000;
@@ -2934,8 +3404,7 @@ public class NotSoTinySimulatorV2 {
                 c = a << b;
                 break;
             
-            case SHR_RIM:
-            case SHR_RIM_I8:
+            case SHR_RIM, SHR_RIM_I8, SHR_RIM_1:
                 carry = ((1 << (b - 1)) & a) != 0;
                 
                 c = switch(this.cid.destinationDescriptor.size) {
@@ -2946,8 +3415,7 @@ public class NotSoTinySimulatorV2 {
                 };
                 break;
                 
-            case SAR_RIM:
-            case SAR_RIM_I8:
+            case SAR_RIM, SAR_RIM_I8, SAR_RIM_1:
                 carry = ((1 << (b - 1)) & a) != 0;
                 
                 c = switch(this.cid.destinationDescriptor.size) {
@@ -2958,10 +3426,8 @@ public class NotSoTinySimulatorV2 {
                 };
                 break;
                 
-            case ROL_RIM:
-            case ROL_RIM_I8:
-            case RCL_RIM:
-            case RCL_RIM_I8:
+            case ROL_RIM, ROL_RIM_I8, ROL_RIM_1:
+            case RCL_RIM, RCL_RIM_I8, RCL_RIM_1:
                 long al = a;
                 int rot = 0;
                 for(int i = 0; i < b; i++) {
@@ -2989,10 +3455,8 @@ public class NotSoTinySimulatorV2 {
                 c = (int) al;
                 break;
                 
-            case ROR_RIM:
-            case ROR_RIM_I8:
-            case RCR_RIM:
-            case RCR_RIM_I8:
+            case ROR_RIM, ROR_RIM_I8, ROR_RIM_1:
+            case RCR_RIM, RCR_RIM_I8, RCR_RIM_1:
                 al = a;
                 rot = 0;
                 
@@ -3048,22 +3512,27 @@ public class NotSoTinySimulatorV2 {
      */
     private void runLogic() throws UnprivilegedAccessException {
         int res = switch(this.cid.opcode) {
-            case AND_RIM    -> this.cid.destinationValue & this.cid.sourceValue;
-            case OR_RIM     -> this.cid.destinationValue | this.cid.sourceValue;
-            case XOR_RIM    -> this.cid.destinationValue ^ this.cid.sourceValue;
-            case NOT_RIM    -> ~this.cid.destinationValue;
-            default         -> 0;
+            case AND_RIM, PAND_RIMP -> this.cid.destinationValue & this.cid.sourceValue;
+            case OR_RIM, POR_RIMP   -> this.cid.destinationValue | this.cid.sourceValue;
+            case XOR_RIM, PXOR_RIMP -> this.cid.destinationValue ^ this.cid.sourceValue;
+            case NOT_RIM, PNOT_RIMP -> ~this.cid.destinationValue;
+            default                 -> 0;
         };
         
         writeLocation(this.cid.destinationDescriptor, res);
-        this.reg_f = (short) getLogicFlags(res, this.cid.destinationDescriptor.size.bytes);
+        this.reg_f = (short) getLogicFlags(res, this.cid.destinationDescriptor.size.bytes, this.cid.isPacked);
     }
     
     /**
      * Conditional relative branch
      */
     private void runJCC() {
-        if(conditionTrue(this.cid.opcode, 0)) {
+        boolean condTrue = switch(this.cid.opcode) {
+            case JCC_I8, JCC_RIM    -> conditionTrue(this.cid.i8Byte);
+            default                 -> singleConditionTrue(this.cid.opcode, 0);
+        };
+        
+        if(condTrue) {
             this.reg_ip += this.cid.sourceValue;
         }
     }
@@ -3073,43 +3542,42 @@ public class NotSoTinySimulatorV2 {
      * @throws UnprivilegedAccessException 
      */
     private void runCMOV() throws UnprivilegedAccessException {
-        Opcode cond = Opcode.fromOp(this.cid.i8Byte);
-        
         if(this.cid.isPacked) {
+            Opcode cond = Opcode.fromOp((byte)(this.cid.i8Byte | 0xF0));
             int v = this.cid.destinationValue;
             int s = this.cid.sourceValue;
             
             // If condition true, replace original with new
             if(this.cid.packedIs4s) {
                 // nybbles
-                if(conditionTrue(cond, 0)) {
+                if(singleConditionTrue(cond, 0)) {
                     //System.out.println("nybble 0");
                     v = (v & 0xFFF0) | (s & 0x000F);
                 }
                 
-                if(conditionTrue(cond, 1)) {
+                if(singleConditionTrue(cond, 1)) {
                     //System.out.println("nybble 1");
                     v = (v & 0xFF0F) | (s & 0x00F0);
                 }
                 
-                if(conditionTrue(cond, 2)) {
+                if(singleConditionTrue(cond, 2)) {
                     //System.out.println("nybble 2");
                     v = (v & 0xF0FF) | (s & 0x0F00);
                 }
                 
-                if(conditionTrue(cond, 3)) {
+                if(singleConditionTrue(cond, 3)) {
                     //System.out.println("nybble 3");
                     v = (v & 0x0FFF) | (s & 0xF000);
                 }
             } else {
                 // lower
-                if(conditionTrue(cond, 0)) {
+                if(singleConditionTrue(cond, 0)) {
                     //System.out.println("byte 0");
                     v = (v & 0xFF00) | (s & 0x00FF);
                 }
                 
                 // upper
-                if(conditionTrue(cond, 2)) {
+                if(singleConditionTrue(cond, 2)) {
                     //System.out.println("byte 1");
                     v = (v & 0x00FF) | (s & 0xFF00);
                 }
@@ -3118,7 +3586,7 @@ public class NotSoTinySimulatorV2 {
             writeLocation(this.cid.destinationDescriptor, v);
         } else {
             // If condition true, write new
-            if(conditionTrue(cond, 0)) {
+            if(conditionTrue(this.cid.i8Byte)) {
                 writeLocation(this.cid.destinationDescriptor, this.cid.sourceValue);
             }
         }
@@ -3210,10 +3678,15 @@ public class NotSoTinySimulatorV2 {
      * @throws UnprivilegedAccessException
      */
     private void runNEG() throws UnprivilegedAccessException {
-        int[] res = add(~this.cid.destinationValue, 1, this.cid.destinationDescriptor.size.bytes, false, false);
-        
-        writeLocation(this.cid.destinationDescriptor, res[0]);
-        this.reg_f = (short) res[1];
+        if(this.cid.isPacked) {
+            short[] res = addPacked(~this.cid.destinationValue, this.cid.packedIs4s ? 0x1111 : 0x0101, !this.cid.packedIs4s, false, false);
+            writeLocation(this.cid.destinationDescriptor, res[0]);
+            this.reg_f = res[1];
+        } else {
+            int[] res = add(~this.cid.destinationValue, 1, this.cid.destinationDescriptor.size.bytes, false, false);
+            writeLocation(this.cid.destinationDescriptor, res[0]);
+            this.reg_f = (short) res[1];
+        }
     }
     
     /*
@@ -3244,11 +3717,11 @@ public class NotSoTinySimulatorV2 {
                 return switch(ld.register) {
                     case NONE   -> 0;
                     case DA     -> (this.reg_d << 16) | (this.reg_a & 0xFFFF);
-                    case AB     -> (this.reg_a << 16) | (this.reg_b & 0xFFFF);
                     case BC     -> (this.reg_b << 16) | (this.reg_c & 0xFFFF);
-                    case CD     -> (this.reg_c << 16) | (this.reg_d & 0xFFFF);
                     case JI     -> (this.reg_j << 16) | (this.reg_i & 0xFFFF);
                     case LK     -> (this.reg_l << 16) | (this.reg_k & 0xFFFF);
+                    case XP     -> this.reg_xp;
+                    case YP     -> this.reg_yp;
                     case BP     -> this.reg_bp;
                     case SP     -> this.reg_sp;
                     case IP     -> this.reg_ip;
@@ -3297,11 +3770,11 @@ public class NotSoTinySimulatorV2 {
             case REGISTER:
                 switch(ld.register) {
                     case DA:    this.reg_d = (short)(value >> 16); this.reg_a = (short) value; break;
-                    case AB:    this.reg_a = (short)(value >> 16); this.reg_b = (short) value; break;
                     case BC:    this.reg_b = (short)(value >> 16); this.reg_c = (short) value; break;
-                    case CD:    this.reg_c = (short)(value >> 16); this.reg_d = (short) value; break;
                     case JI:    this.reg_j = (short)(value >> 16); this.reg_i = (short) value; break;
                     case LK:    this.reg_l = (short)(value >> 16); this.reg_k = (short) value; break;
+                    case XP:    this.reg_xp = value; break;
+                    case YP:    this.reg_yp = value; break;
                     case BP:    this.reg_bp = value; break;
                     case SP:    this.reg_sp = value; break;
                     case IP:    this.reg_ip = value; break;
@@ -3367,19 +3840,31 @@ public class NotSoTinySimulatorV2 {
      * @param size
      * @return
      */
-    private int getLogicFlags(int v, int size) {
-        boolean zero = v == 0,
-                overflow = false,
-                sign = switch(size) {
-                    case 0  -> (v & 0x08) != 0;
-                    case 1  -> (v & 0x80) != 0;
-                    case 2  -> (v & 0x8000) != 0;
-                    case 4  -> (v & 0x8000_0000) != 0;
-                    default -> false;
-                },
-                carry = false;
-                
-        return (zero ? 0x08 : 0x00) | (overflow ? 0x04 : 0x00) | (sign ? 0x02 : 0x00) | (carry ? 0x01 : 0x00);
+    private int getLogicFlags(int v, int size, boolean packed) {
+        if(packed) {
+            if(this.cid.packedIs4s) {
+                return  (getLogicFlags((v >> 12) & 0x0F, 0, false) << 12) |
+                        (getLogicFlags((v >> 8) & 0x0F, 0, false) << 8) |
+                        (getLogicFlags((v >> 4) & 0x0F, 0, false) << 4) |
+                        getLogicFlags(v & 0x0F, 0, false);
+            } else {
+                return  (getLogicFlags((v >> 8) & 0x00FF, 1, false) << 8) |
+                        getLogicFlags(v & 0x00FF, 1, false);
+            }
+        } else {
+            boolean zero = v == 0,
+                    overflow = false,
+                    sign = switch(size) {
+                        case 0  -> (v & 0x08) != 0;
+                        case 1  -> (v & 0x80) != 0;
+                        case 2  -> (v & 0x8000) != 0;
+                        case 4  -> (v & 0x8000_0000) != 0;
+                        default -> false;
+                    },
+                    carry = false;
+                    
+            return (zero ? 0x08 : 0x00) | (overflow ? 0x04 : 0x00) | (sign ? 0x02 : 0x00) | (carry ? 0x01 : 0x00);
+        }
     }
     
     /**
@@ -3871,13 +4356,47 @@ public class NotSoTinySimulatorV2 {
     }
     
     /**
-     * Determines if a condition is met
+     * Determines if the given condition is met
+     * @param condition
+     * @return
+     */
+    private boolean conditionTrue(byte condition) {
+        Opcode condOp = Opcode.fromOp((byte)(condition | 0xF0));
+        
+        switch((condition >> 4) & 0x07) {
+            case 0x04:
+                return  singleConditionTrue(condOp, 0) ||
+                        singleConditionTrue(condOp, 1) ||
+                        singleConditionTrue(condOp, 2) ||
+                        singleConditionTrue(condOp, 3);
+            
+            case 0x05:
+                return  singleConditionTrue(condOp, 0) &&
+                        singleConditionTrue(condOp, 1) &&
+                        singleConditionTrue(condOp, 2) &&
+                        singleConditionTrue(condOp, 3); 
+            
+            case 0x06:
+                return  singleConditionTrue(condOp, 0) ||
+                        singleConditionTrue(condOp, 2);
+                
+            case 0x07:
+                return  singleConditionTrue(condOp, 0) &&
+                        singleConditionTrue(condOp, 2);
+            
+            default:
+                return singleConditionTrue(condOp, 0);
+        }
+    }
+    
+    /**
+     * Determines if a particular condition is met
      * 
      * @param opcode
      * @param flagsIndex
      * @return
      */
-    private boolean conditionTrue(Opcode op, int flagsIndex) {
+    private boolean singleConditionTrue(Opcode op, int flagsIndex) {
         int flags = this.reg_f >> (4 * flagsIndex);
         
         return switch(op) {
@@ -3973,9 +4492,11 @@ public class NotSoTinySimulatorV2 {
     public short getRegK() { return this.reg_k; }
     public short getRegL() { return this.reg_l; }
     public short getRegF() { return this.reg_f; }
-    public int getRegIP() { return this.reg_ip; }
+    public int getRegXP() { return this.reg_xp; }
+    public int getRegYP() { return this.reg_yp; }
     public int getRegBP() { return this.reg_bp; }
     public int getRegSP() { return this.reg_sp; }
+    public int getRegIP() { return this.reg_ip; }
     public int getRegISP() { return this.reg_isp; }
     public boolean getHalted() { return this.halted; }
     public boolean hasPendingInterrupt() { return this.pendingExternalInterrupt; }
@@ -4009,9 +4530,11 @@ public class NotSoTinySimulatorV2 {
     public void setRegK(short k) { this.reg_k = k; }
     public void setRegL(short l) { this.reg_l = l; }
     public void setRegF(short f) { this.reg_f = f; }
-    public void setRegIP(int ip) { this.reg_ip = ip; }
+    public void setRegXP(int xp) { this.reg_xp = xp; }
+    public void setRegYP(int yp) { this.reg_yp = yp; }
     public void setRegBP(int bp) { this.reg_bp = bp; }
     public void setRegSP(int sp) { this.reg_sp = sp; }
+    public void setRegIP(int ip) { this.reg_ip = ip; }
     public void setRegISP(int isp) { this.reg_isp = isp; } 
     public void setHalted(boolean h) { this.halted = h; }
     

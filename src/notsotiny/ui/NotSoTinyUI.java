@@ -1,6 +1,5 @@
 package notsotiny.ui;
 
-import java.awt.KeyboardFocusManager;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -41,8 +40,7 @@ import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import notsotiny.asm.Disassembler;
-import notsotiny.sim.NotSoTinySimulatorV2;
-import notsotiny.sim.NotSoTinySimulatorV1;
+import notsotiny.sim.NotSoTinySimulator;
 import notsotiny.sim.memory.CachingMemoryManager;
 import notsotiny.sim.memory.DiskBufferController;
 import notsotiny.sim.memory.FlatMemoryController;
@@ -170,7 +168,7 @@ public class NotSoTinyUI extends Application {
     
     
     // sim vars
-    private NotSoTinySimulatorV2 sim;
+    private NotSoTinySimulator sim;
     
     private MemoryManager mmu;
     
@@ -498,7 +496,7 @@ public class NotSoTinyUI extends Application {
         this.mmu.write4BytesPrivileged(VECTOR_RESET * 4, (int) entry);
         
         // simulator
-        this.sim = new NotSoTinySimulatorV2(this.mmu);
+        this.sim = new NotSoTinySimulator(this.mmu);
         
         if(USE_PRIVRAM) {
             this.sim.setRegSP((int)(LOWRAM_START + LOWRAM_SIZE));
@@ -1097,13 +1095,14 @@ public class NotSoTinyUI extends Application {
                 
                 // processor state
                 Disassembler dis = new Disassembler();
-                String state = "-- Processor State --\n";
+                String state = "        -- Processor State --\n";
                 
-                state += String.format("A    B    C    D%n%04X %04X %04X %04X%nI    J    K    L%n%04X %04X %04X %04X%nF    PF   ISP%n%04X %04X %08X%nIP       BP       SP%n%08X %08X %08X%n",
-                        sim.getRegA(), sim.getRegB(), sim.getRegC(), sim.getRegD(),
-                        sim.getRegI(), sim.getRegJ(), sim.getRegK(), sim.getRegL(),
-                        sim.getRegF(), sim.getRegPF(), sim.getRegISP(),
-                        sim.getRegIP(), sim.getRegBP(), sim.getRegSP());
+                state += String.format("A    B    C    D    I    J    K    L%n%04X %04X %04X %04X %04X %04X %04X %04X%n",
+                        sim.getRegA(), sim.getRegB(), sim.getRegC(), sim.getRegD(), sim.getRegI(), sim.getRegJ(), sim.getRegK(), sim.getRegL());
+                state += String.format("XP        YP        BP        SP%n%08X  %08X  %08X  %08X%n",
+                        sim.getRegXP(), sim.getRegYP(), sim.getRegBP(), sim.getRegSP());
+                state += String.format("IP        ISP       F    PF%n%08X  %08X  %04X %04X%n",
+                        sim.getRegIP(), sim.getRegISP(), sim.getRegF(), sim.getRegPF());
                 
                 try {
                     synchronized(this.mmu) {
@@ -1129,6 +1128,8 @@ public class NotSoTinyUI extends Application {
                             case "C:D"  -> ((this.sim.getRegC() << 16) | (this.sim.getRegD() & 0x0000_FFFF)) & 0xFFFF_FFFFl;
                             case "J:I"  -> ((this.sim.getRegJ() << 16) | (this.sim.getRegI() & 0x0000_FFFF)) & 0xFFFF_FFFFl;
                             case "L:K"  -> ((this.sim.getRegL() << 16) | (this.sim.getRegK() & 0x0000_FFFF)) & 0xFFFF_FFFFl;
+                            case "XP"   -> this.sim.getRegXP() & 0xFFFF_FFFFl;
+                            case "YP"   -> this.sim.getRegYP() & 0xFFFF_FFFFl;
                             case "BP"   -> this.sim.getRegBP() & 0xFFFF_FFFFl;
                             case "SP"   -> this.sim.getRegSP() & 0xFFFF_FFFFl;
                             case "IP"   -> this.sim.getRegIP() & 0xFFFF_FFFFl;

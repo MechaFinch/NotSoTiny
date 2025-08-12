@@ -1,6 +1,5 @@
 package notsotiny.asm;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -61,58 +60,46 @@ public class Disassembler {
                 break;
             
             // register only shortcuts - convert underscores
-            case MOV_A_B, MOV_A_C, MOV_A_D, MOV_B_A, MOV_B_C, MOV_B_D, MOV_C_A, MOV_C_B, MOV_C_D,
-                 MOV_D_A, MOV_D_B, MOV_D_C, 
-                 PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L, PUSH_BP, PUSH_F,
-                 PUSH_PF, POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L, POP_BP, POP_F,
-                 POP_PF, NOT_F, INC_I, INC_J, INC_K, INC_L, ICC_I, ICC_J, ICC_K, ICC_L, DEC_I, DEC_J,
-                 DEC_K, DEC_L, DCC_I, DCC_J, DCC_K, DCC_L, ICC_A, ICC_B, ICC_C, ICC_D, DCC_A, DCC_B,
-                 DCC_C, DCC_D:
+            case PUSH_F, PUSH_PF, POP_F, POP_PF, NOT_F, 
+                 PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L,
+                 PUSHW_DA, PUSHW_BC, PUSHW_JI, PUSHW_LK, PUSHW_XP, PUSHW_YP, PUSHW_BP,
+                 POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L,
+                 POPW_DA, POPW_BC, POPW_JI, POPW_LK, POPW_XP, POPW_YP, POPW_BP:
                 s += " " + os.substring(os.indexOf('_') + 1);
                 s = s.replace("_", ", ");
                 break;
             
             // 8 bit immediates
-            case MOVS_A_I8, MOVS_B_I8, MOVS_C_I8, MOVS_D_I8,
+            case MOVS_A_I8, MOVS_B_I8, MOVS_C_I8, MOVS_D_I8, MOVS_I_I8, MOVS_J_I8, MOVS_K_I8, MOVS_L_I8,
                  ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADD_I_I8, ADD_J_I8, ADD_K_I8, ADD_L_I8,
+                 ADDW_DA_I8, ADDW_BC_I8, ADDW_JI_I8, ADDW_LK_I8, ADDW_XP_I8, ADDW_YP_I8, ADDW_BP_I8, ADDW_SP_I8,
                  SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SUB_I_I8, SUB_J_I8, SUB_K_I8, SUB_L_I8,
-                 ADD_SP_I8, ADD_BP_I8, SUB_SP_I8, SUB_BP_I8, JMP_I8, CALL_I8, INT_I8, JC_I8, JNC_I8, JS_I8, JNS_I8,
-                 JO_I8, JNO_I8, JZ_I8, JNZ_I8, JA_I8, JBE_I8, JG_I8, JGE_I8, JL_I8, JLE_I8:
-                     s += disassembleImmediateShortcut(memory, op, 1);
+                 SUBW_DA_I8, SUBW_BC_I8, SUBW_JI_I8, SUBW_LK_I8, SUBW_XP_I8, SUBW_YP_I8, SUBW_BP_I8, SUBW_SP_I8,
+                 JMP_I8, JC_I8, JNC_I8, JS_I8, JNS_I8, JO_I8, JNO_I8, JZ_I8, JNZ_I8, JA_I8, JBE_I8, JL_I8, JLE_I8, JG_I8, JGE_I8:
+                s += disassembleImmediateShortcut(memory, op, 1);
+                break;
+            
+            // 8 bit immediate + EI8
+            case JCC_I8:
+                String imm = disassembleImmediateShortcut(memory, op, 1);
+                int cmp = readSize(memory, 1);
+                String cmps = getMnemonic(Opcode.fromOp((byte)(cmp | 0xF0)));
+                s = s.substring(0, s.length() - 5) + cmps.substring(1) + " " + imm;
                 break;
             
             // 16 bit immediates
-            case MOV_I_I16, MOV_J_I16, MOV_K_I16, MOV_L_I16, MOV_A_I16, MOV_B_I16, MOV_C_I16, MOV_D_I16,
+            case MOV_A_I16, MOV_B_I16, MOV_C_I16, MOV_D_I16, MOV_I_I16, MOV_J_I16, MOV_K_I16, MOV_L_I16,
                  JMP_I16, CALL_I16:
                 s += disassembleImmediateShortcut(memory, op, 2);
                 break;
             
             // 32 bit immediate
-            case PUSHW_I32, BPUSHW_I32, JMP_I32, JMPA_I32, CALL_I32, CALLA_I32:
+            case JMP_I32, JMPA_I32, CALL_I32, CALLA_I32:
                 s += disassembleImmediateShortcut(memory, op, 4);
                 break;
             
-            // immediate address
-            case MOV_A_O, MOV_B_O, MOV_C_O, MOV_D_O:
-                s += " " + os.charAt(4) + ", [" + readHex(memory, 4) + "]";
-                break;
-            
-            case MOV_O_A, MOV_O_B, MOV_O_C, MOV_O_D:
-                s += " [" + readHex(memory, 4) + "], " + os.charAt(6);
-                break;
-            
-            // BIO
-            case MOV_A_BI, MOV_B_BI, MOV_C_BI, MOV_D_BI, MOV_A_BIO, MOV_B_BIO, MOV_C_BIO, MOV_D_BIO:
-                s += " " + os.charAt(4) + ", " + disassembleBIO(memory, os.contains("BIO"));
-                break;
-            
-            case MOV_BI_A, MOV_BI_B, MOV_BI_C, MOV_BI_D, MOV_BIO_A, MOV_BIO_B, MOV_BIO_C, MOV_BIO_D:
-                boolean offset = os.contains("BIO");
-                s += " " + disassembleBIO(memory, offset) + ", " + os.charAt(offset ? 8 : 7);
-                break;
-            
             // RIM + I8
-            case ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8, CMP_RIM_I8,
+            case MOV_RIM_BP, CMP_RIM_I8, ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8,
                  SHL_RIM_I8, SHR_RIM_I8, SAR_RIM_I8, ROL_RIM_I8, ROR_RIM_I8, RCL_RIM_I8, RCR_RIM_I8:
                 s += disassembleRIM(memory, true, false, false, false, false) + ", " + readHex(memory, 1);
                 break;
@@ -120,14 +107,19 @@ public class Disassembler {
             case CMOVCC_RIM:
             	s = s.substring(0, s.length() - 2);
             	String params = disassembleRIM(memory, true, true, false, false, false);
-            	int cmp = readSize(memory, 1);
-            	String cmps = getMnemonic(Opcode.fromOp((byte) cmp));
+            	cmp = readSize(memory, 1);
+            	cmps = getMnemonic(Opcode.fromOp((byte)(cmp | 0xF0)));
             	
             	s += cmps.substring(1) + " " + params;
             	break;
             
+            case MOVW_RIM_BP, CMPW_RIM_I8, ADDW_RIM_I8, ADCW_RIM_I8, SUBW_RIM_I8, SBBW_RIM_I8:
+                s += disassembleRIM(memory, true, false, false, true, false) + ", " + readHex(memory, 1);
+                break;
+            
             // packed
-            case PADD_RIMP, PADC_RIMP, PSUB_RIMP, PSBB_RIMP, PMUL_RIMP, PDIV_RIMP, PDIVS_RIMP, PCMP_RIMP, PTST_RIMP:
+            case PADD_RIMP, PADC_RIMP, PSUB_RIMP, PSBB_RIMP, PMUL_RIMP, PDIV_RIMP, PDIVS_RIMP, PCMP_RIMP, PTST_RIMP,
+                 PAND_RIMP, POR_RIMP, PXOR_RIMP:
                 s += disassembleRIM(memory, true, true, true, false, false);
                 break;
             
@@ -136,7 +128,7 @@ public class Disassembler {
                 break;
             
             // source only
-            case PUSH_RIM, BPUSH_RIM, JMP_RIM, CALL_RIM, INT_RIM, JC_RIM, JNC_RIM, JS_RIM, JNS_RIM, JO_RIM,
+            case PUSH_RIM, JMP_RIM, CALL_RIM, INT_RIM, JC_RIM, JNC_RIM, JS_RIM, JNS_RIM, JO_RIM,
                  JNO_RIM, JZ_RIM, JNZ_RIM, JA_RIM, JBE_RIM, JG_RIM, JGE_RIM, JL_RIM, JLE_RIM:
                 s += disassembleRIM(memory, false, true, false, false, false);
                 break;
@@ -149,16 +141,16 @@ public class Disassembler {
                 s += " PR," + disassembleRIM(memory, false, true, false, true, true);
                 break;
             
-            case JMPA_RIM32, CALLA_RIM32, PUSHW_RIM, BPUSHW_RIM:
+            case JMPA_RIM32, CALLA_RIM32, PUSHW_RIM:
                 s += disassembleRIM(memory, false, true, false, false, true);
                 break;
             
             // destination only
-            case POP_RIM, BPOP_RIM, INC_RIM, ICC_RIM, DEC_RIM, DCC_RIM, NOT_RIM, NEG_RIM:
+            case POP_RIM, INC_RIM, ICC_RIM, DEC_RIM, DCC_RIM, NOT_RIM, NEG_RIM:
                 s += disassembleRIM(memory, true, false, false, false, false);
                 break;
             
-            case POPW_RIM, BPOPW_RIM:
+            case POPW_RIM:
                 s += disassembleRIM(memory, true, false, false, true, false);
                 break;
             
@@ -468,11 +460,11 @@ public class Disassembler {
             case 4:
                 return switch(field) {
                     case 0          -> Register.DA;
-                    case 1          -> Register.AB;
-                    case 2          -> Register.BC;
-                    case 3          -> Register.CD;
-                    case 4          -> Register.JI;
-                    case 5          -> Register.LK;
+                    case 1          -> Register.BC;
+                    case 2          -> Register.JI;
+                    case 3          -> Register.LK;
+                    case 4          -> Register.XP;
+                    case 5          -> Register.YP;
                     case 6          -> Register.BP;
                     case 7          -> Register.SP; 
                     default    		-> Register.NONE;

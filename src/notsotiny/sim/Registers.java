@@ -6,7 +6,6 @@ public enum Registers {
     A   (LocationSize.WORD),
     AH  (LocationSize.BYTE),
     AL  (LocationSize.BYTE),
-    AB  (LocationSize.DWORD),
     B   (LocationSize.WORD),
     BH  (LocationSize.BYTE),
     BL  (LocationSize.BYTE),
@@ -14,7 +13,6 @@ public enum Registers {
     C   (LocationSize.WORD),
     CH  (LocationSize.BYTE),
     CL  (LocationSize.BYTE),
-    CD  (LocationSize.DWORD),
     D   (LocationSize.WORD),
     DH  (LocationSize.BYTE),
     DL  (LocationSize.BYTE),
@@ -24,9 +22,11 @@ public enum Registers {
     LK  (LocationSize.DWORD),
     K   (LocationSize.WORD),
     L   (LocationSize.WORD),
-    IP  (LocationSize.DWORD),
+    XP  (LocationSize.DWORD),
+    YP  (LocationSize.DWORD),
     BP  (LocationSize.DWORD),
     SP  (LocationSize.DWORD),
+    IP  (LocationSize.DWORD),
     ;
     
     public LocationSize size;

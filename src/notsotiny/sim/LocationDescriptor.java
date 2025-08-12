@@ -8,7 +8,6 @@ public class LocationDescriptor {
                                            REG_A = new LocationDescriptor(Registers.A),
                                            REG_AH = new LocationDescriptor(Registers.AH),
                                            REG_AL = new LocationDescriptor(Registers.AL),
-                                           REG_AB = new LocationDescriptor(Registers.AB),
                                            REG_B = new LocationDescriptor(Registers.B),
                                            REG_BH = new LocationDescriptor(Registers.BH),
                                            REG_BL = new LocationDescriptor(Registers.BL),
@@ -16,7 +15,6 @@ public class LocationDescriptor {
                                            REG_C = new LocationDescriptor(Registers.C),
                                            REG_CH = new LocationDescriptor(Registers.CH),
                                            REG_CL = new LocationDescriptor(Registers.CL),
-                                           REG_CD = new LocationDescriptor(Registers.CD),
                                            REG_D = new LocationDescriptor(Registers.D),
                                            REG_DH = new LocationDescriptor(Registers.DH),
                                            REG_DL = new LocationDescriptor(Registers.DL),
@@ -26,9 +24,11 @@ public class LocationDescriptor {
                                            REG_LK = new LocationDescriptor(Registers.LK),
                                            REG_K = new LocationDescriptor(Registers.K),
                                            REG_L = new LocationDescriptor(Registers.L),
-                                           REG_IP = new LocationDescriptor(Registers.IP),
+                                           REG_XP = new LocationDescriptor(Registers.XP),
+                                           REG_YP = new LocationDescriptor(Registers.YP),
                                            REG_BP = new LocationDescriptor(Registers.BP),
-                                           REG_SP = new LocationDescriptor(Registers.SP);
+                                           REG_SP = new LocationDescriptor(Registers.SP),
+                                           REG_IP = new LocationDescriptor(Registers.IP);
     
     public LocationType type;
     public Registers register;
