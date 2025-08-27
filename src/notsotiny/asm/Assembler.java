@@ -38,6 +38,7 @@ import asmlib.lex.symbols.StringSymbol;
 import asmlib.lex.symbols.Symbol;
 import asmlib.token.Tokenizer;
 import asmlib.util.FileLocator;
+import asmlib.util.relocation.ExecWriter;
 import asmlib.util.relocation.RelocatableObject;
 import asmlib.util.relocation.RelocatableObject.Endianness;
 import notsotiny.asm.components.Component;
@@ -51,6 +52,7 @@ import notsotiny.asm.resolution.ResolvableLocationDescriptor;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor.LocationType;
 import notsotiny.asm.resolution.ResolvableMemory;
 import notsotiny.asm.resolution.ResolvableValue;
+import notsotiny.sim.Register;
 import notsotiny.sim.ops.Opcode;
 import notsotiny.sim.ops.Operation;
 import asmlib.util.relocation.RenameableRelocatableObject;
@@ -243,37 +245,12 @@ public class Assembler {
         String directory = new File(args[flagCount]).getAbsolutePath();
         directory = directory.substring(0, directory.lastIndexOf("\\")) + "\\";
         
-        Set<String> execContents = new HashSet<>();
-        
-        for(RelocatableObject obj : objects) {
-            String filename = "obj\\" + obj.getName() + ".obj";
-            execContents.add(filename);
-            
-            LOG.fine("Writing object file " + directory + filename);
-            
-            // make obj directory if it doesn't exist
-            if(!new File(directory + "obj\\").exists()) {
-                new File(directory + "obj\\").mkdir();
-            }
-            
-            try(FileOutputStream fos = new FileOutputStream(directory + filename)){
-                fos.write(obj.asObjectFile());
-            }
-        }
-        
-        // exec file
         if(args.length == (flagCount + 3)) {
-            String fn = directory + args[flagCount + 1];
-            
-            LOG.fine("Writing exec file " + fn);
-            
-            try(PrintWriter execWriter = new PrintWriter(fn)) {
-                // entry point
-                execWriter.println("#entry " + entrySymbolContainer.s);
-                
-                // object files
-                execContents.forEach(execWriter::println);
-            }
+            // with exec file
+            ExecWriter.write(objects, Paths.get(directory), Paths.get(directory + args[flagCount + 1]), entrySymbolContainer.s, LOG);
+        } else {
+            // no exec file
+            ExecWriter.write(objects, Paths.get(directory), LOG);
         }
         
         LOG.info("Done.");
@@ -359,58 +336,11 @@ public class Assembler {
         
         // unify library names
         LOG.fine("Unifying library names");
-        for(String name : libraryMap.keySet()) {
-            Path p = libraryMap.get(name);
-            
-            LOG.finest("Mapping " + p + " to " + name);
-            
-            for(RenameableRelocatableObject obj : objects) {
-                obj.renameLibraryFile(p.toFile(), name);
-            }
-        }
+        RenameableRelocatableObject.unifyNames(objects, libraryMap, LOG);
         
         // compactify library names
         if(!debugFriendlyOutput) {
-            Map<String, String> nameIDMap = new HashMap<>(),
-                                libraryIDMap = new HashMap<>();
-            int id = 0,
-                lid = 0;
-            
-            // Generate names
-            for(RenameableRelocatableObject obj : objects) {
-                libraryIDMap.put(obj.getName(), Integer.toString(lid++, Character.MAX_RADIX));
-                
-                for(String s : obj.getOutgoingReferenceNames()) {
-                    String n = obj.getName() + ".";
-                    
-                    if(s.equals("ORIGIN")) {
-                        continue;
-                    }
-                    
-                    String ids = Integer.toString(id++, Character.MAX_RADIX);
-                    
-                    if((n + s).equals(entrySymbolName.s)) {
-                        // Update entry symbol
-                        entrySymbolName.s = libraryIDMap.get(obj.getName()) + "." + ids;
-                    }
-                    
-                    nameIDMap.put(n + s, n + ids);
-                }
-            }
-            
-            // Rename symbols
-            for(RenameableRelocatableObject obj : objects) {
-                for(String old : nameIDMap.keySet()) {
-                    obj.renameGlobal(old, nameIDMap.get(old));
-                }
-            }
-            
-            // Rename libraries
-            for(RenameableRelocatableObject obj : objects) {
-                for(String old : libraryIDMap.keySet()) {
-                    obj.renameLibrary(old, libraryIDMap.get(old));
-                }
-            }
+            entrySymbolName.s = RenameableRelocatableObject.compactNames(objects, Set.of("ORIGIN", "PRIVILEGED"), entrySymbolName.s, LOG);
         }
         
         LOG.info("Done.");
@@ -554,8 +484,9 @@ public class Assembler {
                         
                         // flag as privilaged
                         case "%PRIVILAGED":
-                            outgoingReferences.put("PRIVILAGED", 1);
-                            outgoingReferenceWidths.put("PRIVILAGED", 4);
+                        case "%PRIVILEGED":
+                            outgoingReferences.put("PRIVILEGED", 1);
+                            outgoingReferenceWidths.put("PRIVILEGED", 4);
                             handled = true;
                             break;
                         

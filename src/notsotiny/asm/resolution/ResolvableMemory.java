@@ -1,6 +1,6 @@
 package notsotiny.asm.resolution;
 
-import notsotiny.asm.Register;
+import notsotiny.sim.Register;
 
 /**
  * A memory address
@@ -67,6 +67,10 @@ public class ResolvableMemory implements Resolvable {
                 sb += " + ";
                 si = this.index.toString();
                 
+                if(this.scale != 0) {
+                    si += "*" + this.scale;
+                }
+                
                 if(!resolved || (resolved && this.offset.value() != 0)) {
                     si += " + ";
                     so = this.offset.toString();
@@ -80,6 +84,10 @@ public class ResolvableMemory implements Resolvable {
         } else {
             if(this.index != Register.NONE) {
                 si = this.index.toString();
+                
+                if(this.scale != 0) {
+                    si += "*" + this.scale;
+                }
                 
                 if(!resolved || (resolved && this.offset.value() != 0)) {
                     si += " + ";

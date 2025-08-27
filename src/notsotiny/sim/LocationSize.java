@@ -6,7 +6,7 @@ public enum LocationSize {
     BYTE    (1),
     NULL    (0);
     
-    public int bytes;
+    public final int bytes;
     
     private LocationSize(int bytes) {
         this.bytes = bytes;

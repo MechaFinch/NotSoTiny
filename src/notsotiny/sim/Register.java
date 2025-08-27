@@ -1,6 +1,6 @@
 package notsotiny.sim;
 
-public enum Registers {
+public enum Register {
     NONE(LocationSize.NULL),
     DA  (LocationSize.DWORD),
     A   (LocationSize.WORD),
@@ -27,11 +27,30 @@ public enum Registers {
     BP  (LocationSize.DWORD),
     SP  (LocationSize.DWORD),
     IP  (LocationSize.DWORD),
+    F   (LocationSize.WORD),
+    PF  (LocationSize.WORD),
+    ISP (LocationSize.DWORD),
     ;
     
-    public LocationSize size;
+    private final LocationSize size;
+    private final int bytes;
     
-    private Registers(LocationSize size) {
+    private Register(LocationSize size) {
         this.size = size;
+        this.bytes = this.size.bytes;
+    }
+    
+    public int size() { return this.bytes; }
+    public LocationSize lsize() { return this.size; }
+    
+    @Override
+    public String toString() {
+        return switch(this) {
+            case DA         -> "D:A";
+            case BC         -> "B:C";
+            case JI         -> "J:I";
+            case LK         -> "L:K";
+            default         -> super.toString();
+        };
     }
 }

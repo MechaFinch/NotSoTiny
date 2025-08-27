@@ -3741,6 +3741,9 @@ public class NotSoTinySimulator {
                     case BL     -> (byte) this.reg_b;
                     case CL     -> (byte) this.reg_c;
                     case DL     -> (byte) this.reg_d;
+                    
+                    // Not decoded in normal operation
+                    default     -> throw new IllegalStateException("Invalid register in readLocation: " + ld.register);
                 };
                 
             default: //case NULL:
@@ -4497,7 +4500,6 @@ public class NotSoTinySimulator {
     public int getRegBP() { return this.reg_bp; }
     public int getRegSP() { return this.reg_sp; }
     public int getRegIP() { return this.reg_ip; }
-    public int getRegISP() { return this.reg_isp; }
     public boolean getHalted() { return this.halted; }
     public boolean hasPendingInterrupt() { return this.pendingExternalInterrupt; }
     public byte getPendingInterruptVector() { return this.externalInterruptVector; }
@@ -4517,6 +4519,16 @@ public class NotSoTinySimulator {
             (this.pf_ii ? 0x04 : 0x00)
         );
     }
+    
+    private int getRegISPChecked() throws GPFException {
+        if(this.pf_pv) {
+            return this.reg_isp;
+        } else {
+            throw new GPFException();
+        }
+    }
+    
+    public int getRegISP() { return this.reg_isp; }
     
     /*
      * Setters

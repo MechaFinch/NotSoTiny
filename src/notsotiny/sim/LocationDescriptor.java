@@ -4,34 +4,34 @@ public class LocationDescriptor {
     
     // Common locations
     public static final LocationDescriptor NULL = new LocationDescriptor(),
-                                           REG_DA = new LocationDescriptor(Registers.DA),
-                                           REG_A = new LocationDescriptor(Registers.A),
-                                           REG_AH = new LocationDescriptor(Registers.AH),
-                                           REG_AL = new LocationDescriptor(Registers.AL),
-                                           REG_B = new LocationDescriptor(Registers.B),
-                                           REG_BH = new LocationDescriptor(Registers.BH),
-                                           REG_BL = new LocationDescriptor(Registers.BL),
-                                           REG_BC = new LocationDescriptor(Registers.BC),
-                                           REG_C = new LocationDescriptor(Registers.C),
-                                           REG_CH = new LocationDescriptor(Registers.CH),
-                                           REG_CL = new LocationDescriptor(Registers.CL),
-                                           REG_D = new LocationDescriptor(Registers.D),
-                                           REG_DH = new LocationDescriptor(Registers.DH),
-                                           REG_DL = new LocationDescriptor(Registers.DL),
-                                           REG_JI = new LocationDescriptor(Registers.JI),
-                                           REG_I = new LocationDescriptor(Registers.I),
-                                           REG_J = new LocationDescriptor(Registers.J),
-                                           REG_LK = new LocationDescriptor(Registers.LK),
-                                           REG_K = new LocationDescriptor(Registers.K),
-                                           REG_L = new LocationDescriptor(Registers.L),
-                                           REG_XP = new LocationDescriptor(Registers.XP),
-                                           REG_YP = new LocationDescriptor(Registers.YP),
-                                           REG_BP = new LocationDescriptor(Registers.BP),
-                                           REG_SP = new LocationDescriptor(Registers.SP),
-                                           REG_IP = new LocationDescriptor(Registers.IP);
+                                           REG_DA = new LocationDescriptor(Register.DA),
+                                           REG_A = new LocationDescriptor(Register.A),
+                                           REG_AH = new LocationDescriptor(Register.AH),
+                                           REG_AL = new LocationDescriptor(Register.AL),
+                                           REG_B = new LocationDescriptor(Register.B),
+                                           REG_BH = new LocationDescriptor(Register.BH),
+                                           REG_BL = new LocationDescriptor(Register.BL),
+                                           REG_BC = new LocationDescriptor(Register.BC),
+                                           REG_C = new LocationDescriptor(Register.C),
+                                           REG_CH = new LocationDescriptor(Register.CH),
+                                           REG_CL = new LocationDescriptor(Register.CL),
+                                           REG_D = new LocationDescriptor(Register.D),
+                                           REG_DH = new LocationDescriptor(Register.DH),
+                                           REG_DL = new LocationDescriptor(Register.DL),
+                                           REG_JI = new LocationDescriptor(Register.JI),
+                                           REG_I = new LocationDescriptor(Register.I),
+                                           REG_J = new LocationDescriptor(Register.J),
+                                           REG_LK = new LocationDescriptor(Register.LK),
+                                           REG_K = new LocationDescriptor(Register.K),
+                                           REG_L = new LocationDescriptor(Register.L),
+                                           REG_XP = new LocationDescriptor(Register.XP),
+                                           REG_YP = new LocationDescriptor(Register.YP),
+                                           REG_BP = new LocationDescriptor(Register.BP),
+                                           REG_SP = new LocationDescriptor(Register.SP),
+                                           REG_IP = new LocationDescriptor(Register.IP);
     
     public LocationType type;
-    public Registers register;
+    public Register register;
     public LocationSize size;
     public int address;
 
@@ -41,7 +41,7 @@ public class LocationDescriptor {
     public LocationDescriptor() {
         this.address = 0;
         this.type = LocationType.NULL;
-        this.register = Registers.NONE;
+        this.register = Register.NONE;
         this.size = LocationSize.NULL;
     }
     
@@ -50,11 +50,11 @@ public class LocationDescriptor {
      * @param type
      * @param register
      */
-    public LocationDescriptor(Registers register) {
+    public LocationDescriptor(Register register) {
         this.register = register;
         
         this.type = LocationType.REGISTER;
-        this.size = register.size;
+        this.size = register.lsize();
         this.address = 0;
     }
     
@@ -67,7 +67,7 @@ public class LocationDescriptor {
         this.address = address;
         this.size = size;
         
-        this.register = Registers.NONE;
+        this.register = Register.NONE;
     }
     
     @Override

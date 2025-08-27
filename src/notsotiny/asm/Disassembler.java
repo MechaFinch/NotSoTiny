@@ -3,6 +3,7 @@ package notsotiny.asm;
 import java.util.HashMap;
 import java.util.Map;
 
+import notsotiny.sim.Register;
 import notsotiny.sim.memory.MemoryManager;
 import notsotiny.sim.ops.Opcode;
 

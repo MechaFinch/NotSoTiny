@@ -3,7 +3,7 @@ package notsotiny.asm.components;
 import java.util.LinkedList;
 import java.util.List;
 
-import notsotiny.asm.Register;
+import notsotiny.sim.Register;
 import notsotiny.asm.resolution.ResolvableConstant;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor;
 import notsotiny.asm.resolution.ResolvableLocationDescriptor.LocationType;

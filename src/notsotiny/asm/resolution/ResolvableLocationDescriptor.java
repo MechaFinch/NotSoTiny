@@ -1,6 +1,6 @@
 package notsotiny.asm.resolution;
 
-import notsotiny.asm.Register;
+import notsotiny.sim.Register;
 
 /**
  * A Resolvable that describes a location
