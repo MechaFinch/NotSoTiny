@@ -150,6 +150,7 @@ public class NotSoTinyUI extends Application {
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GMTK-Game-Jam-2024\\game\\src\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\java\\eclipse-workspace\\NSTLCompiler\\test\\",
                                 PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\java\\eclipse-workspace\\NSTLCompiler\\test\\benchmark\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\java\\eclipse-workspace\\NSTAssembler\\test\\",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "forth.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test-badapple.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "badappleplayer.oex",
@@ -163,6 +164,7 @@ public class NotSoTinyUI extends Application {
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "advent.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "e2.oex",
                                 PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "benchmark.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "auto.oex",
                                 DISK_FOLDER = PROGRAM_DATA_FOLDER + "disk\\",
                                 TEXT_FONT_FILE = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\textsmall.dat";
     

@@ -3295,8 +3295,15 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      */
     private void runINC() throws UnprivilegedAccessException {
-        int i = (this.cid.opcode == Opcode.INC_RIM || this.cid.opcode == Opcode.DEC_RIM || (this.reg_f & 0x01) != 0) ? 1 : 0;
-        boolean sub = this.cid.opcode == Opcode.DEC_RIM || this.cid.opcode == Opcode.DCC_RIM;
+        int i = switch(this.cid.opcode) {
+            case INC_RIM, INCW_RIM, DEC_RIM, DECW_RIM   -> 1;
+            default                                     -> (this.reg_f & 0x01) != 0 ? 1 : 0;
+        };
+        
+        boolean sub = switch(this.cid.opcode) {
+            case DEC_RIM, DECW_RIM, DCC_RIM, DCCW_RIM   -> true;
+            default                                     -> false;
+        };
         
         int[] res = add(this.cid.destinationValue, i, this.cid.destinationDescriptor.size.bytes, sub, false);
         writeLocation(this.cid.destinationDescriptor, res[0]);
@@ -3432,7 +3439,7 @@ public class NotSoTinySimulator {
                 int rot = 0;
                 for(int i = 0; i < b; i++) {
                     // use previous carry for RCL
-                    if(this.cid.opcode == Opcode.RCL_RIM || this.cid.opcode == Opcode.RCL_RIM_I8) {
+                    if(this.cid.opcode == Opcode.RCL_RIM || this.cid.opcode == Opcode.RCL_RIM_I8 || this.cid.opcode == Opcode.RCL_RIM_1) {
                         rot = carry ? 1 : 0;
                     }
                     
@@ -3445,7 +3452,7 @@ public class NotSoTinySimulator {
                     } & al) != 0;
                     
                     // use current carry for ROL
-                    if(this.cid.opcode == Opcode.ROL_RIM || this.cid.opcode == Opcode.ROL_RIM_I8) {
+                    if(this.cid.opcode == Opcode.ROL_RIM || this.cid.opcode == Opcode.ROL_RIM_I8 || this.cid.opcode == Opcode.ROL_RIM_1) {
                         rot = carry ? 1 : 0;
                     }
                     
@@ -3469,7 +3476,7 @@ public class NotSoTinySimulator {
                 
                 for(int i = 0; i < b; i++) {
                     // use previous carry for RCR
-                    if(this.cid.opcode == Opcode.RCR_RIM || this.cid.opcode == Opcode.RCR_RIM_I8) {
+                    if(this.cid.opcode == Opcode.RCR_RIM || this.cid.opcode == Opcode.RCR_RIM_I8 || this.cid.opcode == Opcode.RCR_RIM_1) {
                         rot = carry ? 1 : 0;
                     }
                     
@@ -3477,7 +3484,7 @@ public class NotSoTinySimulator {
                     al >>>= 1;
                     
                     // use current carry for ROR
-                    if(this.cid.opcode == Opcode.ROR_RIM || this.cid.opcode == Opcode.ROR_RIM_I8) {
+                    if(this.cid.opcode == Opcode.ROR_RIM || this.cid.opcode == Opcode.ROR_RIM_I8 || this.cid.opcode == Opcode.ROR_RIM_1) {
                         rot = carry ? 1 : 0;
                     }
                     

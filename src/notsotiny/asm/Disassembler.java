@@ -52,145 +52,108 @@ public class Disassembler {
         Opcode op = Opcode.fromOp((byte) readSize(memory, 1));
         this.instructionStatisticsMap.put(op, this.instructionStatisticsMap.getOrDefault(op, 0) + 1);
         
-        String s = getMnemonic(op),
-               os = op.toString();
+        String mnemonic = getMnemonic(op),
+               args = "";
         
-        switch(op) {
-            // no args, just mnemonic
-            case NOP, RET, IRET, PUSHA, POPA, HLT:
+        // Main decoding
+        switch(op.dgroup) {
+            case NODECODE, UNDEF:
+                break;
+                
+            case I8:
+                args = disassembleImmediateShortcut(memory, op, 1);
+                break;
+                
+            case I8_EI8:
+                args = disassembleImmediateShortcut(memory, op, 1) + ", " + disassembleImmediateShortcut(memory, op, 1);
+                break;
+                
+            case I16:
+                args = disassembleImmediateShortcut(memory, op, 2);
+                break;
+                
+            case I32:
+                args = disassembleImmediateShortcut(memory, op, 4);
                 break;
             
-            // register only shortcuts - convert underscores
-            case PUSH_F, PUSH_PF, POP_F, POP_PF, NOT_F, 
-                 PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L,
+            default:
+                // various RIMs
+                args = disassembleRIM(memory, op.dgroup.hasDestination, op.dgroup.hasSource, op.dgroup.isPacked, op.dgroup.destIsWide, op.dgroup.sourceIsWide);
+                if(op.dgroup.hasEI8) {
+                    args += ", " + readHex(memory, 1);
+                }
+        }
+        
+        // Handle additional opcode-specific things
+        switch(op) {
+            case CMOVCC_RIM, CMOVWCC_RIM, PCMOVCC_RIMP, JCC_RIM, JCC_I8:
+                // Get EI8 and remove from args string
+                int condVal = Integer.parseInt(args.substring(args.length() - 2), 16);
+                args = args.substring(0, args.length() - 4);
+                
+                // Put condition in mnemonic
+                String baseCondition = switch(condVal & 0x0F) {
+                    case 0x02   -> "C";
+                    case 0x03   -> "NC";
+                    case 0x04   -> "S";
+                    case 0x05   -> "NS";
+                    case 0x06   -> "O";
+                    case 0x07   -> "NO";
+                    case 0x08   -> "Z";
+                    case 0x09   -> "NZ";
+                    case 0x0A   -> "A";
+                    case 0x0B   -> "BE";
+                    case 0x0C   -> "G";
+                    case 0x0D   -> "GE";
+                    case 0x0E   -> "L";
+                    case 0x0F   -> "LE";
+                    default     -> "";
+                };
+                
+                String conditionSuffix = switch(condVal & 0x70) {
+                    case 0x40   -> ".A8";
+                    case 0x50   -> ".E8";
+                    case 0x60   -> ".A4";
+                    case 0x70   -> ".E8";
+                    default     -> "";
+                };
+                
+                mnemonic = mnemonic.substring(0, mnemonic.length() - 2) + baseCondition + conditionSuffix;
+                break;
+                
+            case MOV_RIM_BP, MOVW_RIM_BP:
+                // EI8 is offset for [BP + ei8] source
+                args = args.substring(0, args.length() - 4) + ", [BP + " + args.substring(args.length() - 2) + "]";
+                break;
+            
+            case MOV_BP_RIM, MOVW_BP_RIM:
+                // EI8 is offset for [BP + ei8] destination
+                args = " [BP + " + args.substring(args.length() - 2) + "], " + args.substring(0, args.length() - 4); 
+                break;
+                
+                // register-specific shortcuts not covered by immediate shortcuts                
+            case PUSH_A, PUSH_B, PUSH_C, PUSH_D, PUSH_I, PUSH_J, PUSH_K, PUSH_L,
                  PUSHW_DA, PUSHW_BC, PUSHW_JI, PUSHW_LK, PUSHW_XP, PUSHW_YP, PUSHW_BP,
                  POP_A, POP_B, POP_C, POP_D, POP_I, POP_J, POP_K, POP_L,
                  POPW_DA, POPW_BC, POPW_JI, POPW_LK, POPW_XP, POPW_YP, POPW_BP:
-                s += " " + os.substring(os.indexOf('_') + 1);
-                s = s.replace("_", ", ");
-                break;
-            
-            // 8 bit immediates
-            case MOVS_A_I8, MOVS_B_I8, MOVS_C_I8, MOVS_D_I8, MOVS_I_I8, MOVS_J_I8, MOVS_K_I8, MOVS_L_I8,
-                 ADD_A_I8, ADD_B_I8, ADD_C_I8, ADD_D_I8, ADD_I_I8, ADD_J_I8, ADD_K_I8, ADD_L_I8,
-                 ADDW_DA_I8, ADDW_BC_I8, ADDW_JI_I8, ADDW_LK_I8, ADDW_XP_I8, ADDW_YP_I8, ADDW_BP_I8, ADDW_SP_I8,
-                 SUB_A_I8, SUB_B_I8, SUB_C_I8, SUB_D_I8, SUB_I_I8, SUB_J_I8, SUB_K_I8, SUB_L_I8,
-                 SUBW_DA_I8, SUBW_BC_I8, SUBW_JI_I8, SUBW_LK_I8, SUBW_XP_I8, SUBW_YP_I8, SUBW_BP_I8, SUBW_SP_I8,
-                 JMP_I8, JC_I8, JNC_I8, JS_I8, JNS_I8, JO_I8, JNO_I8, JZ_I8, JNZ_I8, JA_I8, JBE_I8, JL_I8, JLE_I8, JG_I8, JGE_I8:
-                s += disassembleImmediateShortcut(memory, op, 1);
-                break;
-            
-            // 8 bit immediate + EI8
-            case JCC_I8:
-                String imm = disassembleImmediateShortcut(memory, op, 1);
-                int cmp = readSize(memory, 1);
-                String cmps = getMnemonic(Opcode.fromOp((byte)(cmp | 0xF0)));
-                s = s.substring(0, s.length() - 5) + cmps.substring(1) + " " + imm;
-                break;
-            
-            // 16 bit immediates
-            case MOV_A_I16, MOV_B_I16, MOV_C_I16, MOV_D_I16, MOV_I_I16, MOV_J_I16, MOV_K_I16, MOV_L_I16,
-                 JMP_I16, CALL_I16:
-                s += disassembleImmediateShortcut(memory, op, 2);
-                break;
-            
-            // 32 bit immediate
-            case JMP_I32, JMPA_I32, CALL_I32, CALLA_I32:
-                s += disassembleImmediateShortcut(memory, op, 4);
-                break;
-            
-            // RIM + I8
-            case MOV_RIM_BP, CMP_RIM_I8, ADD_RIM_I8, ADC_RIM_I8, SUB_RIM_I8, SBB_RIM_I8,
-                 SHL_RIM_I8, SHR_RIM_I8, SAR_RIM_I8, ROL_RIM_I8, ROR_RIM_I8, RCL_RIM_I8, RCR_RIM_I8:
-                s += disassembleRIM(memory, true, false, false, false, false) + ", " + readHex(memory, 1);
-                break;
-            
-            case CMOVCC_RIM:
-            	s = s.substring(0, s.length() - 2);
-            	String params = disassembleRIM(memory, true, true, false, false, false);
-            	cmp = readSize(memory, 1);
-            	cmps = getMnemonic(Opcode.fromOp((byte)(cmp | 0xF0)));
-            	
-            	s += cmps.substring(1) + " " + params;
-            	break;
-            
-            case MOVW_RIM_BP, CMPW_RIM_I8, ADDW_RIM_I8, ADCW_RIM_I8, SUBW_RIM_I8, SBBW_RIM_I8:
-                s += disassembleRIM(memory, true, false, false, true, false) + ", " + readHex(memory, 1);
-                break;
-            
-            // packed
-            case PADD_RIMP, PADC_RIMP, PSUB_RIMP, PSBB_RIMP, PMUL_RIMP, PDIV_RIMP, PDIVS_RIMP, PCMP_RIMP, PTST_RIMP,
-                 PAND_RIMP, POR_RIMP, PXOR_RIMP:
-                s += disassembleRIM(memory, true, true, true, false, false);
-                break;
-            
-            case PMULH_RIMP, PMULSH_RIMP, PDIVM_RIMP, PDIVMS_RIMP:
-                s += disassembleRIM(memory, true, true, true, true, false);
-                break;
-            
-            // source only
-            case PUSH_RIM, JMP_RIM, CALL_RIM, INT_RIM, JC_RIM, JNC_RIM, JS_RIM, JNS_RIM, JO_RIM,
-                 JNO_RIM, JZ_RIM, JNZ_RIM, JA_RIM, JBE_RIM, JG_RIM, JGE_RIM, JL_RIM, JLE_RIM:
-                s += disassembleRIM(memory, false, true, false, false, false);
-                break;
-            
-            case AND_F_RIM, OR_F_RIM, XOR_F_RIM, MOV_F_RIM:
-                s += " F," + disassembleRIM(memory, false, true, false, false, false);
-                break;
-            
-            case MOV_PR_RIM:
-                s += " PR," + disassembleRIM(memory, false, true, false, true, true);
-                break;
-            
-            case JMPA_RIM32, CALLA_RIM32, PUSHW_RIM:
-                s += disassembleRIM(memory, false, true, false, false, true);
-                break;
-            
-            // destination only
-            case POP_RIM, INC_RIM, ICC_RIM, DEC_RIM, DCC_RIM, NOT_RIM, NEG_RIM:
-                s += disassembleRIM(memory, true, false, false, false, false);
-                break;
-            
-            case POPW_RIM:
-                s += disassembleRIM(memory, true, false, false, true, false);
-                break;
-            
-            case AND_RIM_F, OR_RIM_F, XOR_RIM_F, MOV_RIM_F:
-                s += disassembleRIM(memory, true, false, false, false, false) + ", F";
-                break;
-            
-            case MOV_RIM_PR:
-                s += disassembleRIM(memory, true, false, false, true, true) + ", PR";
-                break;
-            
-            case PINC_RIMP, PICC_RIMP, PDEC_RIMP, PDCC_RIMP:
-                s += disassembleRIM(memory, true, false, true, false, false);
-                break;
-            
-            case CMP_RIM_0:
-                s += disassembleRIM(memory, true, false, false, false, false) + ", 0";
-                break;
-            
-            // wide destination
-            case MOVS_RIM, MOVZ_RIM, MULH_RIM, MULSH_RIM, DIVM_RIM, DIVMS_RIM, LEA_RIM:
-                s += disassembleRIM(memory, true, true, false, true, false);
+                mnemonic = op.toString().replace("_", " ");
                 break;
                 
-            // wide
-            case MOVW_RIM:
-                s += disassembleRIM(memory, true, true, false, true, true);
+            case MOVW_RIM_0, CMP_RIM_0, CMPW_RIM_0:
+                args += ", 0";
                 break;
                 
-            // normal
+            case SHL_RIM_1, SHR_RIM_1, SAR_RIM_1, ROL_RIM_1, ROR_RIM_1, RCL_RIM_1, RCR_RIM_1:
+                args += ", 1";
+                break;
+            
             default:
-                s += disassembleRIM(memory, true, true, false, false, false);
-                break;
         }
         
         if(this.uppercase) {
-            return s.toUpperCase();
+            return (mnemonic + args).toUpperCase();
         } else {
-            return s.toLowerCase();
+            return (mnemonic + args).toLowerCase();
         }
     }
     

@@ -2213,7 +2213,7 @@ public class Assembler {
                         default -> throw new IllegalArgumentException("Invalid conditional move mnemonic " + m.name());
                     };
                     
-                    return new Instruction(opcode, firstOperand, secondOperand, conditionOp.getOp(), hasFixedOperandSize);
+                    return new Instruction(opcode, firstOperand, secondOperand, conditionOp.getOp() & 0x0F, hasFixedOperandSize);
                 } else {
                     return new Instruction(opcode, firstOperand, secondOperand, hasFixedOperandSize);
                 }

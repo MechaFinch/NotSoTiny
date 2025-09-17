@@ -43,6 +43,23 @@ public enum Register {
     public int size() { return this.bytes; }
     public LocationSize lsize() { return this.size; }
     
+    /**
+     * String -> register
+     * @param s
+     * @return
+     */
+    public static Register fromString(String s) {
+        String su = s.toUpperCase();
+        
+        return switch(su) {
+            case "D:A"  -> Register.DA;
+            case "B:C"  -> Register.BC;
+            case "J:I"  -> Register.JI;
+            case "L:K"  -> Register.LK;
+            default     -> Register.valueOf(su);
+        };
+    }
+    
     @Override
     public String toString() {
         return switch(this) {
