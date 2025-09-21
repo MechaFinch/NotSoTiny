@@ -7,44 +7,44 @@
 	0x05	IP + i16
 	0x06	IP + i24
 	0x07	IP + i32
-	0x08	A:B + i8
-	0x09	A:B + i16
-	0x0A	A:B + i24
-	0x0B	A:B + i32
+	0x08	B:C + i8
+	0x09	B:C + i16
+	0x0A	B:C + i24
+	0x0B	B:C + i32
 	0x0C	IP + i8
 	0x0D	IP + i16
 	0x0E	IP + i24
 	0x0F	IP + i32
 	
-	0x10	B:C + i8
-	0x11	B:C + i16
-	0x12	B:C + i24
-	0x13	B:C + i32
+	0x10	J:I + i8
+	0x11	J:I + i16
+	0x12	J:I + i24
+	0x13	J:I + i32
 	0x14	IP + i8
 	0x15	IP + i16
 	0x16	IP + i24
 	0x17	IP + i32
-	0x18	C:D + i8
-	0x19	C:D + i16
-	0x1A	C:D + i24
-	0x1B	C:D + i32
+	0x18	L:K + i8
+	0x19	L:K + i16
+	0x1A	L:K + i24
+	0x1B	L:K + i32
 	0x1C	IP + i8
 	0x1D	IP + i16
 	0x1E	IP + i24
 	0x1F	IP + i32
 	
-	0x20	J:I + i8
-	0x21	J:I + i16
-	0x22	J:I + i24
-	0x23	J:I + i32
+	0x20	XP + i8
+	0x21	XP + i16
+	0x22	XP + i24
+	0x23	XP + i32
 	0x24	IP + I + i8
 	0x25	IP + I + i16
 	0x26	IP + I + i24
 	0x27	IP + I + i32
-	0x28	L:K + i8
-	0x29	L:K + i16
-	0x2A	L:K + i24
-	0x2B	L:K + i32
+	0x28	YP + i8
+	0x29	YP + i16
+	0x2A	YP + i24
+	0x2B	YP + i32
 	0x2C	IP + J + i8
 	0x2D	IP + J + i16
 	0x2E	IP + J + i24
@@ -75,48 +75,48 @@
 	0x45	D:A + J + i32
 	0x46	D:A + K + i32
 	0x47	D:A + L + i32
-	0x48	A:B + A + i32
-	0x49	A:B + B + i32
-	0x4A	A:B + C + i32
-	0x4B	A:B + D + i32
-	0x4C	A:B + I + i32
-	0x4D	A:B + J + i32
-	0x4E	A:B + K + i32
-	0x4F	A:B + L + i32
+	0x48	B:C + A + i32
+	0x49	B:C + B + i32
+	0x4A	B:C + C + i32
+	0x4B	B:C + D + i32
+	0x4C	B:C + I + i32
+	0x4D	B:C + J + i32
+	0x4E	B:C + K + i32
+	0x4F	B:C + L + i32
 	
-	0x50	B:C + A + i32
-	0x51	B:C + B + i32
-	0x52	B:C + C + i32
-	0x53	B:C + D + i32
-	0x54	B:C + I + i32
-	0x55	B:C + J + i32
-	0x56	B:C + K + i32
-	0x57	B:C + L + i32
-	0x58	C:D + A + i32
-	0x59	C:D + B + i32
-	0x5A	C:D + C + i32
-	0x5B	C:D + D + i32
-	0x5C	C:D + I + i32
-	0x5D	C:D + J + i32
-	0x5E	C:D + K + i32
-	0x5F	C:D + L + i32
+	0x50	J:I + A + i32
+	0x51	J:I + B + i32
+	0x52	J:I + C + i32
+	0x53	J:I + D + i32
+	0x54	J:I + I + i32
+	0x55	J:I + J + i32
+	0x56	J:I + K + i32
+	0x57	J:I + L + i32
+	0x58	L:K + A + i32
+	0x59	L:K + B + i32
+	0x5A	L:K + C + i32
+	0x5B	L:K + D + i32
+	0x5C	L:K + I + i32
+	0x5D	L:K + J + i32
+	0x5E	L:K + K + i32
+	0x5F	L:K + L + i32
 	
-	0x60	J:I + A + i32
-	0x61	J:I + B + i32
-	0x62	J:I + C + i32
-	0x63	J:I + D + i32
-	0x64	J:I + I + i32
-	0x65	J:I + J + i32
-	0x66	J:I + K + i32
-	0x67	J:I + L + i32
-	0x68	L:K + A + i32
-	0x69	L:K + B + i32
-	0x6A	L:K + C + i32
-	0x6B	L:K + D + i32
-	0x6C	L:K + I + i32
-	0x6D	L:K + J + i32
-	0x6E	L:K + K + i32
-	0x6F	L:K + L + i32
+	0x60	XP + A + i32
+	0x61	XP + B + i32
+	0x62	XP + C + i32
+	0x63	XP + D + i32
+	0x64	XP + I + i32
+	0x65	XP + J + i32
+	0x66	XP + K + i32
+	0x67	XP + L + i32
+	0x68	YP + A + i32
+	0x69	YP + B + i32
+	0x6A	YP + C + i32
+	0x6B	YP + D + i32
+	0x6C	YP + I + i32
+	0x6D	YP + J + i32
+	0x6E	YP + K + i32
+	0x6F	YP + L + i32
 	
 	0x70	BP + A + i32
 	0x71	BP + B + i32
@@ -143,48 +143,48 @@
 	0x85	D:A + 2*J + i32
 	0x86	D:A + 2*K + i32
 	0x87	D:A + 2*L + i32
-	0x88	A:B + 2*A + i32
-	0x89	A:B + 2*B + i32
-	0x8A	A:B + 2*C + i32
-	0x8B	A:B + 2*D + i32
-	0x8C	A:B + 2*I + i32
-	0x8D	A:B + 2*J + i32
-	0x8E	A:B + 2*K + i32
-	0x8F	A:B + 2*L + i32
+	0x88	B:C + 2*A + i32
+	0x89	B:C + 2*B + i32
+	0x8A	B:C + 2*C + i32
+	0x8B	B:C + 2*D + i32
+	0x8C	B:C + 2*I + i32
+	0x8D	B:C + 2*J + i32
+	0x8E	B:C + 2*K + i32
+	0x8F	B:C + 2*L + i32
 	
-	0x90	B:C + 2*A + i32
-	0x91	B:C + 2*B + i32
-	0x92	B:C + 2*C + i32
-	0x93	B:C + 2*D + i32
-	0x94	B:C + 2*I + i32
-	0x95	B:C + 2*J + i32
-	0x96	B:C + 2*K + i32
-	0x97	B:C + 2*L + i32
-	0x98	C:D + 2*A + i32
-	0x99	C:D + 2*B + i32
-	0x9A	C:D + 2*C + i32
-	0x9B	C:D + 2*D + i32
-	0x9C	C:D + 2*I + i32
-	0x9D	C:D + 2*J + i32
-	0x9E	C:D + 2*K + i32
-	0x9F	C:D + 2*L + i32
+	0x90	J:I + 2*A + i32
+	0x91	J:I + 2*B + i32
+	0x92	J:I + 2*C + i32
+	0x93	J:I + 2*D + i32
+	0x94	J:I + 2*I + i32
+	0x95	J:I + 2*J + i32
+	0x96	J:I + 2*K + i32
+	0x97	J:I + 2*L + i32
+	0x98	L:K + 2*A + i32
+	0x99	L:K + 2*B + i32
+	0x9A	L:K + 2*C + i32
+	0x9B	L:K + 2*D + i32
+	0x9C	L:K + 2*I + i32
+	0x9D	L:K + 2*J + i32
+	0x9E	L:K + 2*K + i32
+	0x9F	L:K + 2*L + i32
 	
-	0xA0	J:I + 2*A + i32
-	0xA1	J:I + 2*B + i32
-	0xA2	J:I + 2*C + i32
-	0xA3	J:I + 2*D + i32
-	0xA4	J:I + 2*I + i32
-	0xA5	J:I + 2*J + i32
-	0xA6	J:I + 2*K + i32
-	0xA7	J:I + 2*L + i32
-	0xA8	L:K + 2*A + i32
-	0xA9	L:K + 2*B + i32
-	0xAA	L:K + 2*C + i32
-	0xAB	L:K + 2*D + i32
-	0xAC	L:K + 2*I + i32
-	0xAD	L:K + 2*J + i32
-	0xAE	L:K + 2*K + i32
-	0xAF	L:K + 2*L + i32
+	0xA0	XP + 2*A + i32
+	0xA1	XP + 2*B + i32
+	0xA2	XP + 2*C + i32
+	0xA3	XP + 2*D + i32
+	0xA4	XP + 2*I + i32
+	0xA5	XP + 2*J + i32
+	0xA6	XP + 2*K + i32
+	0xA7	XP + 2*L + i32
+	0xA8	YP + 2*A + i32
+	0xA9	YP + 2*B + i32
+	0xAA	YP + 2*C + i32
+	0xAB	YP + 2*D + i32
+	0xAC	YP + 2*I + i32
+	0xAD	YP + 2*J + i32
+	0xAE	YP + 2*K + i32
+	0xAF	YP + 2*L + i32
 	
 	0xB0	BP + 2*A + i32
 	0xB1	BP + 2*B + i32
@@ -211,48 +211,48 @@
 	0xC5	D:A + 4*J + i32
 	0xC6	D:A + 4*K + i32
 	0xC7	D:A + 4*L + i32
-	0xC8	A:B + 4*A + i32
-	0xC9	A:B + 4*B + i32
-	0xCA	A:B + 4*C + i32
-	0xCB	A:B + 4*D + i32
-	0xCC	A:B + 4*I + i32
-	0xCD	A:B + 4*J + i32
-	0xCE	A:B + 4*K + i32
-	0xCF	A:B + 4*L + i32
+	0xC8	B:C + 4*A + i32
+	0xC9	B:C + 4*B + i32
+	0xCA	B:C + 4*C + i32
+	0xCB	B:C + 4*D + i32
+	0xCC	B:C + 4*I + i32
+	0xCD	B:C + 4*J + i32
+	0xCE	B:C + 4*K + i32
+	0xCF	B:C + 4*L + i32
 	
-	0xD0	B:C + 4*A + i32
-	0xD1	B:C + 4*B + i32
-	0xD2	B:C + 4*C + i32
-	0xD3	B:C + 4*D + i32
-	0xD4	B:C + 4*I + i32
-	0xD5	B:C + 4*J + i32
-	0xD6	B:C + 4*K + i32
-	0xD7	B:C + 4*L + i32
-	0xD8	C:D + 4*A + i32
-	0xD9	C:D + 4*B + i32
-	0xDA	C:D + 4*C + i32
-	0xDB	C:D + 4*D + i32
-	0xDC	C:D + 4*I + i32
-	0xDD	C:D + 4*J + i32
-	0xDE	C:D + 4*K + i32
-	0xDF	C:D + 4*L + i32
+	0xD0	J:I + 4*A + i32
+	0xD1	J:I + 4*B + i32
+	0xD2	J:I + 4*C + i32
+	0xD3	J:I + 4*D + i32
+	0xD4	J:I + 4*I + i32
+	0xD5	J:I + 4*J + i32
+	0xD6	J:I + 4*K + i32
+	0xD7	J:I + 4*L + i32
+	0xD8	L:K + 4*A + i32
+	0xD9	L:K + 4*B + i32
+	0xDA	L:K + 4*C + i32
+	0xDB	L:K + 4*D + i32
+	0xDC	L:K + 4*I + i32
+	0xDD	L:K + 4*J + i32
+	0xDE	L:K + 4*K + i32
+	0xDF	L:K + 4*L + i32
 	
-	0xE0	J:I + 4*A + i32
-	0xE1	J:I + 4*B + i32
-	0xE2	J:I + 4*C + i32
-	0xE3	J:I + 4*D + i32
-	0xE4	J:I + 4*I + i32
-	0xE5	J:I + 4*J + i32
-	0xE6	J:I + 4*K + i32
-	0xE7	J:I + 4*L + i32
-	0xE8	L:K + 4*A + i32
-	0xE9	L:K + 4*B + i32
-	0xEA	L:K + 4*C + i32
-	0xEB	L:K + 4*D + i32
-	0xEC	L:K + 4*I + i32
-	0xED	L:K + 4*J + i32
-	0xEE	L:K + 4*K + i32
-	0xEF	L:K + 4*L + i32
+	0xE0	XP + 4*A + i32
+	0xE1	XP + 4*B + i32
+	0xE2	XP + 4*C + i32
+	0xE3	XP + 4*D + i32
+	0xE4	XP + 4*I + i32
+	0xE5	XP + 4*J + i32
+	0xE6	XP + 4*K + i32
+	0xE7	XP + 4*L + i32
+	0xE8	YP + 4*A + i32
+	0xE9	YP + 4*B + i32
+	0xEA	YP + 4*C + i32
+	0xEB	YP + 4*D + i32
+	0xEC	YP + 4*I + i32
+	0xED	YP + 4*J + i32
+	0xEE	YP + 4*K + i32
+	0xEF	YP + 4*L + i32
 	
 	0xF0	BP + 4*A + i32
 	0xF1	BP + 4*B + i32

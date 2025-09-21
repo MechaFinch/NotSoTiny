@@ -1,18 +1,39 @@
 
-	$ as a symbol evaluates to the address immediately following the current instruction
-	$<label> evaluates to (label address) - (current instruction end address)
+	Three special symbols are available in the assembler:
+	#	Start address of current component
+	$	End address of current component
+	@	End address of last instruction
 	
-	e.g. MOV A, [IP + $symbol] will use IP-relative addressing to access the symbol
+	Where, for example,
+	00000123:	04 43 10 05		MOV A, [J:I + 0x05]
+	00000127:	70 04			SUB A, 0x04
+	00000129:	E0 04			JMP 0x04
+	0000012B:	00 01 02 03		db 0x00, 0x01, 0x02, 0x03
+	0000012F:	84 40 00 08		ADD A, 0x0800
+	00000133:	
 	
-	@ as a symbol evaluates to the address immediately following the last instruction
-	@<label> evaluates to (label address) - (previous instruction end address)
+	In SUB A, 0x04:
+		# will evaluate to 0x0127
+		$ will evaluate to 0x0129
+		@ will evaluate to 0x0127
 	
-	e.g. 
+	In ADD A, 0x0800:
+		# will evaluate to 0x012F
+		$ will evaluate to 0x0133
+		@ will evaluate to 0x012B
+	
+	When prefixed to another symbol, they specify the offset between the two:
+	$symbol is equivalent to (symbol - $)
+	
+	
+Notable Usage:
+	[IP + $symbol] accesses symbol via IP-relative addressing
+	
+	@symbol may be used to build jump tables, e.g.
+	
 	JMP byte [IP + I]
 jumptable:
 	db @dest_0
 	db @dest_1
 	db @dest_2
 	
-	@ when used in an instruction will always point to its opcode
-	@ when used in a directive will point to the $ of the most recent instruction

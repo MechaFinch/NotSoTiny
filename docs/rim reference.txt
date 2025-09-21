@@ -1,69 +1,69 @@
 			normal		wide
 	0x00	A, A		D:A, D:A
-	0x01	A, B		D:A, A:B
-	0x02	A, C		D:A, B:C
-	0x03	A, D		D:A, C:D
-	0x04	A, I		D:A, J:I
-	0x05	A, J		D:A, L:K
+	0x01	A, B		D:A, B:C
+	0x02	A, C		D:A, J:I
+	0x03	A, D		D:A, L:K
+	0x04	A, I		D:A, XP
+	0x05	A, J		D:A, YP
 	0x06	A, K		D:A, BP
 	0x07	A, L		D:A, SP
-	0x08	B, A		A:B, D:A
-	0x09	B, B		A:B, A:B
-	0x0A	B, C		A:B, B:C
-	0x0B	B, D		A:B, C:D
-	0x0C	B, I		A:B, J:I
-	0x0D	B, J		A:B, L:K
-	0x0E	B, K		A:B, BP
-	0x0F	B, L		A:B, SP
+	0x08	B, A		B:C, D:A
+	0x09	B, B		B:C, B:C
+	0x0A	B, C		B:C, J:I
+	0x0B	B, D		B:C, L:K
+	0x0C	B, I		B:C, YP
+	0x0D	B, J		B:C, XP
+	0x0E	B, K		B:C, BP
+	0x0F	B, L		B:C, SP
 	
-	0x10	C, A		B:C, D:A
-	0x11	C, B		B:C, A:B
-	0x12	C, C		B:C, B:C
-	0x13	C, D		B:C, C:D
-	0x14	C, I		B:C, J:I
-	0x15	C, J		B:C, L:K
-	0x16	C, K		B:C, BP
-	0x17	C, L		B:C, SP
-	0x18	D, A		C:D, D:A
-	0x19	D, B		C:D, A:B
-	0x1A	D, C		C:D, B:C
-	0x1B	D, D		C:D, C:D
-	0x1C	D, I		C:D, J:I
-	0x1D	D, J		C:D, L:K
-	0x1E	D, K		C:D, BP
-	0x1F	D, L		C:D, SP
+	0x10	C, A		J:I, D:A
+	0x11	C, B		J:I, B:C
+	0x12	C, C		J:I, J:I
+	0x13	C, D		J:I, L:K
+	0x14	C, I		J:I, XP
+	0x15	C, J		J:I, YP
+	0x16	C, K		J:I, BP
+	0x17	C, L		J:I, SP
+	0x18	D, A		L:K, D:A
+	0x19	D, B		L:K, B:C
+	0x1A	D, C		L:K, J:I
+	0x1B	D, D		L:K, L:K
+	0x1C	D, I		L:K, XP
+	0x1D	D, J		L:K, YP
+	0x1E	D, K		L:K, BP
+	0x1F	D, L		L:K, SP
 	
-	0x20	I, A		J:I, D:A
-	0x21	I, B		J:I, A:B
-	0x22	I, C		J:I, B:C
-	0x23	I, D		J:I, C:D
-	0x24	I, I		J:I, J:I
-	0x25	I, J		J:I, L:K
-	0x26	I, K		J:I, BP
-	0x27	I, L		J:I, SP
-	0x28	J, A		L:K, D:A
-	0x29	J, B		L:K, A:B
-	0x2A	J, C		L:K, B:C
-	0x2B	J, D		L:K, C:D
-	0x2C	J, I		L:K, J:I
-	0x2D	J, J		L:K, L:K
-	0x2E	J, K		L:K, BP
-	0x2F	J, L		L:K, SP
+	0x20	I, A		XP, D:A
+	0x21	I, B		XP, B:C
+	0x22	I, C		XP, J:I
+	0x23	I, D		XP, L:K
+	0x24	I, I		XP, XP
+	0x25	I, J		XP, YP
+	0x26	I, K		XP, BP
+	0x27	I, L		XP, SP
+	0x28	J, A		YP, D:A
+	0x29	J, B		YP, B:C
+	0x2A	J, C		YP, J:I
+	0x2B	J, D		YP, L:K
+	0x2C	J, I		YP, XP
+	0x2D	J, J		YP, YP
+	0x2E	J, K		YP, BP
+	0x2F	J, L		YP, SP
 	
 	0x30	K, A		BP, D:A
-	0x31	K, B		BP, A:B
-	0x32	K, C		BP, B:C
-	0x33	K, D		BP, C:D
-	0x34	K, I		BP, J:I
-	0x35	K, J		BP, L:K
+	0x31	K, B		BP, B:C
+	0x32	K, C		BP, J:I
+	0x33	K, D		BP, L:K
+	0x34	K, I		BP, XP
+	0x35	K, J		BP, YP
 	0x36	K, K		BP, BP
 	0x37	K, L		BP, SP
 	0x38	L, A		SP, D:A
-	0x39	L, B		SP, A:B
-	0x3A	L, C		SP, B:C
-	0x3B	L, D		SP, C:D
-	0x3C	L, I		SP, J:I
-	0x3D	L, J		SP, L:K
+	0x39	L, B		SP, B:C
+	0x3A	L, C		SP, J:I
+	0x3B	L, D		SP, L:K
+	0x3C	L, I		SP, XP
+	0x3D	L, J		SP, YP
 	0x3E	L, K		SP, BP
 	0x3F	L, L		SP, SP
 	
@@ -75,48 +75,48 @@
 	0x45	[i32], A	[i32], D:A
 	0x46	[bi], A		[bi], D:A
 	0x47	[bio], A	[bio], D:A
-	0x48	B, i16		A:B, i32
-	0x49	B, [i32]	A:B, [i32]
-	0x4A	B, [bi]		A:B, [bi]
-	0x4B	B, [bio]	A:B, [bio]
-	0x4C	x, B		x, A:B
-	0x4D	[i32], B	[i32], A:B
-	0x4E	[bi], B		[bi], A:B
-	0x4F	[bio], B	[bio], A:B
+	0x48	B, i16		B:C, i32
+	0x49	B, [i32]	B:C, [i32]
+	0x4A	B, [bi]		B:C, [bi]
+	0x4B	B, [bio]	B:C, [bio]
+	0x4C	x, B		x, B:C
+	0x4D	[i32], B	[i32], B:C
+	0x4E	[bi], B		[bi], B:C
+	0x4F	[bio], B	[bio], B:C
 	
-	0x50	C, i16		B:C, i32
-	0x51	C, [i32]	B:C, [i32]
-	0x52	C, [bi]		B:C, [bi]
-	0x53	C, [bio]	B:C, [bio]
-	0x54	x, C		x, B:C
-	0x55	[i32], C	[i32], B:C
-	0x56	[bi], C		[bi], B:C
-	0x57	[bio], C	[bio], B:C
-	0x58	D, i16		C:D, i32
-	0x59	D, [i32]	C:D, [i32]
-	0x5A	D, [bi]		C:D, [bi]
-	0x5B	D, [bio]	C:D, [bio]
-	0x5C	x, D		x, C:D
-	0x5D	[i32], D	[i32], C:D
-	0x5E	[bi], D		[bi], C:D
-	0x5F	[bio], D	[bio], C:D
+	0x50	C, i16		J:I, i32
+	0x51	C, [i32]	J:I, [i32]
+	0x52	C, [bi]		J:I, [bi]
+	0x53	C, [bio]	J:I, [bio]
+	0x54	x, C		x, J:I
+	0x55	[i32], C	[i32], J:I
+	0x56	[bi], C		[bi], J:I
+	0x57	[bio], C	[bio], J:I
+	0x58	D, i16		L:K, i32
+	0x59	D, [i32]	L:K, [i32]
+	0x5A	D, [bi]		L:K, [bi]
+	0x5B	D, [bio]	L:K, [bio]
+	0x5C	x, D		x, L:K
+	0x5D	[i32], D	[i32], L:K
+	0x5E	[bi], D		[bi], L:K
+	0x5F	[bio], D	[bio], L:K
 	
-	0x60	I, i16		J:I, i32
-	0x61	I, [i32]	J:I, [i32]
-	0x62	I, [bi]		J:I, [bi]
-	0x63	I, [bio]	J:I, [bio]
-	0x64	x, I		x, J:I
-	0x65	[i32], I	[i32], J:I
-	0x66	[bi], I		[bi], J:I
-	0x67	[bio], I	[bio], J:I
-	0x68	J, i16		L:K, i32
-	0x69	J, [i32]	L:K, [i32]
-	0x6A	J, [bi]		L:K, [bi]
-	0x6B	J, [bio]	L:K, [bio]
-	0x6C	x, J		x, L:K
-	0x6D	[i32], J	[i32], L:K
-	0x6E	[bi], J		[bi], L:K
-	0x6F	[bio], J	[bio], L:K
+	0x60	I, i16		XP, i32
+	0x61	I, [i32]	XP, [i32]
+	0x62	I, [bi]		XP, [bi]
+	0x63	I, [bio]	XP, [bio]
+	0x64	x, I		x, XP
+	0x65	[i32], I	[i32], XP
+	0x66	[bi], I		[bi], XP
+	0x67	[bio], I	[bio], XP
+	0x68	J, i16		YP, i32
+	0x69	J, [i32]	YP, [i32]
+	0x6A	J, [bi]		YP, [bi]
+	0x6B	J, [bio]	YP, [bio]
+	0x6C	x, J		x, YP
+	0x6D	[i32], J	[i32], YP
+	0x6E	[bi], J		[bi], YP
+	0x6F	[bio], J	[bio], YP
 	
 	0x70	K, i16		BP, i32
 	0x71	K, [i32]	BP, [i32]

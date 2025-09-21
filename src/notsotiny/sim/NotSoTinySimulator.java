@@ -3000,14 +3000,14 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      */
     private void runPUSHA() throws UnprivilegedAccessException {
-        this.memory.write2Bytes(this.reg_sp - 16, this.reg_l, this.pf_pv);
-        this.memory.write2Bytes(this.reg_sp - 14, this.reg_k, this.pf_pv);
-        this.memory.write2Bytes(this.reg_sp - 12, this.reg_j, this.pf_pv);
-        this.memory.write2Bytes(this.reg_sp - 10, this.reg_i, this.pf_pv);
-        this.memory.write2Bytes(this.reg_sp - 8, this.reg_d, this.pf_pv);
-        this.memory.write2Bytes(this.reg_sp - 6, this.reg_c, this.pf_pv);
-        this.memory.write2Bytes(this.reg_sp - 4, this.reg_b, this.pf_pv);
-        this.memory.write2Bytes(this.reg_sp - 2, this.reg_a, this.pf_pv);
+        this.memory.write2Bytes(this.reg_sp - 16, this.reg_k, this.pf_pv);
+        this.memory.write2Bytes(this.reg_sp - 14, this.reg_l, this.pf_pv);
+        this.memory.write2Bytes(this.reg_sp - 12, this.reg_i, this.pf_pv);
+        this.memory.write2Bytes(this.reg_sp - 10, this.reg_j, this.pf_pv);
+        this.memory.write2Bytes(this.reg_sp - 8, this.reg_c, this.pf_pv);
+        this.memory.write2Bytes(this.reg_sp - 6, this.reg_b, this.pf_pv);
+        this.memory.write2Bytes(this.reg_sp - 4, this.reg_a, this.pf_pv);
+        this.memory.write2Bytes(this.reg_sp - 2, this.reg_d, this.pf_pv);
         
         this.reg_sp -= 16;
     }
@@ -3017,14 +3017,14 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      */
     private void runPOPA() throws UnprivilegedAccessException {
-        this.reg_l = this.memory.read2Bytes(this.reg_sp + 0, this.pf_pv);
-        this.reg_k = this.memory.read2Bytes(this.reg_sp + 2, this.pf_pv);
-        this.reg_j = this.memory.read2Bytes(this.reg_sp + 4, this.pf_pv);
-        this.reg_i = this.memory.read2Bytes(this.reg_sp + 6, this.pf_pv);
-        this.reg_d = this.memory.read2Bytes(this.reg_sp + 8, this.pf_pv);
-        this.reg_c = this.memory.read2Bytes(this.reg_sp + 10, this.pf_pv);
-        this.reg_b = this.memory.read2Bytes(this.reg_sp + 12, this.pf_pv);
-        this.reg_a = this.memory.read2Bytes(this.reg_sp + 14, this.pf_pv);
+        this.reg_k = this.memory.read2Bytes(this.reg_sp + 0, this.pf_pv);
+        this.reg_l = this.memory.read2Bytes(this.reg_sp + 2, this.pf_pv);
+        this.reg_i = this.memory.read2Bytes(this.reg_sp + 4, this.pf_pv);
+        this.reg_j = this.memory.read2Bytes(this.reg_sp + 6, this.pf_pv);
+        this.reg_c = this.memory.read2Bytes(this.reg_sp + 8, this.pf_pv);
+        this.reg_b = this.memory.read2Bytes(this.reg_sp + 10, this.pf_pv);
+        this.reg_a = this.memory.read2Bytes(this.reg_sp + 12, this.pf_pv);
+        this.reg_d = this.memory.read2Bytes(this.reg_sp + 14, this.pf_pv);
         
         this.reg_sp += 16;
     }
@@ -3058,7 +3058,9 @@ public class NotSoTinySimulator {
      * CMP
      */
     private void runCMP() {
-        int[] res = add(this.cid.destinationValue, this.cid.sourceValue, this.cid.destinationDescriptor.size.bytes, true, false);
+        int cmpVal = (this.cid.opcode == Opcode.CMP_RIM_0 || this.cid.opcode == Opcode.CMPW_RIM_0) ? 0 : this.cid.sourceValue; 
+        
+        int[] res = add(this.cid.destinationValue, cmpVal, this.cid.destinationDescriptor.size.bytes, true, false);
         this.reg_f = (short) res[1];
     }
     
@@ -3925,7 +3927,7 @@ public class NotSoTinySimulator {
             
             c &= 0xFFFF;
         } else { // 32 bit
-            zero = c == 0;
+            zero = (c & 0xFFFF_FFFFl) == 0;
             overflow = ((a & 0x8000_0000l) == (b & 0x8000_0000l)) && ((a & 0x8000_0000l) != (c & 0x8000_0000l));
             sign = (c & 0x8000_0000l) != 0;
             carry = (c & 0x1_0000_0000l) != 0;
