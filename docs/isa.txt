@@ -247,49 +247,61 @@ Instruction Descriptions
 		wide destination <- wide source
 		wide source <- wide destination
 	
-	PUSH
-		[SP - size]	<- source
-		SP			<- SP - size
-	
-	PUSHW
-		[SP - size]	<- wide source
-		SP			<- SP - size
-	
-	RPUSH
-		[32-bit register destination - size]	<- source
-		32-bit register destination				<- 32-bit register destination - size
-		
-		Raises a decoding error if destination is not a register.
-		Destination uses the 32-bit register specified by the field regardless of 's'.
-	
-	RPUSHW
-		[32-bit register destination - size]	<- wide source
-		32-bit register destination				<- 32-bit register destination - size
-		
-		Raises a decoding error if destination is not a register.
-		Destination uses the 32-bit register specified by the field regardless of 's'.
-	
-	POP
-		destination	<- [SP]
-		SP			<- SP + size
-	
-	POPW
-		wide destination	<- [SP]
-		SP					<- SP + size
-	
-	RPOP
+	LDI
 		destination				<- [32-bit register source]
 		32-bit register source	<- 32-bit register source + size
 		
 		Raises a decoding error if source is not a register.
 		Source uses the 32-bit register specified by the field regardless of 's'.
 	
-	RPOPW
-		wide destination			<- [32-bit register source]
-		32-bit register source		<- 32-bit register destination
+	LDIW
+		wide destination		<- [32-bit register source]
+		32-bit register source	<- 32-bit register source + size
 		
 		Raises a decoding error if the source is not a register.
 		Source uses the 32-bit register specified by the field regardless of 's'.
+	
+	DLD
+		destination				<- [32-bit register source - size]
+		32-bit register source	<- 32-bit register source - size
+		
+		Raises a decoding error if source is not a register.
+		Source uses the 32-bit register specified by the field regardless of 's'.
+	
+	DLDW
+		wide destination		<- [32-bit register source - size]
+		32-bit register source	<- 32-bit register source - size
+		
+		Raises a decoding error if the source is not a register.
+		Source uses the 32-bit register specified by the field regardless of 's'.
+	
+	STI
+		[32-bit register destination]	<- source
+		32-bit register destination		<- 32-bit register destination + size
+		
+		Raises a decoding error if destination is not a register.
+		Destination uses the 32-bit register specified by the field regardless of 's'.
+	
+	STIW
+		[32-bit register destination]	<- wide source
+		32-bit register destination		<- 32-bit register destination + size
+		
+		Raises a decoding error if destination is not a register.
+		Destination uses the 32-bit register specified by the field regardless of 's'.
+	
+	DST
+		[32-bit register destination - size]	<- source
+		32-bit register destination				<- 32-bit register destination - size
+		
+		Raises a decoding error if destination is not a register.
+		Destination uses the 32-bit register specified by the field regardless of 's'.
+	
+	DSTW
+		[32-bit register destination - size]	<- wide source
+		32-bit register destination				<- 32-bit register destination - size
+		
+		Raises a decoding error if destination is not a register.
+		Destination uses the 32-bit register specified by the field regardless of 's'.
 	
 	PUSHA
 		[SP - 4]	<- D:A
@@ -379,6 +391,9 @@ Instruction Descriptions
 	HLT
 		Halts execution until an external interrupt.
 		Raises a general protection fault if unprivileged.
+	
+	INVALID
+		Raises a decoding error
 	
 	CMP
 		F	<- flags for destination - source
@@ -546,6 +561,7 @@ Instruction Descriptions
 		Sets the zero flag according to both the quotient and remainder.
 		Sets the sign flag according to the quotient.
 		Has packed variant.
+		When packed, input is arranged as a single packed value (4x8, 2x16)
 		When packed, a packed quotient and packed result are each produced.
 	
 	DIVMS
@@ -558,6 +574,7 @@ Instruction Descriptions
 		Sets the zero flag according to both the quotient and remainder.
 		Sets the sign flag according to the quotient.
 		Has packed variant.
+		When packed, input is arranged as a single packed value (4x8, 2x16)
 		When packed, a packed quotient and packed result are each produced.
 	
 	TST
@@ -590,7 +607,7 @@ Instruction Descriptions
 		Has packed variant.
 	
 	NEG
-		destination	<- 0 - destination
+		destination	<- !destination + 1
 		F			<- flags
 		
 		Has packed variant.

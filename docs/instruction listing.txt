@@ -1,5 +1,5 @@
 
-	0x00	invalid
+	0x00	INVALID
 	0x01	MOVW rim, 0				wide destination only
 	0x02	MOVS rim				sign extended, wide destination
 	0x03	MOVZ rim				zero extended, wide destination
@@ -37,18 +37,20 @@
 	0x21	MOVW rim, [BP + i8]		wide register destination only
 	0x22	MOV [BP + i8], rim		register source only
 	0x23	MOVW [BP + i8], rim		wide register source only
-	0x24	PUSH F
-	0x25	PUSH PF					requires privilege
-	0x26	POP F
-	0x27	POP PF					requires privilege
-	0x28	PUSH rim				source only
-	0x29	RPUSH rim				r32 destination
-	0x2A	PUSHW rim				wide source only
-	0x2B	RPUSHW rim				wide source, r32 destination
-	0x2C	POP rim					destination only
-	0x2D	RPOP rim				r32 source
-	0x2E	POPW rim				wide destination only
-	0x2F	RPOPW rim				wide destination, r32 source
+	
+	0x24	LDI rim					r32 source						alias RPOP rim		POP x = LDI x, SP
+	0x25	LDIW rim				wide destination, r32 source	alias RPOPW rim		POPW x = LDIW x, SP
+	0x26	DLD rim					r32 source
+	0x27	DLDW rim				wide destination, r32 source
+	0x28	STI rim					r32 destination
+	0x29	STIW rim				wide source, r32 destination
+	0x2A	DST rim					r32 destination					alias RPUSH rim		PUSH x = DST SP, x
+	0x2B	DSTW rim				wide source, r32 destination	alias RPUSHW rim	PUSHW x = DSTW SP, x
+	
+	0x2C	PUSH F
+	0x2D	PUSH PF					requires privilege
+	0x2E	POP F
+	0x2F	POP PF					requires privilege
 	
 	0x30	PUSH A
 	0x31	PUSH B
@@ -194,7 +196,6 @@
 	0xB5	RCL rim, i8				destination only
 	0xB6	RCR rim, i8				destination only
 	0xB7	NEG rim					destination only
-	
 	0xB8	SHL rim					alias SAL rim
 	0xB9	SHR rim
 	0xBA	SAR rim
@@ -205,11 +206,11 @@
 	0xBF	PNEG rimp				destination only
 	
 	0xC0	MUL rim
-	0xC1	AADJ
+	0xC1	AADJ rimp				destination only
 	0xC2	MULH rim				wide destination, uses lower half of dest.
 	0xC3	MULSH rim				wide destination, uses lower half of dest.
 	0xC4	PMUL rimp
-	0xC5	SADJ
+	0xC5	SADJ rimp				destination only
 	0xC6	PMULH rimp				wide destination, uses lower half of dest.
 	0xC7	PMULSH rimp				wide destination, uses lower half of dest.
 	
@@ -234,7 +235,7 @@
 	0xD8	JMP i16					sign extended
 	0xD9	JMP i32
 	0xDA	JMPA i32
-	0xDB	JMPA rim				source only
+	0xDB	JMPA rim32				source only
 	0xDC	INT i8					may require privilege
 	0xDD	INT rim					source only, may require privilege
 	0xDE	HWI

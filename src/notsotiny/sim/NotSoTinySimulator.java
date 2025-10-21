@@ -2611,20 +2611,12 @@ public class NotSoTinySimulator {
                     runShortcutPOP();
                     return;
                 
-                case PUSH:
-                    runPUSH();
+                case MVI:
+                    runMVI();
                     return;
-                
-                case RPUSH:
-                    runRPUSH();
-                    return;
-                
-                case POP:
-                    runPOP();
-                    return;
-                
-                case RPOP:
-                    runRPOP();
+                    
+                case DMV:
+                    runDMV();
                     return;
                 
                 case PUSHA:
@@ -2954,45 +2946,59 @@ public class NotSoTinySimulator {
     }
     
     /**
-     * PUSH
-     * @throws UnprivilegedAccessException 
+     * Move-increment
+     * @throws UnprivilegedAccessException
      */
-    private void runPUSH() throws UnprivilegedAccessException {
-        LocationSize size = this.cid.sourceDescriptor.size;
-        writeMemory(size, this.reg_sp - size.bytes, this.cid.sourceValue);
-        this.reg_sp -= size.bytes;
+    private void runMVI() throws UnprivilegedAccessException {
+        LocationDescriptor address, data;
+        int addr;
+        
+        if(this.cid.opcode == Opcode.LDI_RIM || this.cid.opcode == Opcode.LDIW_RIM) {
+            // Load from source
+            address = this.cid.sourceDescriptor;
+            data = this.cid.destinationDescriptor;
+            addr = this.cid.sourceValue;
+            
+            writeLocation(data, readMemory(data.size, addr));
+        } else {
+            // Store to destination
+            address = this.cid.destinationDescriptor;
+            data = this.cid.sourceDescriptor;
+            addr = this.cid.destinationValue;
+            
+            writeMemory(data.size, addr, this.cid.sourceValue);
+        }
+        
+        // Post-increment
+        writeLocation(address, addr + data.size.bytes);
     }
     
     /**
-     * RPUSH
-     * @throws UnprivilegedAccessException 
+     * Decrement-move
+     * @throws UnprivilegedAccessException
      */
-    private void runRPUSH() throws UnprivilegedAccessException {
-        LocationSize size = this.cid.sourceDescriptor.size;
-        writeMemory(size, this.cid.destinationValue - size.bytes, this.cid.sourceValue);
-        writeLocation(this.cid.destinationDescriptor, this.cid.destinationValue - size.bytes);
-    }
-    
-    /**
-     * POP
-     * @throws UnprivilegedAccessException 
-     */
-    private void runPOP() throws UnprivilegedAccessException {
-        LocationSize size = this.cid.destinationDescriptor.size;
-        int v = readMemory(size, this.reg_sp);
-        writeLocation(this.cid.destinationDescriptor, v);
-        this.reg_sp += size.bytes;
-    }
-    
-    /**
-     * RPOP
-     * @throws UnprivilegedAccessException 
-     */
-    private void runRPOP() throws UnprivilegedAccessException {
-        LocationSize size = this.cid.destinationDescriptor.size;
-        int v = readMemory(size, this.cid.sourceValue);
-        writeLocation(this.cid.destinationDescriptor, v);
-        writeLocation(this.cid.sourceDescriptor, this.cid.sourceValue + size.bytes);
+    private void runDMV() throws UnprivilegedAccessException {
+        LocationDescriptor address, data;
+        int addr;
+        
+        if(this.cid.opcode == Opcode.DLD_RIM || this.cid.opcode == Opcode.DLDW_RIM) {
+            // Load from source
+            address = this.cid.sourceDescriptor;
+            data = this.cid.destinationDescriptor;
+            addr = this.cid.sourceValue - data.size.bytes;
+            
+            writeLocation(data, readMemory(data.size, addr));
+        } else {
+            // Store to destination
+            address = this.cid.destinationDescriptor;
+            data = this.cid.sourceDescriptor;
+            addr = this.cid.destinationValue - data.size.bytes;
+            
+            writeMemory(data.size, addr, this.cid.sourceValue);
+        }
+        
+        // Write pre-decrement
+        writeLocation(address, addr);
     }
     
     /**
@@ -3247,21 +3253,23 @@ public class NotSoTinySimulator {
     private void runADJ() throws UnprivilegedAccessException {
         int v = this.cid.destinationValue;
         int f = this.reg_f & 0x1111;
+        int c = 0;
         int r = 0;
         
-        if(this.cid.opcode == Opcode.AADJ) {
+        if(this.cid.opcode == Opcode.AADJ_RIMP) {
             // Addition adjust
             // For each 4 bits, if value (including carry) >= 10, add 6 and propagate carry
             for(int i = 0; i < 4; i++) {
-                // 4-bit slice, with carry up top
-                int slice = ((v >> (4 * i)) & 0x0F) | ((f >> (4 * i)) << (4 * (i - 1)));
+                // 4-bit slice, with carry up top, + carry in
+                int slice = (((v >> (4 * i)) & 0x0F) |
+                            ((f >> (4 * i)) << (4 * (i + 1)))) + c;
                 
                 if(slice >= 10) {
                     // digit overflowed, adjust
                     slice += 6;                         // adjust BCD value
-                    f |= (slice >> 4) << (4 * (i + 1)); // propagate carry
                 }
                 
+                c = (slice >> 4) & 0x01;            // propagate carry
                 r |= (slice & 0x0F) << (4 * i);     // place digit in result
             }
         } else {
@@ -3269,18 +3277,17 @@ public class NotSoTinySimulator {
             // For each 4 bits, subtract borrow in. If value had or produced a borrow, add 10. propagate borrow. 
             for(int i = 0; i < 4; i++) {
                 int slice = ((v >> (4 * i)) & 0x0F);
-                int borrowIn = ((f << 4) >> (4 * i)) & 1;
+                int borrowIn = (((f << 4) >> (4 * i)) & 1) | c;
                 
                 // borrow in
                 if(borrowIn != 0) {
                     slice -= 1;
-                    f |= ((slice >> 4) & 1) << (4 * (i + 1));
                 }
                 
-                int borrowOut = ((f >> (4 * i)) & 1) | borrowIn;
+                c = (slice >> 4) & 0x01;
                 
                 // adjust
-                if(borrowOut != 0) {
+                if(c != 0 || ((f >> (4 * i)) & 1) != 0) {
                     slice += 10;
                 }
                 
@@ -3365,8 +3372,6 @@ public class NotSoTinySimulator {
         } else {
             res = divide(this.cid.destinationValue, this.cid.sourceValue, this.cid.sourceDescriptor.size.bytes, mod, signed);
         }
-        
-        //System.out.printf("Divsion result: Quotient %08X, Remainder %08X, Flags %04X\n", res[0], res[1], res[2]);
         
         int r = switch(this.cid.destinationDescriptor.size) {
             case BYTE   -> mod ? (((res[1] & 0x0F) << 4) | (res[0] & 0x0F)) : res[0];
@@ -3985,7 +3990,7 @@ public class NotSoTinySimulator {
             f |= ((c & 0x80_0000) != 0 ? 0x0200 : 0) | ((c & 0x80) != 0 ? 0x02 : 0);
             
             // carry
-            f |= ((c & 0x0100_0000) != 0 ? 0x0100 : 0) | ((c & 0x0100) != 0 ? 0x01 : 0);
+            f |= (((c & 0x0100_0000) != 0) != subtract ? 0x0100 : 0) | (((c & 0x0100) != 0) != subtract ? 0x01 : 0);
         } else {
             // zero
             f |= ((c & 0x0F00_0000) == 0 ? 0x8000 : 0) | ((c & 0x0F_0000) == 0 ? 0x0800 : 0) | ((c & 0x0F00) == 0 ? 0x80 : 0) | ((c & 0x0F) == 0 ? 0x08 : 0);
@@ -4000,7 +4005,7 @@ public class NotSoTinySimulator {
             f |= ((c & 0x0800_0000) != 0 ? 0x2000 : 0) | ((c & 0x08_0000) != 0 ? 0x0200 : 0) | ((c & 0x0800) != 0 ? 0x20 : 0) | ((c & 0x08) != 0 ? 0x02 : 0);
             
             // carry
-            f |= ((c & 0x1000_0000) != 0 ? 0x1000 : 0) | ((c & 0x10_0000) != 0 ? 0x0100 : 0) | ((c & 0x1000) != 0 ? 0x10 : 0) | ((c & 0x10) != 0 ? 0x01 : 0);
+            f |= (((c & 0x1000_0000) != 0) != subtract ? 0x1000 : 0) | (((c & 0x10_0000) != 0) != subtract ? 0x0100 : 0) | (((c & 0x1000) != 0) != subtract ? 0x10 : 0) | (((c & 0x10) != 0) != subtract ? 0x01 : 0);
         }
         
         short v = 0;
@@ -4297,29 +4302,26 @@ public class NotSoTinySimulator {
      * 
      * @param a
      * @param b
+     * @param bytes
      * @param mod
      * @param signed
-     * @param bytes
      * @return a / b {quotient, remainder, flags}
      */
-    private int[] dividePacked(int a, int b, boolean mod, boolean signed, boolean bytes) {
+    private int[] dividePacked(int a, int b, boolean bytes, boolean mod, boolean signed) {
         // division isn't local like additon, so we have to do things separately
         if(bytes) {
-            // because DIVM uses the full value of a, we need to combine properly
-            // might as well do b here too
-            int a1 = (a >> 8) & 0xFF,
-                b1 = (b >> 8) & 0xFF,
-                a2 = a & 0xFF,
-                b2 = b & 0xFF;
-            
-            if(mod) {
-                a1 |= (a >> 16) & 0xFF00;
-                a2 |= (a >> 8) & 0xFF00;
-            }
+            // get values
+            int shifta = mod ? 16 : 8,
+                shiftb = 8,
+                maska = mod ? 0xFFFF : 0xFF,
+                maskb = 0xFF,
+                a1 = (a >> shifta) & maska,
+                b1 = (b >> shiftb) & maskb,
+                a2 = a & maska,
+                b2 = b & maskb;
             
             // divide in parts
             int[] r1 = divide(a1, b1, 1, mod, signed);
-            
             int[] r2 = divide(a2, b2, 1, mod, signed);
             
             return new int[] {
@@ -4329,35 +4331,24 @@ public class NotSoTinySimulator {
             };
         } else {
             // above but more
-            int a1 = (a >> 12) & 0x0F,
-                b1 = (b >> 12) & 0x0F,
-                a2 = (a >> 8) & 0x0F,
-                b2 = (b >> 8) & 0x0F,
-                a3 = (a >> 4) & 0x0F,
-                b3 = (b >> 4) & 0x0F,
-                a4 = a & 0x0F,
-                b4 = b & 0x0F;
-            
-            if(mod) {
-                a1 |= (a >> 24) & 0xF0;
-                a2 |= (a >> 20) & 0xF0;
-                a3 |= (a >> 16) & 0xF0;
-                a4 |= (a >> 12) & 0xF0;
-            }
+            int shifta = mod ? 8 : 4,
+                shiftb = 4,
+                maska = mod ? 0xFF : 0x0F,
+                maskb = 0x0F,
+                a1 = (a >> (shifta * 3)) & maska,
+                b1 = (b >> (shiftb * 3)) & maskb,
+                a2 = (a >> (shifta * 2)) & maska,
+                b2 = (b >> (shiftb * 2)) & maskb,
+                a3 = (a >> shifta) & maska,
+                b3 = (b >> shiftb) & maskb,
+                a4 = a & maska,
+                b4 = b & maskb;
             
             // divide
             int[] r1 = divide(a1, b1, 0, mod, signed);
-            short r1f = this.reg_f;
-            
             int[] r2 = divide(a2, b2, 0, mod, signed);
-            short r2f = this.reg_f;
-            
             int[] r3 = divide(a3, b3, 0, mod, signed);
-            short r3f = this.reg_f;
-            
             int[] r4 = divide(a4, b4, 0, mod, signed);
-            
-            this.reg_f |= (r1f << 12) | (r2f << 8) | (r3f << 4);
             
             return new int[] {
                     ((r1[0] << 12) & 0xF000) | ((r2[0] << 8) & 0x0F00) | ((r3[0] << 4) & 0xF0) | (r4[0] & 0x0F),
