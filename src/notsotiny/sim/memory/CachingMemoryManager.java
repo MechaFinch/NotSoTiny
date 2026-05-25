@@ -3,6 +3,11 @@ package notsotiny.sim.memory;
 import java.util.HashMap;
 import java.util.Map.Entry;
 
+/**
+ * Memory manager which caches some segments
+ * TODO: verify performance benefits in current system
+ * TODO: fix privilege handling (currently raises an exception even when privileged)
+ */
 public class CachingMemoryManager extends MemoryManager {
     
     private static final boolean DEBUG = false;
@@ -85,7 +90,7 @@ public class CachingMemoryManager extends MemoryManager {
      * @param seg
      * @throws UnprivilegedAccessException
      */
-    private void readCacheLine(int tag, int block, long address, Entry<Long, MemoryController> seg) throws UnprivilegedAccessException {
+    private void readCacheLine(int tag, int block, long address, Entry<Long, MemoryController> seg) throws UnprivilegedAccessException, NonexistentAccessException {
         if(this.dirty[block]) {
             if(DEBUG) System.out.printf("line was dirty ");
             long dirtyAddress = (this.tags[block] << TAG_SHIFT) | (block << BLOCK_SHIFT);
@@ -144,7 +149,7 @@ public class CachingMemoryManager extends MemoryManager {
     }*/
     
     @Override
-    public byte readByte(long address, boolean privilege) throws UnprivilegedAccessException {
+    public byte readByte(long address, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         
         int tag = (int)address >> TAG_SHIFT;
@@ -217,22 +222,22 @@ public class CachingMemoryManager extends MemoryManager {
     */
     
     @Override
-    public short read2Bytes(long address, boolean privilege) throws UnprivilegedAccessException {
+    public short read2Bytes(long address, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         return (short)((this.readByte(address, privilege) & 0xFF) | ((this.readByte(address + 1, privilege) & 0xFF) << 8));
     }
     
     @Override
-    public int read3Bytes(long address, boolean privilege) throws UnprivilegedAccessException {
+    public int read3Bytes(long address, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         return (this.readByte(address, privilege) & 0xFF) | ((this.readByte(address + 1, privilege) & 0xFF) << 8) | ((this.readByte(address + 2, privilege) & 0xFF) << 16);
     }
     
     @Override
-    public int read4Bytes(long address, boolean privilege) throws UnprivilegedAccessException {
+    public int read4Bytes(long address, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         return (this.readByte(address, privilege) & 0xFF) | ((this.readByte(address + 1, privilege) & 0xFF) << 8) | ((this.readByte(address + 2, privilege) & 0xFF) << 16) | ((this.readByte(address + 3, privilege) & 0xFF) << 24);
     }
     
     @Override
-    public void writeByte(long address, byte value, boolean privilege) throws UnprivilegedAccessException {
+    public void writeByte(long address, byte value, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         
         if(DEBUG) System.out.printf("writing byte: %02X to %08X\n", value, address);
@@ -263,20 +268,20 @@ public class CachingMemoryManager extends MemoryManager {
     }
     
     @Override
-    public void write2Bytes(long address, short value, boolean privilege) throws UnprivilegedAccessException {
+    public void write2Bytes(long address, short value, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         this.writeByte(address + 0, (byte) value, privilege);
         this.writeByte(address + 1, (byte) (value >> 8), privilege);
     }
     
     @Override
-    public void write3Bytes(long address, int value, boolean privilege) throws UnprivilegedAccessException {
+    public void write3Bytes(long address, int value, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         this.writeByte(address + 0, (byte) value, privilege);
         this.writeByte(address + 1, (byte) (value >> 8), privilege);
         this.writeByte(address + 2, (byte) (value >> 16), privilege);
     }
     
     @Override
-    public void write4Bytes(long address, int value, boolean privilege) throws UnprivilegedAccessException {
+    public void write4Bytes(long address, int value, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         this.writeByte(address + 0, (byte) value, privilege);
         this.writeByte(address + 1, (byte) (value >> 8), privilege);
         this.writeByte(address + 2, (byte) (value >> 16), privilege);
@@ -285,7 +290,7 @@ public class CachingMemoryManager extends MemoryManager {
     
     // Instruction fetch uses these, so they get special attention
     @Override
-    public byte[] read2ByteArray(long address, boolean privilege) throws UnprivilegedAccessException {
+    public byte[] read2ByteArray(long address, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         
         int tag = (int)address >> TAG_SHIFT;
@@ -311,7 +316,7 @@ public class CachingMemoryManager extends MemoryManager {
     }
     
     @Override
-    public byte[] read3ByteArray(long address, boolean privilege) throws UnprivilegedAccessException {
+    public byte[] read3ByteArray(long address, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         
         int tag = (int)address >> TAG_SHIFT;
@@ -339,7 +344,7 @@ public class CachingMemoryManager extends MemoryManager {
     }
     
     @Override
-    public byte[] read4ByteArray(long address, boolean privilege) throws UnprivilegedAccessException {
+    public byte[] read4ByteArray(long address, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         
         int tag = (int)address >> TAG_SHIFT;

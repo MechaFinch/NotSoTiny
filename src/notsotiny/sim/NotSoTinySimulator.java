@@ -1,6 +1,7 @@
 package notsotiny.sim;
 
 import notsotiny.sim.memory.MemoryManager;
+import notsotiny.sim.memory.NonexistentAccessException;
 import notsotiny.sim.memory.UnprivilegedAccessException;
 import notsotiny.sim.ops.Opcode;
 
@@ -18,11 +19,11 @@ public class NotSoTinySimulator {
     private class GPFException extends Exception { private static final long serialVersionUID = 1L; }
     
     // Vectors for interrupts fired by the processor
-    private static final byte VECTOR_MEMORY_ERROR = 0x08,
+    private static final byte VECTOR_GENERAL_PROTECTION_FAULT = 0x08,
+                              VECTOR_MEMORY_PROTECTION_FAULT = 0x09,
                               VECTOR_DIVISION_ERROR = 0x0D,
-                              VECTOR_DECODING_ERROR = 0x0F,
-                              VECTOR_GENERAL_PROTECTION_FAULT = 0x10,
-                              VECTOR_MEMORY_PROTECTION_FAULT = 0x11;
+                              VECTOR_MEMORY_ERROR = 0x0E,
+                              VECTOR_DECODING_ERROR = 0x0F;
     
     // Vectors for interrupts allowed to be fired by unprivileged code
     private static final byte VECTOR_SYSCALL = 0x20;
@@ -56,7 +57,8 @@ public class NotSoTinySimulator {
     
     // Other State
     private boolean halted,
-                    pendingExternalInterrupt;
+                    pendingExternalInterrupt,
+                    handlingException;
     
     private InstructionDescriptor cid; // Current Instruction Descriptor
     
@@ -95,6 +97,7 @@ public class NotSoTinySimulator {
         
         this.halted = false;
         this.pendingExternalInterrupt = false;
+        this.handlingException = false;
         this.externalInterruptVector = 0;
         this.cid = new InstructionDescriptor();
         
@@ -105,7 +108,7 @@ public class NotSoTinySimulator {
     /**
      * Create a simulator instance with starting IP memory[0]
      */
-    public NotSoTinySimulator(MemoryManager memory) {
+    public NotSoTinySimulator(MemoryManager memory) throws NonexistentAccessException {
         this(memory, memory.read4BytesPrivileged(0));
     }
     
@@ -113,6 +116,8 @@ public class NotSoTinySimulator {
      * Execute 1 instruction.
      */
     public synchronized void step() {
+        this.handlingException = false;
+        
         synchronized(this.memory) {
             // Check interrupts
             if(this.pendingExternalInterrupt) {
@@ -128,29 +133,44 @@ public class NotSoTinySimulator {
                 runExecute();
             } catch(GPFException e) {
                 this.reg_ip = this.previousIP;
+                this.handlingException = true;
+                
                 System.out.printf("General Protection Fault: %08X\n", this.reg_ip);
                 if(e.getMessage() != null) System.out.println(e.getMessage());
+                
                 runInterrupt(VECTOR_GENERAL_PROTECTION_FAULT);
             } catch(UnprivilegedAccessException e) {
                 this.reg_ip = this.previousIP;
+                this.handlingException = true;
+                
                 System.out.printf("Memory Protection Fault: %08X\n", this.reg_ip);
                 if(e.getMessage() != null) System.out.println(e.getMessage());
-                runInterrupt(VECTOR_MEMORY_PROTECTION_FAULT);
+                
+                runInterrupt(VECTOR_MEMORY_PROTECTION_FAULT, e.getAddress());
             } catch(DecodingException e) {
                 this.reg_ip = this.previousIP;
+                this.handlingException = true;
+                
                 System.out.printf("Decoding Error: %08X\n", this.reg_ip);
                 if(e.getMessage() != null) System.out.println(e.getMessage());
+                
                 runInterrupt(VECTOR_DECODING_ERROR);
             } catch(ArithmeticException e) {
                 this.reg_ip = this.previousIP;
+                this.handlingException = true;
+                
                 System.out.printf("Division Error: %08X\n", this.reg_ip);
                 if(e.getMessage() != null) System.out.println(e.getMessage());
+                
                 runInterrupt(VECTOR_DIVISION_ERROR);
-            } catch(IndexOutOfBoundsException e) {
+            } catch(NonexistentAccessException e) {
                 this.reg_ip = this.previousIP;
+                this.handlingException = true;
+                
                 System.out.printf("Memory Error: %08X\n", this.reg_ip);
                 if(e.getMessage() != null) System.out.println(e.getMessage());
-                runInterrupt(VECTOR_MEMORY_ERROR);
+                
+                runInterrupt(VECTOR_MEMORY_ERROR, e.getAddress());
             }
         }
     }
@@ -163,10 +183,12 @@ public class NotSoTinySimulator {
      * Update the Instruction Readahead Buffer
      * @throws UnprivilegedAccessException
      */
-    private void runFetch() throws UnprivilegedAccessException {
+    private void runFetch() throws UnprivilegedAccessException, NonexistentAccessException {
         byte[] readArr;
         int delta = this.reg_ip - this.previousIP;
         this.previousIP = this.reg_ip;
+        
+        // TODO: Test if arraycopy might be faster than manual assignment
         
         // Move fetch buffer to match current IP, and fill gaps
         switch(delta) {
@@ -379,7 +401,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      * @throws DecodingException
      */
-    private void runDecode() throws UnprivilegedAccessException, DecodingException {
+    private void runDecode() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         // Get opcode
         this.cid.reset(Opcode.fromOp(this.fetchBuffer[0]));
         
@@ -508,20 +530,14 @@ public class NotSoTinySimulator {
                 decodeLEA();
                 break;
                 
-            case RIM_RS_SO_EI8:
-                // Register source only RIM with EI8
-                this.cid.hasEI8 = true;
-                decodeRIMRegisterSourceOnlyEI8();
-                break;
-                
             case RIM_R32S_WOD:
                 // 32-bit register source RIM
                 decodeRIMR32SourceNoDestRead();
                 break;
             
-            case RIM_WIDE_RS_SO_EI8:
+            case RIM_WIDE_SO_EI8:
                 // Wide register source only RIM with EI8
-                decodeRIMWideRegisterSourceOnlyEI8();
+                decodeRIMWideSourceOnlyEI8();
                 break;
             
             case RIM_WIDE_R32S_WOD:
@@ -529,10 +545,10 @@ public class NotSoTinySimulator {
                 decodeWideRIMR32SourceNoDestRead();
                 break;
                 
-            case RIM_RD_DO_WOD_EI8:
+            case RIM_DO_WOD_EI8:
                 // Register destination only RIM with EI8
                 this.cid.hasEI8 = true;
-                decodeRIMRegisterDestinationOnlyNoReadEI8();
+                decodeRIMDestinationOnlyNoReadEI8();
                 break;
             
             case RIM_R32D:
@@ -540,9 +556,9 @@ public class NotSoTinySimulator {
                 decodeRIMR32Destination();
                 break;
             
-            case RIM_WIDE_RD_DO_WOD_EI8:
+            case RIM_WIDE_DO_WOD_EI8:
                 // Wide register destination only RIM with EI8
-                decodeWideRIMRegisterDestinationOnlyNoReadEI8();
+                decodeWideRIMDestinationOnlyNoReadEI8();
                 break;
             
             case RIM_WIDE_R32D:
@@ -592,7 +608,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
      */
-    private void decodeRIM() throws UnprivilegedAccessException, DecodingException {
+    private void decodeRIM() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         decodeRIMNoDestRead();
         this.cid.destinationValue = readLocation(this.cid.destinationDescriptor);
     }
@@ -602,7 +618,7 @@ public class NotSoTinySimulator {
      * @throws DecodingException 
      * @throws UnprivilegedAccessException 
      */
-    private void decodeRIMNoDestRead() throws DecodingException, UnprivilegedAccessException {
+    private void decodeRIMNoDestRead() throws DecodingException, UnprivilegedAccessException, NonexistentAccessException {
         byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
         
         // Get parts
@@ -617,18 +633,18 @@ public class NotSoTinySimulator {
                 // rim is destination
                 if(s) {
                     this.cid.sourceDescriptor = decodeByteRegField(reg);
-                    this.cid.destinationDescriptor = decodeRimField(LocationSize.BYTE, rim);                    
+                    this.cid.destinationDescriptor = decodeRimDestField(LocationSize.BYTE, rim);                    
                 } else {
                     this.cid.sourceDescriptor = decodeWordRegField(reg);
-                    this.cid.destinationDescriptor = decodeRimField(LocationSize.WORD, rim);                    
+                    this.cid.destinationDescriptor = decodeRimDestField(LocationSize.WORD, rim);                    
                 }
             } else {
                 // rim is source
                 if(s) {
-                    this.cid.sourceDescriptor = decodeRimField(LocationSize.BYTE, rim);
+                    this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.BYTE, rim);
                     this.cid.destinationDescriptor = decodeByteRegField(reg);
                 } else {
-                    this.cid.sourceDescriptor = decodeRimField(LocationSize.WORD, rim);
+                    this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.WORD, rim);
                     this.cid.destinationDescriptor = decodeWordRegField(reg);
                 }
             }
@@ -650,7 +666,7 @@ public class NotSoTinySimulator {
      * Decode RIM without reading the destination. Source must be a register. Source is treated as 32-bit
      * @throws DecodingException
      */
-    private void decodeRIMR32SourceNoDestRead() throws UnprivilegedAccessException, DecodingException {
+    private void decodeRIMR32SourceNoDestRead() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
         
         // Get parts
@@ -665,10 +681,10 @@ public class NotSoTinySimulator {
                 // rim is destination
                 if(s) {
                     this.cid.sourceDescriptor = decodeDwordRegField(reg);
-                    this.cid.destinationDescriptor = decodeRimField(LocationSize.BYTE, rim);                    
+                    this.cid.destinationDescriptor = decodeRimDestField(LocationSize.BYTE, rim);                    
                 } else {
                     this.cid.sourceDescriptor = decodeDwordRegField(reg);
-                    this.cid.destinationDescriptor = decodeRimField(LocationSize.WORD, rim);                    
+                    this.cid.destinationDescriptor = decodeRimDestField(LocationSize.WORD, rim);                    
                 }
             } else {
                 // rim is source
@@ -693,7 +709,7 @@ public class NotSoTinySimulator {
      * @throws DecodingException 
      * @throws UnprivilegedAccessException 
      */
-    private void decodeRIMNoDestReadEI8() throws DecodingException, UnprivilegedAccessException {
+    private void decodeRIMNoDestReadEI8() throws DecodingException, UnprivilegedAccessException, NonexistentAccessException {
         decodeRIMNoDestRead();
         this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
     }
@@ -703,7 +719,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      * @throws DecodingException
      */
-    private void decodeRIMR32DestinationNoDestRead() throws UnprivilegedAccessException, DecodingException {
+    private void decodeRIMR32DestinationNoDestRead() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
         
         // Get parts
@@ -720,10 +736,10 @@ public class NotSoTinySimulator {
             } else {
                 // rim is source
                 if(s) {
-                    this.cid.sourceDescriptor = decodeRimField(LocationSize.BYTE, rim);
+                    this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.BYTE, rim);
                     this.cid.destinationDescriptor = decodeDwordRegField(reg);
                 } else {
-                    this.cid.sourceDescriptor = decodeRimField(LocationSize.WORD, rim);
+                    this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.WORD, rim);
                     this.cid.destinationDescriptor = decodeDwordRegField(reg);
                 }
             }
@@ -746,7 +762,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      * @throws DecodingException
      */
-    private void decodeRIMR32Destination() throws UnprivilegedAccessException, DecodingException {
+    private void decodeRIMR32Destination() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         decodeRIMR32DestinationNoDestRead();
         this.cid.destinationValue = readLocation(this.cid.destinationDescriptor);
     }
@@ -756,7 +772,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
      */
-    private void decodeRIMWideDest() throws UnprivilegedAccessException, DecodingException {
+    private void decodeRIMWideDest() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         decodeRIMWideDestNoRead();
         this.cid.destinationValue = readLocation(this.cid.destinationDescriptor);
     }
@@ -766,7 +782,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
      */
-    private void decodeRIMWideDestNoRead() throws UnprivilegedAccessException, DecodingException {
+    private void decodeRIMWideDestNoRead() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
         
         // Get parts
@@ -781,18 +797,18 @@ public class NotSoTinySimulator {
                 // rim is destination
                 if(s) {
                     this.cid.sourceDescriptor = decodeByteRegField(reg);
-                    this.cid.destinationDescriptor = decodeRimField(LocationSize.WORD, rim);                    
+                    this.cid.destinationDescriptor = decodeRimDestField(LocationSize.WORD, rim);                    
                 } else {
                     this.cid.sourceDescriptor = decodeWordRegField(reg);
-                    this.cid.destinationDescriptor = decodeRimField(LocationSize.DWORD, rim);                    
+                    this.cid.destinationDescriptor = decodeRimDestField(LocationSize.DWORD, rim);                    
                 }
             } else {
                 // rim is source
                 if(s) {
-                    this.cid.sourceDescriptor = decodeRimField(LocationSize.BYTE, rim);
+                    this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.BYTE, rim);
                     this.cid.destinationDescriptor = decodeWordRegField(reg);
                 } else {
-                    this.cid.sourceDescriptor = decodeRimField(LocationSize.WORD, rim);
+                    this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.WORD, rim);
                     this.cid.destinationDescriptor = decodeDwordRegField(reg);
                 }
             }
@@ -815,7 +831,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
      */
-    private void decodeWideRIM() throws UnprivilegedAccessException, DecodingException {
+    private void decodeWideRIM() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         decodeWideRIMNoDestRead();
         this.cid.destinationValue = readLocation(this.cid.destinationDescriptor);
     }
@@ -825,7 +841,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
      */
-    private void decodeWideRIMNoDestRead() throws UnprivilegedAccessException, DecodingException {
+    private void decodeWideRIMNoDestRead() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
         
         // Get parts
@@ -840,18 +856,18 @@ public class NotSoTinySimulator {
                 // rim is destination
                 if(s) {
                     this.cid.sourceDescriptor = decodeWordRegField(reg);
-                    this.cid.destinationDescriptor = decodeRimField(LocationSize.WORD, rim);                    
+                    this.cid.destinationDescriptor = decodeRimDestField(LocationSize.WORD, rim);                    
                 } else {
                     this.cid.sourceDescriptor = decodeDwordRegField(reg);
-                    this.cid.destinationDescriptor = decodeRimField(LocationSize.DWORD, rim);                    
+                    this.cid.destinationDescriptor = decodeRimDestField(LocationSize.DWORD, rim);                    
                 }
             } else {
                 // rim is source
                 if(s) {
-                    this.cid.sourceDescriptor = decodeRimField(LocationSize.WORD, rim);
+                    this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.WORD, rim);
                     this.cid.destinationDescriptor = decodeWordRegField(reg);
                 } else {
-                    this.cid.sourceDescriptor = decodeRimField(LocationSize.DWORD, rim);
+                    this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.DWORD, rim);
                     this.cid.destinationDescriptor = decodeDwordRegField(reg);
                 }
             }
@@ -874,7 +890,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      * @throws DecodingException
      */
-    private void decodeWideRIMNoDestReadEI8() throws UnprivilegedAccessException, DecodingException {
+    private void decodeWideRIMNoDestReadEI8() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         decodeWideRIMNoDestRead();
         this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
     }
@@ -884,7 +900,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      * @throws DecodingException
      */
-    private void decodeWideRIMR32DestinationNoRead() throws UnprivilegedAccessException, DecodingException {
+    private void decodeWideRIMR32DestinationNoRead() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
         
         // Get parts
@@ -901,10 +917,10 @@ public class NotSoTinySimulator {
             } else {
                 // rim is source
                 if(s) {
-                    this.cid.sourceDescriptor = decodeRimField(LocationSize.WORD, rim);
+                    this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.WORD, rim);
                     this.cid.destinationDescriptor = decodeDwordRegField(reg);
                 } else {
-                    this.cid.sourceDescriptor = decodeRimField(LocationSize.DWORD, rim);
+                    this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.DWORD, rim);
                     this.cid.destinationDescriptor = decodeDwordRegField(reg);
                 }
             }
@@ -927,7 +943,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      * @throws DecodingException
      */
-    private void decodeWideRIMR32Destination() throws UnprivilegedAccessException, DecodingException {
+    private void decodeWideRIMR32Destination() throws UnprivilegedAccessException,NonexistentAccessException, DecodingException {
         decodeWideRIMR32DestinationNoRead();
         this.cid.destinationValue = readLocation(this.cid.destinationDescriptor);
     }
@@ -937,7 +953,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      * @throws DecodingException
      */
-    private void decodeWideRIMR32SourceNoDestRead() throws UnprivilegedAccessException, DecodingException {
+    private void decodeWideRIMR32SourceNoDestRead() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
         
         // Get parts
@@ -952,10 +968,10 @@ public class NotSoTinySimulator {
                 // rim is destination
                 if(s) {
                     this.cid.sourceDescriptor = decodeDwordRegField(reg);
-                    this.cid.destinationDescriptor = decodeRimField(LocationSize.WORD, rim);                    
+                    this.cid.destinationDescriptor = decodeRimDestField(LocationSize.WORD, rim);                    
                 } else {
                     this.cid.sourceDescriptor = decodeDwordRegField(reg);
-                    this.cid.destinationDescriptor = decodeRimField(LocationSize.DWORD, rim);                    
+                    this.cid.destinationDescriptor = decodeRimDestField(LocationSize.DWORD, rim);                    
                 }
             } else {
                 // rim is source
@@ -980,7 +996,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
      */
-    private void decodeRIMSourceOnly() throws UnprivilegedAccessException, DecodingException {
+    private void decodeRIMSourceOnly() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
         
         // Get parts
@@ -1001,9 +1017,9 @@ public class NotSoTinySimulator {
             } else {
                 // rim is source
                 if(s) {
-                    this.cid.sourceDescriptor = decodeRimField(LocationSize.BYTE, rim);
+                    this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.BYTE, rim);
                 } else {
-                    this.cid.sourceDescriptor = decodeRimField(LocationSize.WORD, rim);
+                    this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.WORD, rim);
                 }
             }
         } else {
@@ -1023,57 +1039,8 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      * @throws DecodingException
      */
-    private void decodeRIMSourceOnlyEI8() throws UnprivilegedAccessException, DecodingException {
+    private void decodeRIMSourceOnlyEI8() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         decodeRIMSourceOnly();
-        this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
-    }
-    
-    /**
-     * Decode RIM source which must be a register
-     * @throws UnprivilegedAccessException
-     * @throws DecodingException
-     */
-    private void decodeRIMRegisterSourceOnly() throws UnprivilegedAccessException, DecodingException {
-        byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
-        
-        // Get parts
-        boolean s = (rimByte & 0x80) != 0;
-        boolean r = (rimByte & 0x40) != 0;
-        int reg = ((rimByte >> 3) & 0x07);
-        int rim = (rimByte & 0x07);
-        
-        if(r) {
-            // rim is memory
-            if(rim >= 0x04) {
-                // rim is destination
-                if(s) {
-                    this.cid.sourceDescriptor = decodeByteRegField(reg);                    
-                } else {
-                    this.cid.sourceDescriptor = decodeWordRegField(reg);                    
-                }
-            } else {
-                // rim is source
-                throw new DecodingException();
-            }
-        } else {
-            // rim is register source
-            if(s) {
-                this.cid.sourceDescriptor = decodeByteRegField(rim);
-            } else {
-                this.cid.sourceDescriptor = decodeWordRegField(rim);
-            }
-        }
-        
-        this.cid.sourceValue = readLocation(this.cid.sourceDescriptor);
-    }
-    
-    /**
-     * Decode RIM source which must be a register, read EI8
-     * @throws UnprivilegedAccessException
-     * @throws DecodingException
-     */
-    private void decodeRIMRegisterSourceOnlyEI8() throws UnprivilegedAccessException, DecodingException {
-        decodeRIMRegisterSourceOnly();
         this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
     }
     
@@ -1082,7 +1049,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
      */
-    private void decodeRIMWideSourceOnly() throws UnprivilegedAccessException, DecodingException {
+    private void decodeRIMWideSourceOnly() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
         
         // Get parts
@@ -1103,49 +1070,10 @@ public class NotSoTinySimulator {
             } else {
                 // rim is source
                 if(s) {
-                    this.cid.sourceDescriptor = decodeRimField(LocationSize.WORD, rim);
+                    this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.WORD, rim);
                 } else {
-                    this.cid.sourceDescriptor = decodeRimField(LocationSize.DWORD, rim);
+                    this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.DWORD, rim);
                 }
-            }
-        } else {
-            // rim is register source
-            if(s) {
-                this.cid.sourceDescriptor = decodeWordRegField(rim);
-            } else {
-                this.cid.sourceDescriptor = decodeDwordRegField(rim);
-            }
-        }
-        
-        this.cid.sourceValue = readLocation(this.cid.sourceDescriptor);
-    }
-    
-    /**
-     * Decode wide RIM source which must be a register
-     * @throws UnprivilegedAccessException
-     * @throws DecodingException
-     */
-    private void decodeRIMWideRegisterSourceOnly() throws UnprivilegedAccessException, DecodingException {
-        byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
-        
-        // Get parts
-        boolean s = (rimByte & 0x80) != 0;
-        boolean r = (rimByte & 0x40) != 0;
-        int reg = ((rimByte >> 3) & 0x07);
-        int rim = (rimByte & 0x07);
-        
-        if(r) {
-            // rim is memory
-            if(rim >= 0x04) {
-                // rim is destination
-                if(s) {
-                    this.cid.sourceDescriptor = decodeWordRegField(reg);                    
-                } else {
-                    this.cid.sourceDescriptor = decodeDwordRegField(reg);                    
-                }
-            } else {
-                // rim is source
-                throw new DecodingException();
             }
         } else {
             // rim is register source
@@ -1164,8 +1092,8 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      * @throws DecodingException
      */
-    private void decodeRIMWideRegisterSourceOnlyEI8() throws UnprivilegedAccessException, DecodingException {
-        decodeRIMWideRegisterSourceOnly();
+    private void decodeRIMWideSourceOnlyEI8() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
+        decodeRIMWideSourceOnly();
         this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
     }
     
@@ -1174,7 +1102,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
      */
-    private void decodeRIMDestOnly() throws UnprivilegedAccessException, DecodingException {
+    private void decodeRIMDestOnly() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         decodeRIMDestOnlyNoRead();
         this.cid.destinationValue = readLocation(this.cid.destinationDescriptor);
     }
@@ -1184,7 +1112,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
      */
-    private void decodeRIMDestOnlyEI8() throws UnprivilegedAccessException, DecodingException {
+    private void decodeRIMDestOnlyEI8() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         decodeRIMDestOnly();
         this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
         this.cid.sourceValue = this.cid.i8Byte;
@@ -1208,45 +1136,10 @@ public class NotSoTinySimulator {
             if(rim >= 0x04) {
                 // rim is destination
                 if(s) {
-                    this.cid.destinationDescriptor = decodeRimField(LocationSize.BYTE, rim);                    
+                    this.cid.destinationDescriptor = decodeRimDestField(LocationSize.BYTE, rim);                    
                 } else {
-                    this.cid.destinationDescriptor = decodeRimField(LocationSize.WORD, rim);                    
+                    this.cid.destinationDescriptor = decodeRimDestField(LocationSize.WORD, rim);                    
                 }
-            } else {
-                // rim is source
-                if(s) {
-                    this.cid.destinationDescriptor = decodeByteRegField(reg);
-                } else {
-                    this.cid.destinationDescriptor = decodeWordRegField(reg);
-                }
-            }
-        } else {
-            // rim is register source
-            if(s) {
-                this.cid.destinationDescriptor = decodeByteRegField(reg);
-            } else {
-                this.cid.destinationDescriptor = decodeWordRegField(reg);
-            }
-        }
-    }
-    
-    /**
-     * Decode RIM destination without reading it. Destination must be a register.
-     * @throws DecodingException
-     */
-    private void decodeRIMRegisterDestinationOnlyNoRead() throws DecodingException {
-        byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
-        
-        // Get parts
-        boolean s = (rimByte & 0x80) != 0;
-        boolean r = (rimByte & 0x40) != 0;
-        int reg = ((rimByte >> 3) & 0x07);
-        int rim = (rimByte & 0x07);
-        
-        if(r) {
-            // rim is memory
-            if(rim >= 0x04) {
-                throw new DecodingException();
             } else {
                 // rim is source
                 if(s) {
@@ -1270,8 +1163,8 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      * @throws DecodingException
      */
-    private void decodeRIMRegisterDestinationOnlyNoReadEI8() throws DecodingException {
-        decodeRIMRegisterDestinationOnlyNoRead();
+    private void decodeRIMDestinationOnlyNoReadEI8() throws DecodingException {
+        decodeRIMDestOnlyNoRead();
         this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
         this.cid.sourceValue = this.cid.i8Byte;
     }
@@ -1294,9 +1187,9 @@ public class NotSoTinySimulator {
             if(rim >= 0x04) {
                 // rim is destination
                 if(s) {
-                    this.cid.destinationDescriptor = decodeRimField(LocationSize.WORD, rim);                    
+                    this.cid.destinationDescriptor = decodeRimDestField(LocationSize.WORD, rim);                    
                 } else {
-                    this.cid.destinationDescriptor = decodeRimField(LocationSize.DWORD, rim);                    
+                    this.cid.destinationDescriptor = decodeRimDestField(LocationSize.DWORD, rim);                    
                 }
             } else {
                 // rim is source
@@ -1321,7 +1214,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      * @throws DecodingException
      */
-    private void decodeRIMWideDestOnly() throws UnprivilegedAccessException, DecodingException {
+    private void decodeRIMWideDestOnly() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         decodeRIMWideDestOnlyNoRead();
         this.cid.destinationValue = readLocation(this.cid.destinationDescriptor);
     }
@@ -1331,54 +1224,18 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      * @throws DecodingException
      */
-    private void decodeRIMWideDestOnlyEI8() throws UnprivilegedAccessException, DecodingException {
+    private void decodeRIMWideDestOnlyEI8() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         decodeRIMWideDestOnly();
         this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
         this.cid.sourceValue = this.cid.i8Byte;
     }
     
     /**
-     * Decode wide RIM destination without reading it. Destination must be a register.
-     * @throws DecodingException
-     */
-    private void decodeWideRIMRegisterDestinationOnlyNoRead() throws DecodingException {
-        byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
-        
-        // Get parts
-        boolean s = (rimByte & 0x80) != 0;
-        boolean r = (rimByte & 0x40) != 0;
-        int reg = ((rimByte >> 3) & 0x07);
-        int rim = (rimByte & 0x07);
-        
-        if(r) {
-            // rim is memory
-            if(rim >= 0x04) {
-                // rim is destination
-                throw new DecodingException();
-            } else {
-                // rim is source
-                if(s) {
-                    this.cid.destinationDescriptor = decodeWordRegField(reg);
-                } else {
-                    this.cid.destinationDescriptor = decodeDwordRegField(reg);
-                }
-            }
-        } else {
-            // rim is register source
-            if(s) {
-                this.cid.destinationDescriptor = decodeWordRegField(reg);
-            } else {
-                this.cid.destinationDescriptor = decodeDwordRegField(reg);
-            }
-        }
-    }
-    
-    /**
      * Decode wide RIM destination without reading it. Destination must be a register. Read EI8
      * @throws DecodingException
      */
-    private void decodeWideRIMRegisterDestinationOnlyNoReadEI8() throws DecodingException {
-        decodeWideRIMRegisterDestinationOnlyNoRead();
+    private void decodeWideRIMDestinationOnlyNoReadEI8() throws DecodingException {
+        decodeRIMWideDestOnlyNoRead();
         this.cid.i8Byte = this.fetchBuffer[this.cid.instructionSize++];
         this.cid.sourceValue = this.cid.i8Byte;
     }
@@ -1398,7 +1255,7 @@ public class NotSoTinySimulator {
         
         if(r && rim < 0x04 && !s) {
             // rim is memory source
-            this.cid.sourceDescriptor = decodeRimField(LocationSize.WORD, rim);
+            this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.WORD, rim);
             this.cid.sourceValue = this.cid.sourceDescriptor.address;
             this.cid.destinationDescriptor = decodeDwordRegField(reg);
         } else {
@@ -1412,7 +1269,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
      */
-    private void decodePackedRIM() throws UnprivilegedAccessException, DecodingException {
+    private void decodePackedRIM() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
         
         // Get parts
@@ -1430,10 +1287,10 @@ public class NotSoTinySimulator {
             if(rim >= 0x04) {
                 // rim is destination
                 this.cid.sourceDescriptor = decodeWordRegField(reg);
-                this.cid.destinationDescriptor = decodeRimField(LocationSize.WORD, rim);
+                this.cid.destinationDescriptor = decodeRimDestField(LocationSize.WORD, rim);
             } else {
                 // rim is source
-                this.cid.sourceDescriptor = decodeRimField(LocationSize.WORD, rim);
+                this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.WORD, rim);
                 this.cid.destinationDescriptor = decodeWordRegField(reg);
             }
         } else {
@@ -1451,7 +1308,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
      */
-    private void decodePackedRIMEI8() throws UnprivilegedAccessException, DecodingException {
+    private void decodePackedRIMEI8() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
         
         // Get parts
@@ -1469,10 +1326,10 @@ public class NotSoTinySimulator {
             if(rim >= 0x04) {
                 // rim is destination
                 this.cid.sourceDescriptor = decodeWordRegField(reg);
-                this.cid.destinationDescriptor = decodeRimField(LocationSize.WORD, rim);
+                this.cid.destinationDescriptor = decodeRimDestField(LocationSize.WORD, rim);
             } else {
                 // rim is source
-                this.cid.sourceDescriptor = decodeRimField(LocationSize.WORD, rim);
+                this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.WORD, rim);
                 this.cid.destinationDescriptor = decodeWordRegField(reg);
             }
         } else {
@@ -1491,7 +1348,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
      */
-    private void decodePackedRIMWideDest() throws UnprivilegedAccessException, DecodingException {
+    private void decodePackedRIMWideDest() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
         
         // Get parts
@@ -1509,10 +1366,10 @@ public class NotSoTinySimulator {
             if(rim >= 0x04) {
                 // rim is destination
                 this.cid.sourceDescriptor = decodeWordRegField(reg);
-                this.cid.destinationDescriptor = decodeRimField(LocationSize.DWORD, rim);
+                this.cid.destinationDescriptor = decodeRimDestField(LocationSize.DWORD, rim);
             } else {
                 // rim is source
-                this.cid.sourceDescriptor = decodeRimField(LocationSize.WORD, rim);
+                this.cid.sourceDescriptor = decodeRimSourceField(LocationSize.WORD, rim);
                 this.cid.destinationDescriptor = decodeDwordRegField(reg);
             }
         } else {
@@ -1530,7 +1387,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws DecodingException 
      */
-    private void decodePackedRIMDestOnly() throws UnprivilegedAccessException, DecodingException {
+    private void decodePackedRIMDestOnly() throws UnprivilegedAccessException, NonexistentAccessException, DecodingException {
         byte rimByte = this.fetchBuffer[this.cid.instructionSize++];
         
         // Get parts
@@ -1547,7 +1404,7 @@ public class NotSoTinySimulator {
             // rim is memory
             if(rim >= 0x04) {
                 // rim is destination
-                this.cid.destinationDescriptor = decodeRimField(LocationSize.WORD, rim);
+                this.cid.destinationDescriptor = decodeRimDestField(LocationSize.WORD, rim);
             } else {
                 // rim is source
                 this.cid.destinationDescriptor = decodeWordRegField(reg);
@@ -1561,14 +1418,36 @@ public class NotSoTinySimulator {
     }
     
     /**
-     * Decode a RIM field
+     * Decode a RIM source field
      * @return
      * @throws DecodingException 
      */
-    private LocationDescriptor decodeRimField(LocationSize size, int field) throws DecodingException {
+    private LocationDescriptor decodeRimSourceField(LocationSize size, int field) throws DecodingException {
         return switch(field & 0x03) {
             // immediate
             case 0  -> new LocationDescriptor(LocationType.IMMEDIATE, decodeOffset(size.bytes), size);
+            // immediate address
+            case 1  -> new LocationDescriptor(LocationType.MEMORY, decodeOffset(4), size);
+            // base index
+            case 2  -> new LocationDescriptor(LocationType.MEMORY, decodeBIO(), size);
+            // base index offset
+            case 3  -> {
+                this.cid.hasOffset = true;
+                yield new LocationDescriptor(LocationType.MEMORY, decodeBIO(), size);
+            }
+            default -> throw new DecodingException();
+        };
+    }
+    
+    /**
+     * Decode a RIM destination field
+     * @return
+     * @throws DecodingException 
+     */
+    private LocationDescriptor decodeRimDestField(LocationSize size, int field) throws DecodingException {
+        return switch(field & 0x03) {
+            // immediate
+            case 0  -> throw new DecodingException();
             // immediate address
             case 1  -> new LocationDescriptor(LocationType.MEMORY, decodeOffset(4), size);
             // base index
@@ -2557,7 +2436,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      * @throws DecodingException 
      */
-    private void runExecute() throws UnprivilegedAccessException, GPFException, DecodingException {
+    private void runExecute() throws UnprivilegedAccessException, NonexistentAccessException, GPFException, DecodingException {
             switch(this.cid.opcode.egroup) {
                 case NOP:
                     return;
@@ -2744,7 +2623,7 @@ public class NotSoTinySimulator {
      * Sign-extended move
      * @throws UnprivilegedAccessException 
      */
-    private void runMOVS() throws UnprivilegedAccessException {
+    private void runMOVS() throws UnprivilegedAccessException, NonexistentAccessException {
         LocationDescriptor dst = switch(this.cid.opcode) {
             case MOVS_A_I8  -> LocationDescriptor.REG_A;
             case MOVS_B_I8  -> LocationDescriptor.REG_B;
@@ -2772,7 +2651,7 @@ public class NotSoTinySimulator {
      * Zero-extended move
      * @throws UnprivilegedAccessException
      */
-    private void runMOVZ() throws UnprivilegedAccessException {
+    private void runMOVZ() throws UnprivilegedAccessException, NonexistentAccessException {
         int v = this.cid.sourceValue;
         
         if(this.cid.sourceDescriptor.size == LocationSize.BYTE) {
@@ -2788,7 +2667,7 @@ public class NotSoTinySimulator {
      * MOV shortcuts
      */
     @SuppressWarnings("incomplete-switch")
-    private void runShortcutMOV() throws UnprivilegedAccessException {
+    private void runShortcutMOV() throws UnprivilegedAccessException, NonexistentAccessException {
         switch(this.cid.opcode) {
             case MOV_A_I16: this.reg_a = (short) this.cid.sourceValue; break;
             case MOV_B_I16: this.reg_b = (short) this.cid.sourceValue; break;
@@ -2815,7 +2694,7 @@ public class NotSoTinySimulator {
      * @throws GPFException
      * @throws DecodingException 
      */
-    private void runProtectedMOV() throws UnprivilegedAccessException, GPFException, DecodingException {
+    private void runProtectedMOV() throws UnprivilegedAccessException, NonexistentAccessException, GPFException, DecodingException {
         if(!this.pf_pv) {
             throw new GPFException();
         }
@@ -2863,7 +2742,7 @@ public class NotSoTinySimulator {
      * @throws GPFException
      */
     @SuppressWarnings("incomplete-switch")
-    private void runShortcutPUSH() throws UnprivilegedAccessException, GPFException {
+    private void runShortcutPUSH() throws UnprivilegedAccessException, NonexistentAccessException, GPFException {
         int value = 0, size = 0;
         
         switch(this.cid.opcode) {
@@ -2903,7 +2782,7 @@ public class NotSoTinySimulator {
      * @throws GPFException 
      */
     @SuppressWarnings("incomplete-switch")
-    private void runShortcutPOP() throws UnprivilegedAccessException, GPFException {
+    private void runShortcutPOP() throws UnprivilegedAccessException, NonexistentAccessException, GPFException {
         int size = switch(this.cid.opcode) {
             case POPW_DA, POPW_BC, POPW_JI, POPW_LK, POPW_XP, POPW_YP, POPW_BP -> 4;
             default -> 2;
@@ -2949,7 +2828,7 @@ public class NotSoTinySimulator {
      * Move-increment
      * @throws UnprivilegedAccessException
      */
-    private void runMVI() throws UnprivilegedAccessException {
+    private void runMVI() throws UnprivilegedAccessException, NonexistentAccessException {
         LocationDescriptor address, data;
         int addr;
         
@@ -2977,7 +2856,7 @@ public class NotSoTinySimulator {
      * Decrement-move
      * @throws UnprivilegedAccessException
      */
-    private void runDMV() throws UnprivilegedAccessException {
+    private void runDMV() throws UnprivilegedAccessException, NonexistentAccessException {
         LocationDescriptor address, data;
         int addr;
         
@@ -3005,7 +2884,7 @@ public class NotSoTinySimulator {
      * PUSHA
      * @throws UnprivilegedAccessException 
      */
-    private void runPUSHA() throws UnprivilegedAccessException {
+    private void runPUSHA() throws UnprivilegedAccessException, NonexistentAccessException {
         this.memory.write2Bytes(this.reg_sp - 16, this.reg_k, this.pf_pv);
         this.memory.write2Bytes(this.reg_sp - 14, this.reg_l, this.pf_pv);
         this.memory.write2Bytes(this.reg_sp - 12, this.reg_i, this.pf_pv);
@@ -3022,7 +2901,7 @@ public class NotSoTinySimulator {
      * POPA
      * @throws UnprivilegedAccessException 
      */
-    private void runPOPA() throws UnprivilegedAccessException {
+    private void runPOPA() throws UnprivilegedAccessException, NonexistentAccessException {
         this.reg_k = this.memory.read2Bytes(this.reg_sp + 0, this.pf_pv);
         this.reg_l = this.memory.read2Bytes(this.reg_sp + 2, this.pf_pv);
         this.reg_i = this.memory.read2Bytes(this.reg_sp + 4, this.pf_pv);
@@ -3048,7 +2927,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      */
     @SuppressWarnings("incomplete-switch")
-    private void runFOps() throws UnprivilegedAccessException {
+    private void runFOps() throws UnprivilegedAccessException, NonexistentAccessException {
         switch(this.cid.opcode) {
             case AND_F_RIM: this.reg_f &= this.cid.sourceValue; break;
             case OR_F_RIM:  this.reg_f |= this.cid.sourceValue; break;
@@ -3056,7 +2935,6 @@ public class NotSoTinySimulator {
             case AND_RIM_F: writeLocation(this.cid.destinationDescriptor, this.reg_f & this.cid.sourceValue); break;
             case OR_RIM_F:  writeLocation(this.cid.destinationDescriptor, this.reg_f | this.cid.sourceValue); break;
             case XOR_RIM_F: writeLocation(this.cid.destinationDescriptor, this.reg_f ^ this.cid.sourceValue); break;
-            case NOT_F:     this.reg_f = (short) ~this.reg_f; break;
         }
     }
     
@@ -3137,7 +3015,7 @@ public class NotSoTinySimulator {
      * ADD
      * @throws UnprivilegedAccessException 
      */
-    private void runADD() throws UnprivilegedAccessException {
+    private void runADD() throws UnprivilegedAccessException, NonexistentAccessException {
         int[] res = add(this.cid.destinationValue, this.cid.sourceValue, this.cid.destinationDescriptor.size.bytes, false, false);
         writeLocation(this.cid.destinationDescriptor, res[0]);
         this.reg_f = (short) res[1];
@@ -3200,7 +3078,7 @@ public class NotSoTinySimulator {
      * SUB
      * @throws UnprivilegedAccessException 
      */
-    private void runSUB() throws UnprivilegedAccessException {
+    private void runSUB() throws UnprivilegedAccessException, NonexistentAccessException {
         int[] res = add(this.cid.destinationValue, this.cid.sourceValue, this.cid.destinationDescriptor.size.bytes, true, false);
         writeLocation(this.cid.destinationDescriptor, res[0]);
         this.reg_f = (short) res[1];
@@ -3210,7 +3088,7 @@ public class NotSoTinySimulator {
      * ADC
      * @throws UnprivilegedAccessException
      */
-    private void runADC() throws UnprivilegedAccessException {
+    private void runADC() throws UnprivilegedAccessException, NonexistentAccessException {
         int[] res = add(this.cid.destinationValue, this.cid.sourceValue, this.cid.destinationDescriptor.size.bytes, false, true);
         writeLocation(this.cid.destinationDescriptor, res[0]);
         this.reg_f = (short) res[1];
@@ -3220,7 +3098,7 @@ public class NotSoTinySimulator {
      * SBB
      * @throws UnprivilegedAccessException
      */
-    private void runSBB() throws UnprivilegedAccessException {
+    private void runSBB() throws UnprivilegedAccessException, NonexistentAccessException {
         int[] res = add(this.cid.destinationValue, this.cid.sourceValue, this.cid.destinationDescriptor.size.bytes, true, true);
         writeLocation(this.cid.destinationDescriptor, res[0]);
         this.reg_f = (short) res[1];
@@ -3230,7 +3108,7 @@ public class NotSoTinySimulator {
      * PADD, PADC
      * @throws UnprivilegedAccessException
      */
-    private void runPADD() throws UnprivilegedAccessException {
+    private void runPADD() throws UnprivilegedAccessException, NonexistentAccessException {
         short[] res = addPacked(this.cid.destinationValue, this.cid.sourceValue, !this.cid.packedIs4s, false, this.cid.opcode == Opcode.PADC_RIMP);
         writeLocation(this.cid.destinationDescriptor, res[0]);
         this.reg_f = res[1];
@@ -3240,7 +3118,7 @@ public class NotSoTinySimulator {
      * PSUB, PSBB
      * @throws UnprivilegedAccessException
      */
-    private void runPSUB() throws UnprivilegedAccessException {
+    private void runPSUB() throws UnprivilegedAccessException, NonexistentAccessException {
         short[] res = addPacked(this.cid.destinationValue, this.cid.sourceValue, !this.cid.packedIs4s, true, this.cid.opcode == Opcode.PSBB_RIMP);
         writeLocation(this.cid.destinationDescriptor, res[0]);
         this.reg_f = res[1];
@@ -3250,7 +3128,7 @@ public class NotSoTinySimulator {
      * AADJ, SADJ
      * @throws UnprivilegedAccessException
      */
-    private void runADJ() throws UnprivilegedAccessException {
+    private void runADJ() throws UnprivilegedAccessException, NonexistentAccessException {
         int v = this.cid.destinationValue;
         int f = this.reg_f & 0x1111;
         int c = 0;
@@ -3303,7 +3181,7 @@ public class NotSoTinySimulator {
      * INC/DEC/ICC/DCC
      * @throws UnprivilegedAccessException 
      */
-    private void runINC() throws UnprivilegedAccessException {
+    private void runINC() throws UnprivilegedAccessException, NonexistentAccessException {
         int i = switch(this.cid.opcode) {
             case INC_RIM, INCW_RIM, DEC_RIM, DECW_RIM   -> 1;
             default                                     -> (this.reg_f & 0x01) != 0 ? 1 : 0;
@@ -3323,7 +3201,7 @@ public class NotSoTinySimulator {
      * PINC/PDEC/PICC/PDCC
      * @throws UnprivilegedAccessException 
      */
-    private void runPINC() throws UnprivilegedAccessException {
+    private void runPINC() throws UnprivilegedAccessException, NonexistentAccessException {
         boolean sub = this.cid.opcode == Opcode.PDEC_RIMP || this.cid.opcode == Opcode.PDCC_RIMP;
         int i;
         
@@ -3343,7 +3221,7 @@ public class NotSoTinySimulator {
      * MUL & co
      * @throws UnprivilegedAccessException 
      */
-    private void runMUL() throws UnprivilegedAccessException {
+    private void runMUL() throws UnprivilegedAccessException, NonexistentAccessException {
         boolean high = this.cid.opcode == Opcode.MULSH_RIM || this.cid.opcode == Opcode.PMULSH_RIMP || this.cid.opcode == Opcode.MULH_RIM || this.cid.opcode == Opcode.PMULH_RIMP;
         boolean signed = this.cid.opcode == Opcode.MULSH_RIM || this.cid.opcode == Opcode.PMULSH_RIMP;
         int[] res;
@@ -3362,7 +3240,7 @@ public class NotSoTinySimulator {
     /**
      * DIV & co
      */
-    private void runDIV() throws UnprivilegedAccessException {
+    private void runDIV() throws UnprivilegedAccessException, NonexistentAccessException {
         boolean mod = this.cid.opcode == Opcode.DIVM_RIM || this.cid.opcode == Opcode.PDIVM_RIMP || this.cid.opcode == Opcode.DIVMS_RIM || this.cid.opcode == Opcode.PDIVMS_RIMP;
         boolean signed = this.cid.opcode == Opcode.DIVS_RIM || this.cid.opcode == Opcode.PDIVS_RIMP || this.cid.opcode == Opcode.DIVMS_RIM || this.cid.opcode == Opcode.PDIVMS_RIMP;
         int[] res;
@@ -3388,7 +3266,7 @@ public class NotSoTinySimulator {
      * Shifts
      * @throws UnprivilegedAccessException
      */
-    private void runShifts() throws UnprivilegedAccessException {
+    private void runShifts() throws UnprivilegedAccessException, NonexistentAccessException {
         int mask = switch(this.cid.destinationDescriptor.size) {
             case BYTE   -> 0x0000_00FF;
             case WORD   -> 0x0000_FFFF;
@@ -3521,10 +3399,10 @@ public class NotSoTinySimulator {
     }
     
     /**
-     * Bitwise logic (and negate)
+     * Bitwise logic
      * @throws UnprivilegedAccessException 
      */
-    private void runLogic() throws UnprivilegedAccessException {
+    private void runLogic() throws UnprivilegedAccessException, NonexistentAccessException {
         int res = switch(this.cid.opcode) {
             case AND_RIM, PAND_RIMP -> this.cid.destinationValue & this.cid.sourceValue;
             case OR_RIM, POR_RIMP   -> this.cid.destinationValue | this.cid.sourceValue;
@@ -3555,7 +3433,7 @@ public class NotSoTinySimulator {
      * Conditional move
      * @throws UnprivilegedAccessException 
      */
-    private void runCMOV() throws UnprivilegedAccessException {
+    private void runCMOV() throws UnprivilegedAccessException, NonexistentAccessException {
         if(this.cid.isPacked) {
             Opcode cond = Opcode.fromOp((byte)(this.cid.i8Byte | 0xF0));
             int v = this.cid.destinationValue;
@@ -3610,7 +3488,7 @@ public class NotSoTinySimulator {
      * Relative function call
      * @throws UnprivilegedAccessException 
      */
-    private void runCALL() throws UnprivilegedAccessException {
+    private void runCALL() throws UnprivilegedAccessException, NonexistentAccessException {
         // Push IP
         this.memory.write4Bytes(this.reg_sp - 4, this.reg_ip, this.pf_pv);
         this.reg_sp -= 4;
@@ -3623,7 +3501,7 @@ public class NotSoTinySimulator {
      * Absolute function call
      * @throws UnprivilegedAccessException 
      */
-    private void runCALLA() throws UnprivilegedAccessException {
+    private void runCALLA() throws UnprivilegedAccessException, NonexistentAccessException {
         // Push IP
         this.memory.write4Bytes(this.reg_sp - 4, this.reg_ip, this.pf_pv);
         this.reg_sp -= 4;
@@ -3636,7 +3514,7 @@ public class NotSoTinySimulator {
      * Function return
      * @throws UnprivilegedAccessException 
      */
-    private void runRET() throws UnprivilegedAccessException {
+    private void runRET() throws UnprivilegedAccessException, NonexistentAccessException {
         // Pop IP
         this.reg_ip = this.memory.read4Bytes(this.reg_sp, this.pf_pv);
         this.reg_sp += 4;
@@ -3647,7 +3525,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws GPFException 
      */
-    private void runIRET() throws UnprivilegedAccessException, GPFException {
+    private void runIRET() throws UnprivilegedAccessException, NonexistentAccessException, GPFException {
         // Check privilege
         if(!this.pf_pv) {
             throw new GPFException();
@@ -3673,7 +3551,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      * @throws GPFException
      */
-    private void runINT() throws GPFException {
+    private void runINT() throws NonexistentAccessException, GPFException {
         byte vector = (byte) this.cid.sourceValue;
         
         // TODO
@@ -3691,7 +3569,7 @@ public class NotSoTinySimulator {
      * Negate
      * @throws UnprivilegedAccessException
      */
-    private void runNEG() throws UnprivilegedAccessException {
+    private void runNEG() throws UnprivilegedAccessException, NonexistentAccessException {
         if(this.cid.isPacked) {
             short[] res = addPacked(~this.cid.destinationValue, this.cid.packedIs4s ? 0x1111 : 0x0101, !this.cid.packedIs4s, false, false);
             writeLocation(this.cid.destinationDescriptor, res[0]);
@@ -3714,7 +3592,7 @@ public class NotSoTinySimulator {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    private int readLocation(LocationDescriptor ld) throws UnprivilegedAccessException {
+    private int readLocation(LocationDescriptor ld) throws UnprivilegedAccessException, NonexistentAccessException {
         switch(ld.type) {
             case IMMEDIATE:
                 return ld.address;
@@ -3773,7 +3651,7 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException 
      * @throws GPFException 
      */
-    private void writeLocation(LocationDescriptor ld, int value) throws UnprivilegedAccessException {
+    private void writeLocation(LocationDescriptor ld, int value) throws UnprivilegedAccessException, NonexistentAccessException {
         switch(ld.type) {
             case MEMORY:
                 switch(ld.size) {
@@ -3826,7 +3704,7 @@ public class NotSoTinySimulator {
      * @param value
      * @throws UnprivilegedAccessException
      */
-    private void writeMemory(LocationSize size, int address, int value) throws UnprivilegedAccessException {
+    private void writeMemory(LocationSize size, int address, int value) throws UnprivilegedAccessException, NonexistentAccessException {
         switch(size) {
             case DWORD: this.memory.write4Bytes(address, value, this.pf_pv); break;
             case WORD:  this.memory.write2Bytes(address, (short) value, this.pf_pv); break;
@@ -3842,7 +3720,7 @@ public class NotSoTinySimulator {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    private int readMemory(LocationSize size, int address) throws UnprivilegedAccessException {
+    private int readMemory(LocationSize size, int address) throws UnprivilegedAccessException, NonexistentAccessException {
         return switch(size) {
             case DWORD  -> this.memory.read4Bytes(address, this.pf_pv);
             case WORD   -> this.memory.read2Bytes(address, this.pf_pv);
@@ -4432,21 +4310,49 @@ public class NotSoTinySimulator {
      * @throws UnprivilegedAccessException
      */
     private void runInterrupt(byte vector) {
+        runInterrupt(vector, this.reg_bp, this.reg_f);
+    }
+    
+    /**
+     * Execute an interrupt, specifying BP
+     * @param vector
+     * @param vecBP
+     */
+    private void runInterrupt(byte vector, int vecBP) {
+        runInterrupt(vector, vecBP, this.reg_f);
+    }
+    
+    /**
+     * Execute an interrupt, specifying BP and F
+     * 
+     * @param vector
+     * @param vecBP
+     * @param vecF
+     */
+    private void runInterrupt(byte vector, int vecBP, short vecF) {
         // What pointer are we using
         // In interrupt -> SP, ISP otherwise
         int pointer = (this.pf_ii) ? this.reg_sp : this.reg_isp;
         
-        this.memory.write4BytesPrivileged(pointer - 4, this.reg_ip);
-        this.memory.write4BytesPrivileged(pointer - 8, this.reg_bp);
-        this.memory.write4BytesPrivileged(pointer - 12, this.reg_sp);
-        this.memory.write4BytesPrivileged(pointer - 16, (this.reg_f << 16) | this.getRegPF());
-        this.reg_sp = pointer - 16;
+        try {
+            this.memory.write4BytesPrivileged(pointer - 4, this.reg_ip);
+            this.memory.write4BytesPrivileged(pointer - 8, this.reg_bp);
+            this.memory.write4BytesPrivileged(pointer - 12, this.reg_sp);
+            this.memory.write4BytesPrivileged(pointer - 16, (this.reg_f << 16) | this.getRegPF());
+            this.reg_sp = pointer - 16;
+            
+            // Get vector & jump
+            this.reg_ip = this.memory.read4BytesPrivileged((vector & 0x00FFl) << 2);
+        } catch(NonexistentAccessException e) {
+            // Something has gone horribly wrong
+            throw new IllegalStateException("Interrupt fault loop");
+        }
         
-        // Get vector & jump
-        this.reg_ip = this.memory.read4BytesPrivileged((vector & 0x00FFl) << 2);
-        this.pf_ie = false; // Discourage interrupt nesting
-        this.pf_pv = true;  // Set privilege
-        this.pf_ii = true;  // We're in an interrupt now
+        this.reg_bp = vecBP;    // vector-specific values
+        this.reg_f = vecF;
+        this.pf_ie = false;     // Discourage interrupt nesting
+        this.pf_pv = true;      // Set privilege
+        this.pf_ii = true;      // We're in an interrupt now
     }
     
     /*

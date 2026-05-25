@@ -44,10 +44,10 @@ public enum Opcode {
     MOVS_K_I8   (0x1E, DecodingGroup.I8, ExecutionGroup.MOVS),
     MOVS_L_I8   (0x1F, DecodingGroup.I8, ExecutionGroup.MOVS),
     
-    MOV_RIM_BP  (0x20, DecodingGroup.RIM_RD_DO_WOD_EI8, ExecutionGroup.MOV_SHORTCUT),
-    MOVW_RIM_BP (0x21, DecodingGroup.RIM_WIDE_RD_DO_WOD_EI8, ExecutionGroup.MOV_SHORTCUT),
-    MOV_BP_RIM  (0x22, DecodingGroup.RIM_RS_SO_EI8, ExecutionGroup.MOV_SHORTCUT),
-    MOVW_BP_RIM (0x23, DecodingGroup.RIM_WIDE_RS_SO_EI8, ExecutionGroup.MOV_SHORTCUT),
+    MOV_RIM_BP  (0x20, DecodingGroup.RIM_DO_WOD_EI8, ExecutionGroup.MOV_SHORTCUT),
+    MOVW_RIM_BP (0x21, DecodingGroup.RIM_WIDE_DO_WOD_EI8, ExecutionGroup.MOV_SHORTCUT),
+    MOV_BP_RIM  (0x22, DecodingGroup.RIM_SO_EI8, ExecutionGroup.MOV_SHORTCUT),
+    MOVW_BP_RIM (0x23, DecodingGroup.RIM_WIDE_SO_EI8, ExecutionGroup.MOV_SHORTCUT),
     
     LDI_RIM     (0x24, DecodingGroup.RIM_R32S_WOD, ExecutionGroup.MVI),
     LDIW_RIM    (0x25, DecodingGroup.RIM_WIDE_R32S_WOD, ExecutionGroup.MVI),
@@ -104,7 +104,7 @@ public enum Opcode {
     CMP_RIM     (0x54, DecodingGroup.RIM_NORMAL, ExecutionGroup.CMP),
     CMPW_RIM    (0x55, DecodingGroup.RIM_WIDE, ExecutionGroup.CMP),
     PCMP_RIMP   (0x56, DecodingGroup.RIM_PACKED, ExecutionGroup.PCMP),
-    NOT_F       (0x57, DecodingGroup.NODECODE, ExecutionGroup.F_OPS),
+    NOP         (0x57, DecodingGroup.NODECODE, ExecutionGroup.NOP),
     AND_F_RIM   (0x58, DecodingGroup.RIM_SO, ExecutionGroup.F_OPS),
     AND_RIM_F   (0x59, DecodingGroup.RIM_DO, ExecutionGroup.F_OPS),
     OR_F_RIM    (0x5A, DecodingGroup.RIM_SO, ExecutionGroup.F_OPS),
@@ -200,7 +200,7 @@ public enum Opcode {
     ROR_RIM_1   (0xAC, DecodingGroup.RIM_DO, ExecutionGroup.SHIFT),
     RCL_RIM_1   (0xAD, DecodingGroup.RIM_DO, ExecutionGroup.SHIFT),
     RCR_RIM_1   (0xAE, DecodingGroup.RIM_DO, ExecutionGroup.SHIFT),
-    NOP         (0xAF, DecodingGroup.NODECODE, ExecutionGroup.NOP),
+    NEG_RIM     (0xAF, DecodingGroup.RIM_DO, ExecutionGroup.NEG),
     
     SHL_RIM_I8  (0xB0, DecodingGroup.RIM_DO_EI8, ExecutionGroup.SHIFT),
     SHR_RIM_I8  (0xB1, DecodingGroup.RIM_DO_EI8, ExecutionGroup.SHIFT),
@@ -209,7 +209,7 @@ public enum Opcode {
     ROR_RIM_I8  (0xB4, DecodingGroup.RIM_DO_EI8, ExecutionGroup.SHIFT),
     RCL_RIM_I8  (0xB5, DecodingGroup.RIM_DO_EI8, ExecutionGroup.SHIFT),
     RCR_RIM_I8  (0xB6, DecodingGroup.RIM_DO_EI8, ExecutionGroup.SHIFT),
-    NEG_RIM     (0xB7, DecodingGroup.RIM_DO, ExecutionGroup.NEG),
+    NEGW_RIM    (0xB7, DecodingGroup.RIM_WIDE_DO, ExecutionGroup.NEG),
     
     SHL_RIM     (0xB8, DecodingGroup.RIM_NORMAL, ExecutionGroup.SHIFT),
     SHR_RIM     (0xB9, DecodingGroup.RIM_NORMAL, ExecutionGroup.SHIFT),

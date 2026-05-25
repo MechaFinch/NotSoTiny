@@ -48,14 +48,17 @@ public class DiskBufferController implements MemoryController {
         // read from buff ptr
         for(int i = 0; i < 1024; i += 4) {
             try {
-                int d = this.mmu.read4Bytes(this.buffptr + i, true);
+                int d = this.mmu.read4BytesPrivileged(this.buffptr + i);
                 
                 data[i + 0] = (byte)((d >>  0) & 0xFF);
                 data[i + 1] = (byte)((d >>  8) & 0xFF);
                 data[i + 2] = (byte)((d >> 16) & 0xFF);
                 data[i + 3] = (byte)((d >> 24) & 0xFF);
-            } catch(UnprivilegedAccessException e) {
-                // not possible
+            } catch(NonexistentAccessException e) {
+                data[i + 0] = 0;
+                data[i + 1] = 0;
+                data[i + 2] = 0;
+                data[i + 3] = 0;
             }
         }
         
@@ -93,10 +96,8 @@ public class DiskBufferController implements MemoryController {
             // zeroes
             for(int i = 0; i < 1024; i += 4) {
                 try {
-                    this.mmu.write4Bytes(this.buffptr + i, 0, true);
-                } catch(UnprivilegedAccessException e) {
-                    // not possible
-                }
+                    this.mmu.write4BytesPrivileged(this.buffptr + i, 0);
+                } catch(NonexistentAccessException e) {}
             }
         } else {
             // read & write
@@ -127,10 +128,8 @@ public class DiskBufferController implements MemoryController {
                             ((data[i + 3] << 24) & 0xFF00_0000);
                 
                 try {
-                    this.mmu.write4Bytes(this.buffptr + i, dword, true);
-                } catch(UnprivilegedAccessException e) {
-                    // not possible
-                }
+                    this.mmu.write4BytesPrivileged(this.buffptr + i, dword);
+                } catch(NonexistentAccessException e) {}
             }
         }
         

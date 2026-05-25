@@ -91,31 +91,31 @@ public class MemoryManager {
      * @throws IndexOutOfBoundsException when trying to access out-of-bounds memory
      * @throws NullPointerException if no segments have been registered
      */
-    protected Entry<Long, MemoryController> getSegment(long startAddress, long endAddress, boolean privilege, boolean read) throws UnprivilegedAccessException {
+    protected Entry<Long, MemoryController> getSegment(long startAddress, long endAddress, boolean privilege, boolean read) throws UnprivilegedAccessException, NonexistentAccessException {
         startAddress &= 0xFFFF_FFFFl;
         endAddress &= 0xFFFF_FFFFl;
         
+        // get segment
         Entry<Long, MemoryController> segment = this.segmentControllerMap.floorEntry(startAddress);
         Long start = segment.getKey(),
              end = this.endAddressMap.get(start);
         
-        if(start == null || end < startAddress) {
-            // floored segment ends before start
-            throw new IndexOutOfBoundsException(String.format("Attempted to access non-registered address: %08X from %08X", startAddress, startAddress));
-        } else if(end == null || end < endAddress) {
-            // segment ends before access does
-            throw new IndexOutOfBoundsException(String.format("Attempted to access non-registered address: %08X from %08X", endAddress, startAddress));
-        } else if(endAddress < startAddress) {
-            throw new IndexOutOfBoundsException(String.format("Multi-byte access overflowed: %08X", startAddress));
+        // check bounds
+        if(start == null || end < startAddress ||   // floored segment ends before start, or
+           end == null || end < endAddress ||       // segment ends before access does, or
+           endAddress < startAddress) {             // integer overflow
+            throw new NonexistentAccessException((int) startAddress);
         }
         
+        // check privilege
         if(!privilege && (
            (read && segment.getValue().readRequiresPrivilege()) ||
            (!read && segment.getValue().writeRequiresPrivilege())
         )) {
-            throw new UnprivilegedAccessException((int)startAddress);
+            throw new UnprivilegedAccessException((int) startAddress);
         }
         
+        // good to go
         return segment;
     }
 
@@ -127,7 +127,7 @@ public class MemoryManager {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    public byte readByte(long address, boolean privilege) throws UnprivilegedAccessException {
+    public byte readByte(long address, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 1 byte: %08X\n", address);
         
@@ -142,7 +142,7 @@ public class MemoryManager {
      * @param address
      * @return
      */
-    public byte readBytePrivileged(long address) {
+    public byte readBytePrivileged(long address) throws NonexistentAccessException {
         try {
             return this.readByte(address, true);
         } catch(UnprivilegedAccessException e) {
@@ -159,7 +159,7 @@ public class MemoryManager {
      * @return
      * @throws UnprivilegedAccessException
      */
-    public short read2Bytes(long address, boolean privilege) throws UnprivilegedAccessException {
+    public short read2Bytes(long address, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 2 bytes: %08X\n", address);
         
@@ -174,7 +174,7 @@ public class MemoryManager {
      * @param address
      * @return
      */
-    public short read2BytesPrivileged(long address) {
+    public short read2BytesPrivileged(long address) throws NonexistentAccessException {
         try {
             return this.read2Bytes(address, true);
         } catch(UnprivilegedAccessException e) {
@@ -191,7 +191,7 @@ public class MemoryManager {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    public int read3Bytes(long address, boolean privilege) throws UnprivilegedAccessException {
+    public int read3Bytes(long address, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 3 bytes: %08X\n", address);
         
@@ -206,7 +206,7 @@ public class MemoryManager {
      * @param address
      * @return
      */
-    public int read3BytesPrivileged(long address) {
+    public int read3BytesPrivileged(long address) throws NonexistentAccessException {
         try {
             return this.read3Bytes(address, true);
         } catch(UnprivilegedAccessException e) {
@@ -223,7 +223,7 @@ public class MemoryManager {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    public int read4Bytes(long address, boolean privilege) throws UnprivilegedAccessException {
+    public int read4Bytes(long address, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 4 bytes: %08X\n", address);
         
@@ -238,7 +238,7 @@ public class MemoryManager {
      * @param address
      * @return
      */
-    public int read4BytesPrivileged(long address) {
+    public int read4BytesPrivileged(long address) throws NonexistentAccessException{
         try {
             return this.read4Bytes(address, true);
         } catch(UnprivilegedAccessException e) {
@@ -255,7 +255,7 @@ public class MemoryManager {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    public byte[] read2ByteArray(long address, boolean privilege) throws UnprivilegedAccessException {
+    public byte[] read2ByteArray(long address, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 4 bytes (array): %08X\n", address);
         
@@ -270,7 +270,7 @@ public class MemoryManager {
      * @param address
      * @return
      */
-    public byte[] read2ByteArrayPrivileged(long address) {
+    public byte[] read2ByteArrayPrivileged(long address) throws NonexistentAccessException {
         try {
             return this.read2ByteArray(address, true);
         } catch(UnprivilegedAccessException e) {
@@ -287,7 +287,7 @@ public class MemoryManager {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    public byte[] read3ByteArray(long address, boolean privilege) throws UnprivilegedAccessException {
+    public byte[] read3ByteArray(long address, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 4 bytes (array): %08X\n", address);
         
@@ -302,7 +302,7 @@ public class MemoryManager {
      * @param address
      * @return
      */
-    public byte[] read3ByteArrayPrivileged(long address) {
+    public byte[] read3ByteArrayPrivileged(long address) throws NonexistentAccessException {
         try {
             return this.read3ByteArray(address, true);
         } catch(UnprivilegedAccessException e) {
@@ -319,7 +319,7 @@ public class MemoryManager {
      * @return
      * @throws UnprivilegedAccessException 
      */
-    public byte[] read4ByteArray(long address, boolean privilege) throws UnprivilegedAccessException {
+    public byte[] read4ByteArray(long address, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("reading 4 bytes (array): %08X\n", address);
         
@@ -334,7 +334,7 @@ public class MemoryManager {
      * @param address
      * @return
      */
-    public byte[] read4ByteArrayPrivileged(long address) {
+    public byte[] read4ByteArrayPrivileged(long address) throws NonexistentAccessException {
         try {
             return this.read4ByteArray(address, true);
         } catch(UnprivilegedAccessException e) {
@@ -351,7 +351,7 @@ public class MemoryManager {
      * @param value
      * @throws UnprivilegedAccessException 
      */
-    public void writeByte(long address, byte value, boolean privilege) throws UnprivilegedAccessException {
+    public void writeByte(long address, byte value, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 1 byte: %08X\n", address);
         
@@ -365,7 +365,7 @@ public class MemoryManager {
      * @param address
      * @param value
      */
-    public void writeBytePrivileged(long address, byte value) {
+    public void writeBytePrivileged(long address, byte value) throws NonexistentAccessException {
         try {
             this.writeByte(address, value, true);
         } catch(UnprivilegedAccessException e) {
@@ -381,7 +381,7 @@ public class MemoryManager {
      * @param value
      * @throws UnprivilegedAccessException 
      */
-    public void write2Bytes(long address, short value, boolean privilege) throws UnprivilegedAccessException {
+    public void write2Bytes(long address, short value, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 2 bytes: %08X\n", address);
         
@@ -395,7 +395,7 @@ public class MemoryManager {
      * @param address
      * @param value
      */
-    public void write2BytesPrivileged(long address, short value) {
+    public void write2BytesPrivileged(long address, short value) throws NonexistentAccessException {
         try {
             this.write2Bytes(address, value, true);
         } catch(UnprivilegedAccessException e) {
@@ -411,7 +411,7 @@ public class MemoryManager {
      * @param value
      * @throws UnprivilegedAccessException 
      */
-    public void write3Bytes(long address, int value, boolean privilege) throws UnprivilegedAccessException {
+    public void write3Bytes(long address, int value, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 3 bytes: %08X\n", address);
         
@@ -425,7 +425,7 @@ public class MemoryManager {
      * @param address
      * @param value
      */
-    public void write3BytesPrivileged(long address, int value) {
+    public void write3BytesPrivileged(long address, int value) throws NonexistentAccessException {
         try {
             this.write3Bytes(address, value, true);
         } catch(UnprivilegedAccessException e) {
@@ -441,7 +441,7 @@ public class MemoryManager {
      * @param value
      * @throws UnprivilegedAccessException 
      */
-    public void write4Bytes(long address, int value, boolean privilege) throws UnprivilegedAccessException {
+    public void write4Bytes(long address, int value, boolean privilege) throws UnprivilegedAccessException, NonexistentAccessException {
         address &= 0xFFFF_FFFFl;
         if(DEBUG) System.out.printf("writing 4 bytes: %08X\n", address);
         
@@ -455,7 +455,7 @@ public class MemoryManager {
      * @param address
      * @param value
      */
-    public void write4BytesPrivileged(long address, int value) {
+    public void write4BytesPrivileged(long address, int value) throws NonexistentAccessException {
         try {
             this.write4Bytes(address, value, true);
         } catch(UnprivilegedAccessException e) {

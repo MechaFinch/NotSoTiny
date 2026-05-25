@@ -5,6 +5,7 @@ import java.util.Map;
 
 import notsotiny.sim.Register;
 import notsotiny.sim.memory.MemoryManager;
+import notsotiny.sim.memory.NonexistentAccessException;
 import notsotiny.sim.ops.Opcode;
 
 /**
@@ -14,11 +15,16 @@ import notsotiny.sim.ops.Opcode;
  */
 public class Disassembler {
     
+    // Last instruction info
     private long startAddress = 0,
                  lastAddress = 0;
     
+    private Opcode lastOpcode = Opcode.INVALID;
+    
+    // Settings
     private boolean uppercase;
     
+    // Statistics
     public Map<Opcode, Integer> instructionStatisticsMap;
 
     /**
@@ -50,6 +56,8 @@ public class Disassembler {
         this.lastAddress = address;
         
         Opcode op = Opcode.fromOp((byte) readSize(memory, 1));
+        
+        this.lastOpcode = op;
         this.instructionStatisticsMap.put(op, this.instructionStatisticsMap.getOrDefault(op, 0) + 1);
         
         String mnemonic = getMnemonic(op),
@@ -395,7 +403,7 @@ public class Disassembler {
             
             this.lastAddress += size;
             return i;
-        } catch(IndexOutOfBoundsException e) {
+        } catch(NonexistentAccessException e) {
             this.lastAddress += size;
             return 0;
         }
@@ -483,10 +491,19 @@ public class Disassembler {
     /**
      * Gets the length in bytes of the most recently disassembled instruction
      * 
-     * @return
+     * @return Length of last instruction
      */
     public int getLastInstructionLength() {
         return (int)(this.lastAddress - this.startAddress);
+    }
+    
+    /**
+     * Gets the most recently disassembled opcode
+     * 
+     * @return Opcode of lastinstruction
+     */
+    public Opcode getLastOpcode() {
+        return this.lastOpcode;
     }
     
     public void setCase(boolean upper) { this.uppercase = upper; }

@@ -47,6 +47,7 @@ import notsotiny.sim.memory.FlatMemoryController;
 import notsotiny.sim.memory.HookController;
 import notsotiny.sim.memory.InterruptController;
 import notsotiny.sim.memory.MemoryManager;
+import notsotiny.sim.memory.NonexistentAccessException;
 import notsotiny.sim.memory.RandomController;
 import notsotiny.sim.memory.ScreenBuffer;
 import notsotiny.sim.memory.SoundInterfaceController;
@@ -121,12 +122,12 @@ public class NotSoTinyUI extends Application {
                              VIDEO_OTHER_SIZE =     0x0002_0000 - (VIDEO_BUFFER_SIZE + VIDEO_CHARSET_SIZE);
     
     // other constants
-    private static final byte VECTOR_RESET = 0,
-                              VECTOR_NMI = 1,
-                              VECTOR_KEYUP = 2,
-                              VECTOR_KEYDOWN = 3,
-                              VECTOR_MEMORY_ERROR = 8,
-                              VECTOR_RTC = 12;
+    private static final byte VECTOR_RESET = 0x00,
+                              VECTOR_NMI = 0x01,
+                              VECTOR_KEYUP = 0x02,
+                              VECTOR_KEYDOWN = 0x03,
+                              VECTOR_MEMORY_ERROR = 0x0E,
+                              VECTOR_RTC = 0x0C;
     
     /*
     private static final String PROGRAM_DATA_FOLDER = "data\\",
@@ -140,6 +141,7 @@ public class NotSoTinyUI extends Application {
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\aoc\\2018\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\bcd\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\forth-based\\aoc\\",
+                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\asm\\diagnostic-test\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\minesweeper\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\maths\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\high level\\euler\\",
@@ -150,12 +152,12 @@ public class NotSoTinyUI extends Application {
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GTMK-jam-2023\\game\\src\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\game jam\\GMTK-Game-Jam-2024\\game\\src\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\java\\eclipse-workspace\\NSTLCompiler\\test\\",
-                                PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\java\\eclipse-workspace\\NSTLCompiler\\test\\benchmark\\",
+                                //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\java\\eclipse-workspace\\NSTLCompiler\\test\\benchmark\\",
                                 //PROGRAM_DATA_FOLDER = "C:\\Users\\wetca\\data\\java\\eclipse-workspace\\NSTAssembler\\test\\",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "forth.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test-badapple.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "badappleplayer.oex",
-                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "testing-mdbt.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "testing-dma.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "test_mandel.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "playground.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "minesweeper.oex",
@@ -164,9 +166,10 @@ public class NotSoTinyUI extends Application {
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "game.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "advent.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "bcd_test.oex",
-                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "benchmark.oex",
+                                //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "benchmark.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "auto.oex",
                                 //PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "shooting_stars.oex",
+                                PROGRAM_EXEC_FILE = PROGRAM_DATA_FOLDER + "diagnostic.oex",
                                 DISK_FOLDER = PROGRAM_DATA_FOLDER + "disk\\",
                                 TEXT_FONT_FILE = "C:\\Users\\wetca\\data\\silly  code\\architecture\\NotSoTiny\\programming\\standard library\\simvideo\\textsmall.dat";
     
@@ -495,12 +498,14 @@ public class NotSoTinyUI extends Application {
         
         System.arraycopy(privilagedData, 0, privramArray, 0, PRIVRAM_SIZE);
         System.arraycopy(relocatedData, 0, lowramArray, 0, LOWRAM_SIZE);
-                
-        // write entry vector
-        this.mmu.write4BytesPrivileged(VECTOR_RESET * 4, (int) entry);
         
-        // simulator
-        this.sim = new NotSoTinySimulator(this.mmu);
+        try {
+            // write entry vector
+            this.mmu.write4BytesPrivileged(VECTOR_RESET * 4, (int) entry);
+            
+            // simulator
+            this.sim = new NotSoTinySimulator(this.mmu);
+        } catch(NonexistentAccessException e) {}
         
         if(USE_PRIVRAM) {
             this.sim.setRegSP((int)(LOWRAM_START + LOWRAM_SIZE));
@@ -1113,7 +1118,14 @@ public class NotSoTinyUI extends Application {
                         state += dis.disassemble(this.mmu, Integer.toUnsignedLong(sim.getRegIP())) + "\n";
                     
                         for(int j = 0; j < dis.getLastInstructionLength(); j++) {
-                            byte b = this.mmu.readBytePrivileged(Integer.toUnsignedLong(sim.getRegIP()) + ((long) j));
+                            byte b;
+                            
+                            try{
+                                b = this.mmu.readBytePrivileged(Integer.toUnsignedLong(sim.getRegIP()) + ((long) j));
+                            } catch(NonexistentAccessException e) {
+                                b = 0;
+                            }
+                            
                             state += String.format("%02X ", b);
                         }
                     }
@@ -1144,7 +1156,11 @@ public class NotSoTinyUI extends Application {
                 
                 if(this.memwatchType.toString().endsWith("INDIRECT")) {
                     synchronized(this.mmu) {
-                        this.memwatchAddress = this.mmu.read4BytesPrivileged(this.memwatchAddress);
+                        try {
+                            this.memwatchAddress = this.mmu.read4BytesPrivileged(this.memwatchAddress);
+                        } catch(NonexistentAccessException e) {
+                            this.memwatchAddress = 0;
+                        }
                     }
                 }
                 
@@ -1172,7 +1188,7 @@ public class NotSoTinyUI extends Application {
                             
                             try {
                                 l = this.mmu.readBytePrivileged(this.memwatchAddress + i + k);
-                            } catch(IndexOutOfBoundsException e) {
+                            } catch(NonexistentAccessException e) {
                                 l = 0;
                                 j = TRACE_SIZE; // end disassembly
                                 break;
@@ -1208,7 +1224,7 @@ public class NotSoTinyUI extends Application {
                         try {
                             retAddr = this.mmu.read4BytesPrivileged(bpAddr + 4) & 0xFFFFFFFFl;
                             bpAddr = this.mmu.read4BytesPrivileged(bpAddr) & 0xFFFFFFFFl;
-                        } catch(IndexOutOfBoundsException e) {
+                        } catch(NonexistentAccessException e) {
                             break;
                         }
                         
@@ -1256,7 +1272,7 @@ public class NotSoTinyUI extends Application {
                                                   bytes[0], bytes[1], bytes[2], bytes[3],
                                                   bytes[4], bytes[5], bytes[6], bytes[7],
                                                   chars);
-                    } catch(IndexOutOfBoundsException e) { 
+                    } catch(NonexistentAccessException e) { 
                         memwatch += String.format("%08X: out of bounds%n", this.memwatchAddress + i);
                     }
                 }

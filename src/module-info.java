@@ -5,8 +5,9 @@ module NotSoTiny {
     requires java.logging;
     requires java.desktop;
     
-    exports notsotiny.ui;
+    exports notsotiny.asm;
     exports notsotiny.sim;
     exports notsotiny.sim.memory;
     exports notsotiny.sim.ops;
+    exports notsotiny.ui;
 }

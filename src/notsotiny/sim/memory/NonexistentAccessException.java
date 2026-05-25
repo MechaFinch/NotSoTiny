@@ -1,18 +1,15 @@
 package notsotiny.sim.memory;
 
 /**
- * Exception thrown accessing privileged memory without privilege
+ * Exception thrown accessing memory that does not exist
  */
-public class UnprivilegedAccessException extends Exception {
-
-    /**
-     * 
-     */
+public class NonexistentAccessException extends Exception {
+    
     private static final long serialVersionUID = 1L;
     
     private final int address;
     
-    public UnprivilegedAccessException(int address) {
+    public NonexistentAccessException(int address) {
         this.address = address;
     }
     
